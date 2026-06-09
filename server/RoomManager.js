@@ -1,13 +1,10 @@
 const { GameEngine } = require('./GameEngine');
 
-const STARTING_CHIPS = 10000;
-const BIG_BLIND = 200;
+const STARTING_CHIPS = 1000;
+const BIG_BLIND = 20;
 
 function randomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 class Room {
