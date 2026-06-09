@@ -1,0 +1,153 @@
+.action-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  padding: var(--sp-4) var(--sp-6) var(--sp-6);
+  background: linear-gradient(to top, rgba(4,16,8,.98), rgba(4,16,8,.6) 80%, transparent);
+  z-index: 100;
+}
+
+.action-bar-inner {
+  max-width: 700px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.btn {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  padding: 12px 18px;
+  border-radius: var(--r-md);
+  position: relative;
+  overflow: hidden;
+  transition: transform .1s var(--ease-out), box-shadow .1s var(--ease-out), opacity .1s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 50%;
+  background: linear-gradient(to bottom, rgba(255,255,255,.12), transparent);
+  pointer-events: none;
+}
+.btn:active { transform: translateY(1px); }
+.btn-amount { font-family: var(--font-mono); font-size: 11px; opacity: .9; }
+
+.btn-fold {
+  background: linear-gradient(135deg, #2A1010, #3D1515);
+  color: #E08080;
+  border: 1px solid rgba(192,57,43,.3);
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+}
+.btn-fold:hover {
+  background: linear-gradient(135deg, #3D1515, #561C1C);
+  box-shadow: 0 4px 12px rgba(0,0,0,.5), 0 0 16px rgba(192,57,43,.2);
+}
+
+.btn-check {
+  background: linear-gradient(135deg, #1A2A1F, #243528);
+  color: #90C4A0;
+  border: 1px solid rgba(42,128,64,.3);
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+}
+.btn-check:hover {
+  background: linear-gradient(135deg, #243528, #2E4432);
+  box-shadow: 0 4px 12px rgba(0,0,0,.5), 0 0 16px rgba(42,128,64,.2);
+}
+
+.btn-call {
+  background: linear-gradient(135deg, #0D2840, #14395C);
+  color: #78B8E8;
+  border: 1px solid rgba(26,95,173,.4);
+  box-shadow: 0 2px 8px rgba(0,0,0,.4), 0 0 12px rgba(26,95,173,.15);
+}
+.btn-call:hover {
+  background: linear-gradient(135deg, #14395C, #1A4A78);
+  box-shadow: 0 4px 16px rgba(0,0,0,.5), 0 0 24px rgba(26,95,173,.3);
+  transform: translateY(-1px);
+}
+
+.btn-raise {
+  background: linear-gradient(135deg, var(--gold-800), var(--gold-600));
+  color: var(--gold-100);
+  border: 1px solid rgba(212,175,55,.4);
+  box-shadow: 0 2px 12px rgba(0,0,0,.4), 0 0 20px rgba(212,175,55,.2);
+}
+.btn-raise:hover {
+  background: linear-gradient(135deg, var(--gold-700), var(--gold-500));
+  box-shadow: 0 4px 20px rgba(0,0,0,.5), var(--shadow-gold);
+  transform: translateY(-1px);
+}
+
+.btn-allin {
+  background: linear-gradient(135deg, #3D1505, #6B2800);
+  color: #FFCC80;
+  border: 1px solid rgba(212,175,55,.3);
+  box-shadow: 0 2px 12px rgba(0,0,0,.4), 0 0 20px rgba(192,57,43,.15);
+}
+.btn-allin:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,.5), 0 0 30px rgba(192,57,43,.3);
+  transform: translateY(-1px);
+}
+
+/* Raise group */
+.raise-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(212,175,55,.15);
+  border-radius: var(--r-lg);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.raise-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.raise-prefix {
+  font-family: var(--font-mono);
+  color: var(--gold-400);
+  font-size: 14px;
+}
+
+.raise-input {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(212,175,55,.2);
+  border-radius: var(--r-sm);
+  color: var(--gold-300);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 6px 8px;
+  width: 90px;
+  outline: none;
+}
+.raise-input:focus { border-color: var(--gold-400); box-shadow: 0 0 0 2px rgba(212,175,55,.15); }
+
+.raise-slider {
+  -webkit-appearance: none;
+  width: 120px; height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--gold-500) 40%, rgba(255,255,255,.1) 40%);
+  outline: none;
+}
+.raise-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--gold-400);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(212,175,55,.5);
+}

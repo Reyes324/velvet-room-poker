@@ -1,0 +1,80 @@
+/* ═══════════════════════════════════════════════
+   VELVET ROOM — Design Tokens (synced with design-system.html)
+═══════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=Space+Mono:wght@400;700&display=swap');
+
+:root {
+  /* Felt */
+  --felt-900: #041008;
+  --felt-800: #071A0D;
+  --felt-700: #0A2211;
+  --felt-600: #0D2E16;
+  --felt-500: #0F3A1B;
+  --felt-400: #144D24;
+  --felt-300: #1A6630;
+  --felt-200: #2A8040;
+
+  /* Gold */
+  --gold-900: #3D2800;
+  --gold-800: #6B4500;
+  --gold-700: #8A5C00;
+  --gold-600: #A87200;
+  --gold-500: #C9900A;
+  --gold-400: #D4AF37;
+  --gold-300: #E8CC6A;
+  --gold-200: #F0DC96;
+  --gold-100: #FAF0CC;
+
+  /* Card */
+  --ivory: #F8F3EA;
+  --ink-red: #C0392B;
+  --ink-black: #1A1208;
+
+  /* Chips */
+  --chip-white: #E8E4DC;
+  --chip-red: #C0392B;
+  --chip-blue: #1A5FAD;
+  --chip-green: #1A7A3C;
+  --chip-black: #1A1208;
+  --chip-purple: #6B3FA0;
+  --chip-gold: #D4AF37;
+
+  /* Surface */
+  --surface-base: #08120A;
+  --surface-raised: #0D1C10;
+  --surface-card: #111E14;
+
+  /* Text */
+  --text-primary: #F2EAD0;
+  --text-secondary: #A8946A;
+  --text-muted: #5A6E5C;
+
+  /* State */
+  --state-danger: #C0392B;
+  --state-safe: #27AE60;
+  --state-info: #2980B9;
+
+  /* Typography */
+  --font-display: 'Cinzel', serif;
+  --font-body: 'Crimson Pro', serif;
+  --font-mono: 'Space Mono', monospace;
+
+  /* Spacing */
+  --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 20px;  --sp-6: 24px;
+  --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* Radius */
+  --r-sm: 4px; --r-md: 8px; --r-lg: 12px;
+  --r-xl: 16px; --r-card: 10px; --r-pill: 9999px;
+
+  /* Shadow */
+  --shadow-card: 0 2px 8px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
+  --shadow-raised: 0 4px 16px rgba(0,0,0,.5), 0 1px 4px rgba(0,0,0,.3);
+  --shadow-gold: 0 0 20px rgba(212,175,55,.3), 0 0 60px rgba(212,175,55,.1);
+
+  /* Easing */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+}

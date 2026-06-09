@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>翡翠厅 — 德州扑克设计系统</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=Space+Mono:ital,wght@0,400;0,700&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════
+       DESIGN TOKENS
+    ═══════════════════════════════════════════════ */
+    :root {
+      /* Felt — casino green */
+      --felt-900: #041008;
+      --felt-800: #071A0D;
+      --felt-700: #0A2211;
+      --felt-600: #0D2E16;
+      --felt-500: #0F3A1B;   /* primary table surface */
+      --felt-400: #144D24;
+      --felt-300: #1A6630;
+      --felt-200: #2A8040;
+      --felt-100: #3DA058;
+
+      /* Gold — casino warmth */
+      --gold-900: #3D2800;
+      --gold-800: #6B4500;
+      --gold-700: #8A5C00;
+      --gold-600: #A87200;
+      --gold-500: #C9900A;   /* primary accent */
+      --gold-400: #D4AF37;   /* bright accent */
+      --gold-300: #E8CC6A;
+      --gold-200: #F0DC96;
+      --gold-100: #FAF0CC;
+
+      /* Ivory — card face */
+      --ivory: #F8F3EA;
+      --ivory-warm: #F2EAD8;
+      --ivory-cool: #EDF0F5;
+
+      /* Ink — card suits */
+      --ink-red: #C0392B;
+      --ink-red-dark: #922B21;
+      --ink-black: #1A1208;
+
+      /* Chip colors */
+      --chip-white: #E8E4DC;
+      --chip-red: #C0392B;
+      --chip-blue: #1A5FAD;
+      --chip-green: #1A7A3C;
+      --chip-black: #1A1208;
+      --chip-purple: #6B3FA0;
+      --chip-yellow: #D4AF37;
+
+      /* Surface */
+      --surface-base: #08120A;
+      --surface-raised: #0D1C10;
+      --surface-overlay: #122016;
+      --surface-card: #111E14;
+
+      /* Text */
+      --text-primary: #F2EAD0;
+      --text-secondary: #A8946A;
+      --text-muted: #5A6E5C;
+      --text-inverse: #08120A;
+
+      /* State */
+      --state-active: #D4AF37;
+      --state-danger: #C0392B;
+      --state-safe: #27AE60;
+      --state-info: #2980B9;
+
+      /* Typography */
+      --font-display: 'Cinzel', serif;
+      --font-body: 'Crimson Pro', serif;
+      --font-mono: 'Space Mono', monospace;
+
+      /* Spacing */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-10: 40px;
+      --space-12: 48px;
+      --space-16: 64px;
+      --space-20: 80px;
+      --space-24: 96px;
+
+      /* Radius */
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --radius-card: 10px;
+      --radius-chip: 50%;
+      --radius-pill: 9999px;
+
+      /* Shadow */
+      --shadow-card: 0 2px 8px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
+      --shadow-chip: 0 3px 8px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.15);
+      --shadow-raised: 0 4px 16px rgba(0,0,0,.5), 0 1px 4px rgba(0,0,0,.3);
+      --shadow-table: inset 0 0 80px rgba(0,0,0,.6), inset 0 0 20px rgba(0,0,0,.3);
+      --shadow-gold: 0 0 20px rgba(212,175,55,.3), 0 0 60px rgba(212,175,55,.1);
+
+      /* Transition */
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* ═══════════════════════════════════════════════
+       RESET & BASE
+    ═══════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--surface-base);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.6;
+    }
+
+    /* ═══════════════════════════════════════════════
+       LAYOUT
+    ═══════════════════════════════════════════════ */
+    .ds-page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: var(--space-16) var(--space-8);
+    }
+
+    .ds-section {
+      margin-bottom: var(--space-20);
+    }
+
+    .ds-section-title {
+      font-family: var(--font-display);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--gold-500);
+      margin-bottom: var(--space-6);
+      padding-bottom: var(--space-3);
+      border-bottom: 1px solid rgba(212,175,55,.2);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .ds-section-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 12px;
+      background: var(--gold-400);
+    }
+
+    .ds-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-4);
+      align-items: flex-start;
+    }
+
+    .ds-col {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    /* ═══════════════════════════════════════════════
+       HEADER
+    ═══════════════════════════════════════════════ */
+    .ds-header {
+      text-align: center;
+      padding: var(--space-20) 0 var(--space-16);
+      position: relative;
+    }
+
+    .ds-header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold-500), transparent);
+    }
+
+    .ds-logo {
+      font-family: var(--font-display);
+      font-size: 56px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      background: linear-gradient(135deg, var(--gold-300) 0%, var(--gold-400) 40%, var(--gold-200) 60%, var(--gold-500) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+      margin-bottom: var(--space-3);
+    }
+
+    .ds-subtitle {
+      font-family: var(--font-body);
+      font-size: 14px;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .ds-version {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: var(--space-4);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      border: 1px solid rgba(255,255,255,.07);
+      padding: 4px 12px;
+      border-radius: var(--radius-pill);
+    }
+
+    .ds-version-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--felt-200);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .3; }
+    }
+
+    /* ═══════════════════════════════════════════════
+       COLOR SWATCHES
+    ═══════════════════════════════════════════════ */
+    .color-palette {
+      display: flex;
+      gap: var(--space-4);
+      flex-wrap: wrap;
+    }
+
+    .color-group {
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .color-group-name {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--text-muted);
+      margin-bottom: var(--space-2);
+      text-transform: uppercase;
+    }
+
+    .color-strip {
+      display: flex;
+      height: 40px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-raised);
+    }
+
+    .color-strip-item {
+      flex: 1;
+      position: relative;
+      transition: flex .2s var(--ease-out);
+    }
+    .color-strip-item:hover { flex: 2; }
+
+    .color-swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+      gap: var(--space-2);
+    }
+
+    .color-swatch {
+      aspect-ratio: 1;
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding: var(--space-2);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: rgba(255,255,255,.7);
+      box-shadow: var(--shadow-card);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .color-swatch::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,.5));
+    }
+
+    .color-swatch span { position: relative; z-index: 1; }
+
+    /* ═══════════════════════════════════════════════
+       TYPOGRAPHY
+    ═══════════════════════════════════════════════ */
+    .type-scale {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .type-sample {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-6);
+      padding: var(--space-4) 0;
+      border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+
+    .type-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      min-width: 100px;
+      letter-spacing: 0.1em;
+    }
+
+    /* ═══════════════════════════════════════════════
+       PLAYING CARDS
+    ═══════════════════════════════════════════════ */
+    .card {
+      width: 72px;
+      height: 100px;
+      background: var(--ivory);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow-card);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: transform .15s var(--ease-out), box-shadow .15s var(--ease-out);
+      user-select: none;
+    }
+
+    .card:hover {
+      transform: translateY(-4px) rotate(-1deg);
+      box-shadow: 0 8px 24px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.4);
+    }
+
+    .card--lg { width: 90px; height: 125px; }
+    .card--sm { width: 54px; height: 76px; }
+
+    /* Corner pips */
+    .card-corner {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1;
+      font-family: var(--font-display);
+      font-weight: 700;
+    }
+
+    .card-corner.tl { top: 6px; left: 7px; }
+    .card-corner.br { bottom: 6px; right: 7px; transform: rotate(180deg); }
+
+    .card-corner .rank {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .card-corner .suit {
+      font-size: 10px;
+      line-height: 1;
+    }
+
+    .card--lg .card-corner .rank { font-size: 17px; }
+    .card--lg .card-corner .suit { font-size: 12px; }
+    .card--sm .card-corner .rank { font-size: 11px; }
+    .card--sm .card-corner .suit { font-size: 8px; }
+
+    /* Center suit */
+    .card-center {
+      font-size: 28px;
+      line-height: 1;
+    }
+    .card--lg .card-center { font-size: 36px; }
+    .card--sm .card-center { font-size: 20px; }
+
+    /* Suit colors */
+    .card--red .card-corner,
+    .card--red .card-center { color: var(--ink-red); }
+    .card--black .card-corner,
+    .card--black .card-center { color: var(--ink-black); }
+
+    /* Face-down card */
+    .card--back {
+      background: #1A3A4A;
+      overflow: hidden;
+    }
+
+    .card--back::before {
+      content: '';
+      position: absolute;
+      inset: 5px;
+      border-radius: 6px;
+      border: 1.5px solid rgba(212,175,55,.4);
+      background:
+        repeating-linear-gradient(
+          45deg,
+          rgba(212,175,55,.06) 0px,
+          rgba(212,175,55,.06) 1px,
+          transparent 1px,
+          transparent 8px
+        ),
+        repeating-linear-gradient(
+          -45deg,
+          rgba(212,175,55,.06) 0px,
+          rgba(212,175,55,.06) 1px,
+          transparent 1px,
+          transparent 8px
+        );
+    }
+
+    .card--back::after {
+      content: '♦';
+      position: absolute;
+      font-size: 20px;
+      color: rgba(212,175,55,.4);
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Highlight on face cards */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 40%;
+      background: linear-gradient(to bottom, rgba(255,255,255,.12), transparent);
+      border-radius: var(--radius-card) var(--radius-card) 0 0;
+      pointer-events: none;
+    }
+
+    .card--back::before { inset: 5px; height: auto; border-radius: 6px; }
+
+    /* ═══════════════════════════════════════════════
+       CHIPS
+    ═══════════════════════════════════════════════ */
+    .chip {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-chip);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: rgba(255,255,255,.9);
+      box-shadow: var(--shadow-chip);
+      flex-shrink: 0;
+    }
+
+    .chip::before {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: var(--radius-chip);
+      border: 2px dashed rgba(255,255,255,.3);
+    }
+
+    .chip::after {
+      content: '';
+      position: absolute;
+      top: 3px; left: 3px; right: 3px;
+      height: 45%;
+      border-radius: var(--radius-chip);
+      background: linear-gradient(to bottom, rgba(255,255,255,.25), transparent);
+    }
+
+    .chip--sm { width: 36px; height: 36px; font-size: 8px; }
+    .chip--lg { width: 60px; height: 60px; font-size: 12px; }
+
+    .chip-value { position: relative; z-index: 1; }
+
+    .chip--white { background: radial-gradient(circle at 35% 35%, #f0ebe3, var(--chip-white)); color: var(--ink-black); }
+    .chip--red   { background: radial-gradient(circle at 35% 35%, #e05050, var(--chip-red)); }
+    .chip--blue  { background: radial-gradient(circle at 35% 35%, #2a7fd4, var(--chip-blue)); }
+    .chip--green { background: radial-gradient(circle at 35% 35%, #28a050, var(--chip-green)); }
+    .chip--black { background: radial-gradient(circle at 35% 35%, #3a3020, var(--chip-black)); }
+    .chip--purple{ background: radial-gradient(circle at 35% 35%, #8b5abf, var(--chip-purple)); }
+    .chip--gold  { background: radial-gradient(circle at 35% 35%, #f0c840, var(--chip-yellow)); color: var(--ink-black); }
+
+    /* Chip stack */
+    .chip-stack {
+      position: relative;
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: center;
+    }
+
+    .chip-stack .chip {
+      margin-top: -30px;
+      transition: transform .15s var(--ease-out);
+    }
+    .chip-stack .chip:last-child { margin-top: 0; }
+    .chip-stack:hover .chip { margin-top: -20px; }
+
+    .chip-stack-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--gold-400);
+      margin-top: var(--space-3);
+      text-align: center;
+    }
+
+    /* ═══════════════════════════════════════════════
+       ACTION BUTTONS
+    ═══════════════════════════════════════════════ */
+    .btn {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      border: none;
+      cursor: pointer;
+      padding: 12px 24px;
+      border-radius: var(--radius-md);
+      position: relative;
+      overflow: hidden;
+      transition: transform .1s var(--ease-out), box-shadow .1s var(--ease-out);
+      white-space: nowrap;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 50%;
+      background: linear-gradient(to bottom, rgba(255,255,255,.12), transparent);
+      pointer-events: none;
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    /* Fold — muted, danger undertone */
+    .btn-fold {
+      background: linear-gradient(135deg, #2A1010, #3D1515);
+      color: #E08080;
+      border: 1px solid rgba(192,57,43,.3);
+      box-shadow: 0 2px 8px rgba(0,0,0,.4), 0 0 0 1px rgba(192,57,43,.1) inset;
+    }
+    .btn-fold:hover {
+      background: linear-gradient(135deg, #3D1515, #561C1C);
+      box-shadow: 0 4px 12px rgba(0,0,0,.5), 0 0 16px rgba(192,57,43,.2);
+    }
+
+    /* Check — neutral, subdued */
+    .btn-check {
+      background: linear-gradient(135deg, #1A2A1F, #243528);
+      color: #90C4A0;
+      border: 1px solid rgba(42,128,64,.3);
+      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+    }
+    .btn-check:hover {
+      background: linear-gradient(135deg, #243528, #2E4432);
+      box-shadow: 0 4px 12px rgba(0,0,0,.5), 0 0 16px rgba(42,128,64,.2);
+    }
+
+    /* Call — positive, blue confidence */
+    .btn-call {
+      background: linear-gradient(135deg, #0D2840, #14395C);
+      color: #78B8E8;
+      border: 1px solid rgba(26,95,173,.4);
+      box-shadow: 0 2px 8px rgba(0,0,0,.4), 0 0 12px rgba(26,95,173,.15);
+    }
+    .btn-call:hover {
+      background: linear-gradient(135deg, #14395C, #1A4A78);
+      box-shadow: 0 4px 16px rgba(0,0,0,.5), 0 0 24px rgba(26,95,173,.3);
+      transform: translateY(-1px);
+    }
+
+    /* Raise — gold, attention, power */
+    .btn-raise {
+      background: linear-gradient(135deg, var(--gold-800), var(--gold-600));
+      color: var(--gold-100);
+      border: 1px solid rgba(212,175,55,.4);
+      box-shadow: 0 2px 12px rgba(0,0,0,.4), 0 0 20px rgba(212,175,55,.2);
+    }
+    .btn-raise:hover {
+      background: linear-gradient(135deg, var(--gold-700), var(--gold-500));
+      box-shadow: 0 4px 20px rgba(0,0,0,.5), var(--shadow-gold);
+      transform: translateY(-1px);
+    }
+
+    .btn-raise::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(212,175,55,.2), transparent 70%);
+      pointer-events: none;
+    }
+
+    /* All-In — danger + gold */
+    .btn-allin {
+      background: linear-gradient(135deg, #3D1505, #6B2800);
+      color: #FFCC80;
+      border: 1px solid rgba(212,175,55,.3);
+      box-shadow: 0 2px 12px rgba(0,0,0,.4), 0 0 20px rgba(192,57,43,.2);
+    }
+    .btn-allin:hover {
+      box-shadow: 0 4px 20px rgba(0,0,0,.5), 0 0 30px rgba(192,57,43,.4);
+      transform: translateY(-1px);
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+
+    /* Raise amount input */
+    .raise-input-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .raise-input-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .raise-input-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .raise-input {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(212,175,55,.25);
+      border-radius: var(--radius-md);
+      color: var(--gold-300);
+      font-family: var(--font-mono);
+      font-size: 14px;
+      padding: 8px 12px;
+      width: 100px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .raise-input:focus { border-color: var(--gold-400); box-shadow: 0 0 0 2px rgba(212,175,55,.15); }
+
+    .raise-slider {
+      -webkit-appearance: none;
+      width: 160px;
+      height: 4px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--gold-500) 40%, rgba(255,255,255,.1) 40%);
+      outline: none;
+    }
+    .raise-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--gold-400);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(212,175,55,.5);
+    }
+
+    /* ═══════════════════════════════════════════════
+       PLAYER SEAT
+    ═══════════════════════════════════════════════ */
+    .player-seat {
+      background: linear-gradient(135deg, var(--surface-card), var(--surface-raised));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius-xl);
+      padding: var(--space-4);
+      min-width: 140px;
+      position: relative;
+      box-shadow: var(--shadow-raised);
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    .player-seat--active {
+      border-color: rgba(212,175,55,.5);
+      box-shadow: var(--shadow-raised), 0 0 0 1px rgba(212,175,55,.2), 0 0 20px rgba(212,175,55,.15);
+    }
+
+    .player-seat--folded { opacity: .45; }
+
+    .player-seat--dealer::after {
+      content: 'D';
+      position: absolute;
+      top: -8px; right: -8px;
+      width: 22px; height: 22px;
+      background: var(--gold-400);
+      color: var(--ink-black);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: 10px;
+      font-weight: 700;
+      box-shadow: 0 2px 6px rgba(0,0,0,.4);
+    }
+
+    .player-seat-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-3);
+    }
+
+    .player-avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--felt-400), var(--felt-300));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gold-300);
+      border: 1.5px solid rgba(212,175,55,.3);
+      flex-shrink: 0;
+    }
+
+    .player-seat--active .player-avatar {
+      border-color: var(--gold-400);
+      box-shadow: 0 0 10px rgba(212,175,55,.3);
+    }
+
+    .player-info { flex: 1; min-width: 0; }
+
+    .player-name {
+      font-family: var(--font-display);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .player-status {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .player-status--active { color: var(--gold-400); }
+    .player-status--folded { color: var(--text-muted); }
+    .player-status--allin  { color: var(--state-danger); }
+    .player-status--waiting { color: var(--text-muted); }
+
+    .player-seat-cards {
+      display: flex;
+      gap: var(--space-1);
+      margin-bottom: var(--space-3);
+    }
+
+    .player-chips {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chip-amount {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--gold-300);
+    }
+
+    .chip-amount-label {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .player-bet-badge {
+      background: rgba(212,175,55,.12);
+      border: 1px solid rgba(212,175,55,.3);
+      border-radius: var(--radius-pill);
+      padding: 2px 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--gold-300);
+    }
+
+    /* Turn timer */
+    .turn-timer {
+      position: absolute;
+      bottom: -2px; left: 0; right: 0;
+      height: 3px;
+      border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+      overflow: hidden;
+    }
+
+    .turn-timer-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--gold-400), var(--gold-300));
+      animation: countdown 20s linear forwards;
+      transform-origin: left;
+    }
+
+    @keyframes countdown {
+      from { width: 100%; }
+      to { width: 0%; }
+    }
+
+    /* ═══════════════════════════════════════════════
+       COMMUNITY CARDS AREA
+    ═══════════════════════════════════════════════ */
+    .community-area {
+      background: rgba(0,0,0,.25);
+      border: 1px solid rgba(255,255,255,.05);
+      border-radius: var(--radius-xl);
+      padding: var(--space-6) var(--space-8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-4);
+      position: relative;
+    }
+
+    .community-area-label {
+      font-family: var(--font-display);
+      font-size: 9px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .community-cards {
+      display: flex;
+      gap: var(--space-2);
+      align-items: center;
+    }
+
+    .pot-display {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      background: rgba(212,175,55,.08);
+      border: 1px solid rgba(212,175,55,.2);
+      border-radius: var(--radius-pill);
+      padding: var(--space-2) var(--space-4);
+    }
+
+    .pot-icon {
+      font-size: 14px;
+    }
+
+    .pot-label {
+      font-family: var(--font-display);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--gold-400);
+      text-transform: uppercase;
+    }
+
+    .pot-amount {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      color: var(--gold-300);
+      font-weight: 700;
+    }
+
+    .phase-badge {
+      font-family: var(--font-display);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gold-400);
+      background: rgba(212,175,55,.1);
+      border: 1px solid rgba(212,175,55,.25);
+      border-radius: var(--radius-pill);
+      padding: 4px 14px;
+    }
+
+    /* ═══════════════════════════════════════════════
+       FULL TABLE (Hero)
+    ═══════════════════════════════════════════════ */
+    .table-wrapper {
+      width: 100%;
+      aspect-ratio: 16/9;
+      position: relative;
+      max-height: 520px;
+    }
+
+    .poker-table {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      position: relative;
+      overflow: visible;
+
+      /* Multi-layer felt effect */
+      background:
+        radial-gradient(ellipse at 50% 30%, var(--felt-400) 0%, var(--felt-500) 35%, var(--felt-700) 70%, var(--felt-900) 100%);
+    }
+
+    /* Rail */
+    .poker-table::before {
+      content: '';
+      position: absolute;
+      inset: -14px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #5C3D1A, #3A2510, #7A5028, #3A2510);
+      z-index: -1;
+      box-shadow:
+        0 0 0 6px #1A0D06,
+        0 8px 40px rgba(0,0,0,.8),
+        0 0 80px rgba(0,0,0,.5);
+    }
+
+    /* Felt texture overlay */
+    .poker-table::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: var(--shadow-table);
+      pointer-events: none;
+    }
+
+    /* Gold rail inner line */
+    .table-rail {
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      border: 1px solid rgba(212,175,55,.2);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Center logo */
+    .table-center {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .table-logo-text {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: rgba(212,175,55,.2);
+    }
+
+    /* Players around table */
+    .table-players {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+    }
+
+    .table-player {
+      position: absolute;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Seat positions (6-player) */
+    .table-player:nth-child(1) { top: 5%;  left: 50%; }
+    .table-player:nth-child(2) { top: 20%; left: 90%; }
+    .table-player:nth-child(3) { top: 75%; left: 85%; }
+    .table-player:nth-child(4) { top: 95%; left: 50%; }
+    .table-player:nth-child(5) { top: 75%; left: 15%; }
+    .table-player:nth-child(6) { top: 20%; left: 10%; }
+
+    .table-player-card {
+      background: linear-height 135deg, var(--surface-card), #0A1A0C;
+      background: linear-gradient(135deg, rgba(8,18,10,.95), rgba(13,28,16,.95));
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: var(--radius-lg);
+      padding: 8px 10px;
+      min-width: 120px;
+      backdrop-filter: blur(4px);
+      box-shadow: var(--shadow-raised);
+      position: relative;
+    }
+
+    .table-player-card--active {
+      border-color: rgba(212,175,55,.45);
+      box-shadow: var(--shadow-raised), 0 0 16px rgba(212,175,55,.2);
+    }
+
+    .table-player-card--folded { opacity: .4; }
+
+    .tpc-name {
+      font-family: var(--font-display);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .tpc-chips {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--gold-400);
+    }
+
+    .tpc-cards {
+      display: flex;
+      gap: 2px;
+      margin-top: 4px;
+    }
+
+    .tpc-bet {
+      position: absolute;
+      top: -10px; right: 8px;
+      background: rgba(212,175,55,.15);
+      border: 1px solid rgba(212,175,55,.3);
+      border-radius: var(--radius-pill);
+      padding: 1px 6px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--gold-300);
+    }
+
+    /* Table community center */
+    .table-community {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .table-community-cards {
+      display: flex;
+      gap: 4px;
+    }
+
+    .table-pot {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0,0,0,.4);
+      border: 1px solid rgba(212,175,55,.2);
+      border-radius: var(--radius-pill);
+      padding: 4px 12px;
+    }
+
+    .table-pot-text {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--gold-300);
+    }
+
+    /* SB / BB badges */
+    .blind-badge {
+      font-family: var(--font-display);
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      padding: 2px 5px;
+      border-radius: 3px;
+      position: absolute;
+      bottom: -8px; left: 8px;
+    }
+
+    .blind-badge--sb {
+      background: rgba(26,95,173,.8);
+      color: #90C4E8;
+      border: 1px solid rgba(26,95,173,.5);
+    }
+
+    .blind-badge--bb {
+      background: rgba(192,57,43,.8);
+      color: #E08080;
+      border: 1px solid rgba(192,57,43,.5);
+    }
+
+    .dealer-btn {
+      position: absolute;
+      width: 20px; height: 20px;
+      background: var(--gold-400);
+      color: var(--ink-black);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display);
+      font-size: 9px;
+      font-weight: 700;
+      box-shadow: 0 2px 6px rgba(0,0,0,.5);
+      bottom: -8px; right: 8px;
+    }
+
+    /* ═══════════════════════════════════════════════
+       SPACING SCALE
+    ═══════════════════════════════════════════════ */
+    .spacing-scale {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .spacing-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .spacing-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      width: 60px;
+    }
+
+    .spacing-bar {
+      height: 8px;
+      background: linear-gradient(90deg, var(--felt-300), var(--felt-200));
+      border-radius: var(--radius-pill);
+    }
+
+    .spacing-value {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    /* ═══════════════════════════════════════════════
+       TOAST / NOTIFICATION
+    ═══════════════════════════════════════════════ */
+    .toast {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-5);
+      border-radius: var(--radius-md);
+      font-family: var(--font-body);
+      font-size: 14px;
+      box-shadow: var(--shadow-raised);
+    }
+
+    .toast--win {
+      background: linear-gradient(135deg, rgba(27,100,60,.9), rgba(20,80,45,.9));
+      border: 1px solid rgba(42,160,80,.3);
+      color: #90D4A8;
+    }
+
+    .toast--fold {
+      background: linear-gradient(135deg, rgba(40,18,18,.9), rgba(56,22,22,.9));
+      border: 1px solid rgba(192,57,43,.2);
+      color: #D4A0A0;
+    }
+
+    .toast--raise {
+      background: linear-gradient(135deg, rgba(60,40,8,.9), rgba(90,60,10,.9));
+      border: 1px solid rgba(212,175,55,.25);
+      color: var(--gold-200);
+    }
+
+    .toast-icon { font-size: 18px; }
+
+    /* ═══════════════════════════════════════════════
+       UTILITIES
+    ═══════════════════════════════════════════════ */
+    .label-tag {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius-sm);
+      padding: 2px 6px;
+      display: inline-block;
+    }
+
+    .preview-box {
+      background: var(--surface-raised);
+      border: 1px solid rgba(255,255,255,.05);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+    }
+  </style>
+</head>
+<body>
+<div class="ds-page">
+
+  <!-- HEADER -->
+  <header class="ds-header">
+    <div class="ds-logo">翡翠厅</div>
+    <p class="ds-subtitle">德州扑克 · 设计系统 · v1.0</p>
+    <div class="ds-version">
+      <span class="ds-version-dot"></span>
+      <span>设计令牌 · 组件 · 交互规范</span>
+    </div>
+  </header>
+
+
+  <!-- COLOR SYSTEM -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">色彩系统</h2>
+
+    <div class="color-palette">
+      <!-- Felt -->
+      <div class="color-group">
+        <div class="color-group-name">Felt</div>
+        <div class="color-strip">
+          <div class="color-strip-item" style="background:var(--felt-900)"></div>
+          <div class="color-strip-item" style="background:var(--felt-800)"></div>
+          <div class="color-strip-item" style="background:var(--felt-700)"></div>
+          <div class="color-strip-item" style="background:var(--felt-600)"></div>
+          <div class="color-strip-item" style="background:var(--felt-500)"></div>
+          <div class="color-strip-item" style="background:var(--felt-400)"></div>
+          <div class="color-strip-item" style="background:var(--felt-300)"></div>
+          <div class="color-strip-item" style="background:var(--felt-200)"></div>
+          <div class="color-strip-item" style="background:var(--felt-100)"></div>
+        </div>
+      </div>
+      <!-- Gold -->
+      <div class="color-group">
+        <div class="color-group-name">Gold</div>
+        <div class="color-strip">
+          <div class="color-strip-item" style="background:var(--gold-900)"></div>
+          <div class="color-strip-item" style="background:var(--gold-800)"></div>
+          <div class="color-strip-item" style="background:var(--gold-700)"></div>
+          <div class="color-strip-item" style="background:var(--gold-600)"></div>
+          <div class="color-strip-item" style="background:var(--gold-500)"></div>
+          <div class="color-strip-item" style="background:var(--gold-400)"></div>
+          <div class="color-strip-item" style="background:var(--gold-300)"></div>
+          <div class="color-strip-item" style="background:var(--gold-200)"></div>
+          <div class="color-strip-item" style="background:var(--gold-100)"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:var(--space-4)">
+      <div class="color-swatch-grid" style="max-width:600px">
+        <div class="color-swatch" style="background:var(--felt-500)"><span>felt-500</span></div>
+        <div class="color-swatch" style="background:var(--gold-400)"><span>gold-400</span></div>
+        <div class="color-swatch" style="background:var(--ivory)"><span style="color:#333">ivory</span></div>
+        <div class="color-swatch" style="background:var(--ink-red)"><span>ink-red</span></div>
+        <div class="color-swatch" style="background:var(--ink-black)"><span>ink-black</span></div>
+        <div class="color-swatch" style="background:var(--chip-blue)"><span>chip-blue</span></div>
+        <div class="color-swatch" style="background:var(--chip-purple)"><span>chip-purple</span></div>
+        <div class="color-swatch" style="background:var(--surface-base)"><span>surface</span></div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- TYPOGRAPHY -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">字体系统</h2>
+    <div class="type-scale">
+      <div class="type-sample">
+        <span class="type-label">品牌标题 / 56px</span>
+        <span style="font-family:var(--font-display);font-size:56px;font-weight:900;background:linear-gradient(135deg,var(--gold-300),var(--gold-500));-webkit-background-clip:text;-webkit-text-fill-color:transparent">翡翠厅</span>
+      </div>
+      <div class="type-sample">
+        <span class="type-label">大标题 / 32px</span>
+        <span style="font-family:var(--font-display);font-size:32px;font-weight:700;color:var(--text-primary)">德州扑克无限注</span>
+      </div>
+      <div class="type-sample">
+        <span class="type-label">副标题 / 18px</span>
+        <span style="font-family:var(--font-body);font-size:18px;font-weight:600;color:var(--gold-400)">第 4 轮 · 河牌圈</span>
+      </div>
+      <div class="type-sample">
+        <span class="type-label">正文 / 16px</span>
+        <span style="font-family:var(--font-body);font-size:16px;color:var(--text-primary)">Reyes 加注至 <em>$2,400</em>，底池已达 $8,600，局势胶着。</span>
+      </div>
+      <div class="type-sample">
+        <span class="type-label">标签 / 11px</span>
+        <span style="font-family:var(--font-body);font-size:11px;letter-spacing:0.2em;color:var(--text-muted)">小盲注 · 大盲注 · 庄家</span>
+      </div>
+      <div class="type-sample">
+        <span class="type-label">等宽数字 / 14px</span>
+        <span style="font-family:var(--font-mono);font-size:14px;color:var(--gold-300)">$12,450 · BB: $200 · 4/6 玩家</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- SPACING -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">间距系统</h2>
+    <div class="spacing-scale">
+      <div class="spacing-item"><span class="spacing-label">space-1</span><div class="spacing-bar" style="width:4px"></div><span class="spacing-value">4px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-2</span><div class="spacing-bar" style="width:8px"></div><span class="spacing-value">8px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-3</span><div class="spacing-bar" style="width:12px"></div><span class="spacing-value">12px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-4</span><div class="spacing-bar" style="width:16px"></div><span class="spacing-value">16px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-6</span><div class="spacing-bar" style="width:24px"></div><span class="spacing-value">24px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-8</span><div class="spacing-bar" style="width:32px"></div><span class="spacing-value">32px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-12</span><div class="spacing-bar" style="width:48px"></div><span class="spacing-value">48px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-16</span><div class="spacing-bar" style="width:64px"></div><span class="spacing-value">64px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-20</span><div class="spacing-bar" style="width:80px"></div><span class="spacing-value">80px</span></div>
+      <div class="spacing-item"><span class="spacing-label">space-24</span><div class="spacing-bar" style="width:96px"></div><span class="spacing-value">96px</span></div>
+    </div>
+  </section>
+
+
+  <!-- PLAYING CARDS -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">扑克牌</h2>
+    <div class="preview-box">
+      <div class="ds-row" style="align-items:flex-end; gap:var(--space-6)">
+
+        <!-- Large -->
+        <div class="ds-col" style="align-items:center;gap:var(--space-2)">
+          <span class="label-tag">大号 · 90×125</span>
+          <div class="ds-row" style="gap:var(--space-3)">
+            <div class="card card--lg card--red">
+              <div class="card-corner tl"><span class="rank">A</span><span class="suit">♥</span></div>
+              <div class="card-center">♥</div>
+              <div class="card-corner br"><span class="rank">A</span><span class="suit">♥</span></div>
+            </div>
+            <div class="card card--lg card--black">
+              <div class="card-corner tl"><span class="rank">K</span><span class="suit">♠</span></div>
+              <div class="card-center">♠</div>
+              <div class="card-corner br"><span class="rank">K</span><span class="suit">♠</span></div>
+            </div>
+            <div class="card card--lg card--back"></div>
+          </div>
+        </div>
+
+        <!-- Default -->
+        <div class="ds-col" style="align-items:center;gap:var(--space-2)">
+          <span class="label-tag">默认 · 72×100</span>
+          <div class="ds-row" style="gap:var(--space-2)">
+            <div class="card card--red">
+              <div class="card-corner tl"><span class="rank">Q</span><span class="suit">♦</span></div>
+              <div class="card-center">♦</div>
+              <div class="card-corner br"><span class="rank">Q</span><span class="suit">♦</span></div>
+            </div>
+            <div class="card card--black">
+              <div class="card-corner tl"><span class="rank">J</span><span class="suit">♣</span></div>
+              <div class="card-center">♣</div>
+              <div class="card-corner br"><span class="rank">J</span><span class="suit">♣</span></div>
+            </div>
+            <div class="card card--red">
+              <div class="card-corner tl"><span class="rank">10</span><span class="suit">♥</span></div>
+              <div class="card-center">♥</div>
+              <div class="card-corner br"><span class="rank">10</span><span class="suit">♥</span></div>
+            </div>
+            <div class="card card--back"></div>
+          </div>
+        </div>
+
+        <!-- Small -->
+        <div class="ds-col" style="align-items:center;gap:var(--space-2)">
+          <span class="label-tag">小号 · 54×76</span>
+          <div class="ds-row" style="gap:var(--space-1)">
+            <div class="card card--sm card--black">
+              <div class="card-corner tl"><span class="rank">7</span><span class="suit">♠</span></div>
+              <div class="card-center">♠</div>
+              <div class="card-corner br"><span class="rank">7</span><span class="suit">♠</span></div>
+            </div>
+            <div class="card card--sm card--red">
+              <div class="card-corner tl"><span class="rank">2</span><span class="suit">♦</span></div>
+              <div class="card-center">♦</div>
+              <div class="card-corner br"><span class="rank">2</span><span class="suit">♦</span></div>
+            </div>
+            <div class="card card--sm card--back"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- CHIPS -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">筹码</h2>
+    <div class="preview-box">
+      <div class="ds-row" style="gap:var(--space-8); flex-wrap:wrap; align-items:flex-end">
+
+        <!-- Individual chips -->
+        <div class="ds-col" style="align-items:center; gap:var(--space-2)">
+          <span class="label-tag">单枚筹码</span>
+          <div class="ds-row" style="gap:var(--space-3); align-items:center">
+            <div class="chip chip--lg chip--white"><span class="chip-value">1</span></div>
+            <div class="chip chip--red"><span class="chip-value">5</span></div>
+            <div class="chip chip--blue"><span class="chip-value">25</span></div>
+            <div class="chip chip--green"><span class="chip-value">50</span></div>
+            <div class="chip chip--black"><span class="chip-value">100</span></div>
+            <div class="chip chip--purple"><span class="chip-value">500</span></div>
+            <div class="chip chip--sm chip--gold"><span class="chip-value">1K</span></div>
+          </div>
+        </div>
+
+        <!-- Chip stacks -->
+        <div class="ds-col" style="align-items:center; gap:var(--space-2)">
+          <span class="label-tag">叠加效果</span>
+          <div class="ds-row" style="gap:var(--space-8); align-items:flex-end">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+              <div class="chip-stack">
+                <div class="chip chip--sm chip--black"><span class="chip-value">100</span></div>
+                <div class="chip chip--sm chip--black"><span class="chip-value">100</span></div>
+                <div class="chip chip--sm chip--black"><span class="chip-value">100</span></div>
+                <div class="chip chip--sm chip--black"><span class="chip-value">100</span></div>
+                <div class="chip chip--sm chip--black"><span class="chip-value">100</span></div>
+              </div>
+              <span class="chip-stack-label">$500</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+              <div class="chip-stack">
+                <div class="chip chip--sm chip--red"><span class="chip-value">5</span></div>
+                <div class="chip chip--sm chip--red"><span class="chip-value">5</span></div>
+                <div class="chip chip--sm chip--red"><span class="chip-value">5</span></div>
+              </div>
+              <span class="chip-stack-label">$15</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ACTION BUTTONS -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">操作按钮</h2>
+    <div class="preview-box">
+      <div class="ds-col" style="gap:var(--space-5)">
+
+        <div class="action-buttons">
+          <button class="btn btn-fold">弃牌</button>
+          <button class="btn btn-check">过牌</button>
+          <button class="btn btn-call">跟注 $400</button>
+          <button class="btn btn-raise">加注</button>
+          <button class="btn btn-allin">全押 $8,200</button>
+        </div>
+
+        <!-- Raise input -->
+        <div>
+          <div class="raise-input-label" style="margin-bottom:var(--space-2)">加注金额</div>
+          <div class="raise-input-row">
+            <span style="font-family:var(--font-mono);color:var(--gold-400);font-size:16px;margin-right:4px">$</span>
+            <input class="raise-input" type="number" value="1200" min="400" max="8200">
+            <input class="raise-slider" type="range" value="40">
+            <button class="btn btn-raise" style="padding:10px 18px">加注 $1,200</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- PLAYER SEATS -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">玩家席位状态</h2>
+    <div class="preview-box">
+      <div class="ds-row" style="gap:var(--space-4); flex-wrap:wrap">
+
+        <!-- Active / your turn -->
+        <div style="position:relative">
+          <div class="player-seat player-seat--active player-seat--dealer" style="min-width:160px">
+            <div class="player-seat-header">
+              <div class="player-avatar">R</div>
+              <div class="player-info">
+                <div class="player-name">Reyes</div>
+                <div class="player-status player-status--active">你的回合</div>
+              </div>
+            </div>
+            <div class="player-seat-cards">
+              <div class="card card--sm card--red">
+                <div class="card-corner tl"><span class="rank">A</span><span class="suit">♥</span></div>
+                <div class="card-center">♥</div>
+                <div class="card-corner br"><span class="rank">A</span><span class="suit">♥</span></div>
+              </div>
+              <div class="card card--sm card--red">
+                <div class="card-corner tl"><span class="rank">A</span><span class="suit">♦</span></div>
+                <div class="card-center">♦</div>
+                <div class="card-corner br"><span class="rank">A</span><span class="suit">♦</span></div>
+              </div>
+            </div>
+            <div class="player-chips">
+              <div>
+                <div class="chip-amount-label">筹码</div>
+                <div class="chip-amount">$8,200</div>
+              </div>
+              <div class="player-bet-badge">下注 $400</div>
+            </div>
+            <div class="turn-timer"><div class="turn-timer-bar"></div></div>
+          </div>
+          <span class="label-tag" style="margin-top:var(--space-2);display:block;text-align:center">行动中 · 庄家</span>
+        </div>
+
+        <!-- Waiting -->
+        <div style="position:relative">
+          <div class="player-seat" style="min-width:160px">
+            <div class="player-seat-header">
+              <div class="player-avatar">M</div>
+              <div class="player-info">
+                <div class="player-name">Mike</div>
+                <div class="player-status player-status--waiting">等待中</div>
+              </div>
+            </div>
+            <div class="player-seat-cards">
+              <div class="card card--sm card--back"></div>
+              <div class="card card--sm card--back"></div>
+            </div>
+            <div class="player-chips">
+              <div>
+                <div class="chip-amount-label">筹码</div>
+                <div class="chip-amount">$4,600</div>
+              </div>
+              <div class="player-bet-badge">下注 $400</div>
+            </div>
+          </div>
+          <span class="label-tag" style="margin-top:var(--space-2);display:block;text-align:center">等待中 · 小盲</span>
+        </div>
+
+        <!-- Folded -->
+        <div style="position:relative">
+          <div class="player-seat player-seat--folded" style="min-width:160px">
+            <div class="player-seat-header">
+              <div class="player-avatar">J</div>
+              <div class="player-info">
+                <div class="player-name">Jenny</div>
+                <div class="player-status player-status--folded">已弃牌</div>
+              </div>
+            </div>
+            <div class="player-seat-cards" style="opacity:.3">
+              <div class="card card--sm card--back"></div>
+              <div class="card card--sm card--back"></div>
+            </div>
+            <div class="player-chips">
+              <div>
+                <div class="chip-amount-label">筹码</div>
+                <div class="chip-amount">$2,100</div>
+              </div>
+            </div>
+          </div>
+          <span class="label-tag" style="margin-top:var(--space-2);display:block;text-align:center">已弃牌</span>
+        </div>
+
+        <!-- All-In -->
+        <div style="position:relative">
+          <div class="player-seat" style="min-width:160px;border-color:rgba(192,57,43,.4)">
+            <div class="player-seat-header">
+              <div class="player-avatar" style="border-color:rgba(192,57,43,.5)">T</div>
+              <div class="player-info">
+                <div class="player-name">Tony</div>
+                <div class="player-status player-status--allin">全押</div>
+              </div>
+            </div>
+            <div class="player-seat-cards">
+              <div class="card card--sm card--back"></div>
+              <div class="card card--sm card--back"></div>
+            </div>
+            <div class="player-chips">
+              <div>
+                <div class="chip-amount-label">筹码</div>
+                <div class="chip-amount" style="color:var(--state-danger)">$0</div>
+              </div>
+              <div class="player-bet-badge" style="color:var(--state-danger);border-color:rgba(192,57,43,.4)">全押 $3,200</div>
+            </div>
+          </div>
+          <span class="label-tag" style="margin-top:var(--space-2);display:block;text-align:center">全押</span>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- COMMUNITY CARDS AREA -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">公共牌区域</h2>
+    <div class="preview-box">
+      <div class="ds-col" style="gap:var(--space-6)">
+
+        <!-- Flop -->
+        <div>
+          <span class="label-tag" style="margin-bottom:var(--space-3);display:inline-block">翻牌圈</span>
+          <div class="community-area" style="display:inline-flex">
+            <div class="community-area-label">公共牌</div>
+            <div class="community-cards">
+              <div class="card card--red">
+                <div class="card-corner tl"><span class="rank">A</span><span class="suit">♥</span></div>
+                <div class="card-center">♥</div>
+                <div class="card-corner br"><span class="rank">A</span><span class="suit">♥</span></div>
+              </div>
+              <div class="card card--black">
+                <div class="card-corner tl"><span class="rank">K</span><span class="suit">♠</span></div>
+                <div class="card-center">♠</div>
+                <div class="card-corner br"><span class="rank">K</span><span class="suit">♠</span></div>
+              </div>
+              <div class="card card--red">
+                <div class="card-corner tl"><span class="rank">Q</span><span class="suit">♦</span></div>
+                <div class="card-center">♦</div>
+                <div class="card-corner br"><span class="rank">Q</span><span class="suit">♦</span></div>
+              </div>
+              <!-- Remaining slots -->
+              <div class="card card--back" style="opacity:.3"></div>
+              <div class="card card--back" style="opacity:.3"></div>
+            </div>
+            <div class="pot-display">
+              <span class="pot-icon">🪙</span>
+              <span class="pot-label">底池</span>
+              <span class="pot-amount">$3,200</span>
+            </div>
+            <div class="phase-badge">翻牌圈</div>
+          </div>
+        </div>
+
+        <!-- River -->
+        <div>
+          <span class="label-tag" style="margin-bottom:var(--space-3);display:inline-block">河牌圈（5 张公共牌）</span>
+          <div class="community-area" style="display:inline-flex">
+            <div class="community-area-label">公共牌</div>
+            <div class="community-cards">
+              <div class="card card--red"><div class="card-corner tl"><span class="rank">A</span><span class="suit">♥</span></div><div class="card-center">♥</div><div class="card-corner br"><span class="rank">A</span><span class="suit">♥</span></div></div>
+              <div class="card card--black"><div class="card-corner tl"><span class="rank">K</span><span class="suit">♠</span></div><div class="card-center">♠</div><div class="card-corner br"><span class="rank">K</span><span class="suit">♠</span></div></div>
+              <div class="card card--red"><div class="card-corner tl"><span class="rank">Q</span><span class="suit">♦</span></div><div class="card-center">♦</div><div class="card-corner br"><span class="rank">Q</span><span class="suit">♦</span></div></div>
+              <div class="card card--black"><div class="card-corner tl"><span class="rank">J</span><span class="suit">♣</span></div><div class="card-center">♣</div><div class="card-corner br"><span class="rank">J</span><span class="suit">♣</span></div></div>
+              <div class="card card--red"><div class="card-corner tl"><span class="rank">10</span><span class="suit">♥</span></div><div class="card-center">♥</div><div class="card-corner br"><span class="rank">10</span><span class="suit">♥</span></div></div>
+            </div>
+            <div class="pot-display">
+              <span class="pot-icon">🪙</span>
+              <span class="pot-label">底池</span>
+              <span class="pot-amount">$12,800</span>
+            </div>
+            <div class="phase-badge">河牌圈</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- TOAST NOTIFICATIONS -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">消息通知</h2>
+    <div class="preview-box">
+      <div class="ds-col" style="gap:var(--space-3)">
+        <div class="toast toast--win"><span class="toast-icon">🏆</span> Reyes 以 <strong>皇家同花顺</strong> 赢得底池 $12,400</div>
+        <div class="toast toast--fold"><span class="toast-icon">🃏</span> Jenny 弃牌，剩余 3 名玩家。</div>
+        <div class="toast toast--raise"><span class="toast-icon">📈</span> Mike 加注至 $2,400 — 轮到你行动了。</div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- FULL TABLE -->
+  <section class="ds-section">
+    <h2 class="ds-section-title">完整牌桌 — 河牌圈（6 人局）</h2>
+    <div class="preview-box" style="padding:var(--space-10)">
+      <div class="table-wrapper">
+        <div class="poker-table">
+          <div class="table-rail"></div>
+
+          <!-- Center brand + community -->
+          <div class="table-community">
+            <div class="table-logo-text" style="font-size:10px;letter-spacing:.3em;opacity:.5">翡翠厅</div>
+            <div class="table-community-cards">
+              <div class="card card--sm card--red"><div class="card-corner tl"><span class="rank">A</span><span class="suit">♥</span></div><div class="card-center">♥</div><div class="card-corner br"><span class="rank">A</span><span class="suit">♥</span></div></div>
+              <div class="card card--sm card--black"><div class="card-corner tl"><span class="rank">K</span><span class="suit">♠</span></div><div class="card-center">♠</div><div class="card-corner br"><span class="rank">K</span><span class="suit">♠</span></div></div>
+              <div class="card card--sm card--red"><div class="card-corner tl"><span class="rank">Q</span><span class="suit">♦</span></div><div class="card-center">♦</div><div class="card-corner br"><span class="rank">Q</span><span class="suit">♦</span></div></div>
+              <div class="card card--sm card--black"><div class="card-corner tl"><span class="rank">J</span><span class="suit">♣</span></div><div class="card-center">♣</div><div class="card-corner br"><span class="rank">J</span><span class="suit">♣</span></div></div>
+              <div class="card card--sm card--red"><div class="card-corner tl"><span class="rank">10</span><span class="suit">♥</span></div><div class="card-center">♥</div><div class="card-corner br"><span class="rank">10</span><span class="suit">♥</span></div></div>
+            </div>
+            <div class="table-pot">
+              <span style="font-family:var(--font-display);font-size:9px;letter-spacing:.15em;color:var(--gold-500);text-transform:uppercase">底池</span>
+              <span class="table-pot-text">$12,800</span>
+            </div>
+          </div>
+
+          <!-- Players -->
+          <div class="table-players">
+
+            <!-- P1 — top center — active -->
+            <div class="table-player">
+              <div class="table-player-card table-player-card--active">
+                <div class="tpc-bet">$1,200</div>
+                <div class="dealer-btn">D</div>
+                <div class="tpc-name">Reyes</div>
+                <div class="tpc-chips">$8,200</div>
+                <div class="tpc-cards">
+                  <div class="card card--sm card--red"><div class="card-corner tl"><span class="rank">A</span><span class="suit">♦</span></div><div class="card-center">♦</div><div class="card-corner br"><span class="rank">A</span><span class="suit">♦</span></div></div>
+                  <div class="card card--sm card--black"><div class="card-corner tl"><span class="rank">A</span><span class="suit">♣</span></div><div class="card-center">♣</div><div class="card-corner br"><span class="rank">A</span><span class="suit">♣</span></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- P2 — top right -->
+            <div class="table-player">
+              <div class="table-player-card">
+                <div class="tpc-bet">$1,200</div>
+                <div class="tpc-name">Mike</div>
+                <div class="tpc-chips">$4,800</div>
+                <div class="tpc-cards">
+                  <div class="card card--sm card--back"></div>
+                  <div class="card card--sm card--back"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- P3 — bottom right -->
+            <div class="table-player">
+              <div class="table-player-card">
+                <div class="tpc-bet">$800</div>
+                <div class="tpc-name">Sarah</div>
+                <div class="tpc-chips">$6,100</div>
+                <div class="tpc-cards">
+                  <div class="card card--sm card--back"></div>
+                  <div class="card card--sm card--back"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- P4 — bottom center — folded -->
+            <div class="table-player">
+              <div class="table-player-card table-player-card--folded">
+                <div class="tpc-name">Tony</div>
+                <div class="tpc-chips" style="color:var(--text-muted)">$2,100</div>
+                <div class="tpc-cards" style="opacity:.3">
+                  <div class="card card--sm card--back"></div>
+                  <div class="card card--sm card--back"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- P5 — bottom left -->
+            <div class="table-player">
+              <div class="table-player-card">
+                <div class="blind-badge blind-badge--sb">SB</div>
+                <div class="tpc-bet">$400</div>
+                <div class="tpc-name">Jenny</div>
+                <div class="tpc-chips">$3,400</div>
+                <div class="tpc-cards">
+                  <div class="card card--sm card--back"></div>
+                  <div class="card card--sm card--back"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- P6 — top left -->
+            <div class="table-player">
+              <div class="table-player-card">
+                <div class="blind-badge blind-badge--bb">BB</div>
+                <div class="tpc-bet">$800</div>
+                <div class="tpc-name">David</div>
+                <div class="tpc-chips">$5,600</div>
+                <div class="tpc-cards">
+                  <div class="card card--sm card--back"></div>
+                  <div class="card card--sm card--back"></div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /table-players -->
+        </div><!-- /poker-table -->
+      </div><!-- /table-wrapper -->
+    </div>
+  </section>
+
+  <footer style="text-align:center;padding:var(--space-16) 0 var(--space-8);border-top:1px solid rgba(255,255,255,.05)">
+    <p style="font-family:var(--font-display);font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--text-muted)">翡翠厅 德州扑克 · 设计系统 v1.0 · 2026</p>
+  </footer>
+
+</div><!-- /ds-page -->
+</body>
+</html>
