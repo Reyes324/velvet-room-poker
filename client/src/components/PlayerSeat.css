@@ -9,9 +9,30 @@
   transition: border-color .2s, box-shadow .2s, opacity .2s;
 }
 
+@keyframes activePulse {
+  0%, 100% { box-shadow: var(--shadow-raised), 0 0 12px rgba(212,175,55,.35); }
+  50%       { box-shadow: var(--shadow-raised), 0 0 32px rgba(212,175,55,.75), 0 0 60px rgba(212,175,55,.2); }
+}
+
+@keyframes topShimmer {
+  0%   { opacity: 0; transform: scaleX(.4); }
+  50%  { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(.4); }
+}
+
 .seat--active {
-  border-color: rgba(212,175,55,.5);
-  box-shadow: var(--shadow-raised), 0 0 20px rgba(212,175,55,.2);
+  border-color: var(--gold-400);
+  animation: activePulse 1.8s ease-in-out infinite;
+}
+
+.seat--active::after {
+  content: '';
+  position: absolute;
+  top: -1px; left: 15%; right: 15%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-300), transparent);
+  border-radius: 1px;
+  animation: topShimmer 1.8s ease-in-out infinite;
 }
 
 .seat--folded { opacity: .38; }
@@ -88,7 +109,11 @@
   font-family: var(--font-mono);
   font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
 }
-.seat-status--active { color: var(--gold-400); }
+.seat-status--active {
+  color: var(--gold-300);
+  font-weight: 700;
+  letter-spacing: .12em;
+}
 .seat-status--folded { color: var(--text-muted); }
 .seat-status--allin  { color: var(--state-danger); }
 
@@ -115,13 +140,31 @@
 .seat--allin .seat-chips { color: var(--state-danger); }
 
 .seat-bet {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  background: rgba(212,175,55,.1);
-  border: 1px solid rgba(212,175,55,.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: var(--sp-2);
+  padding: 5px 12px;
+  background: linear-gradient(135deg, rgba(212,175,55,.18), rgba(212,175,55,.08));
+  border: 1.5px solid rgba(212,175,55,.5);
   border-radius: var(--r-pill);
-  padding: 2px 7px;
-  color: var(--gold-300);
+  box-shadow: 0 0 14px rgba(212,175,55,.25);
+}
+
+.seat-bet-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--gold-500);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.seat-bet-amount {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold-200);
 }
 
 
@@ -135,5 +178,7 @@
   .seat-avatar { width: 26px; height: 26px; font-size: 10px; }
   .seat-name { font-size: 10px; }
   .seat-chips { font-size: 11px; }
-  .seat-bet { font-size: 9px; padding: 1px 5px; }
+  .seat-bet { padding: 4px 8px; }
+  .seat-bet-amount { font-size: 11px; }
+  .seat-bet-label { font-size: 7px; }
 }

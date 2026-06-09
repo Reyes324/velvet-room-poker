@@ -43,10 +43,14 @@ export default function PlayerSeat({ player, isMe, isAction, gamePhase }) {
           <div className="seat-label">筹码</div>
           <div className="seat-chips">${player.chips.toLocaleString()}</div>
         </div>
-        {player.bet > 0 && (
-          <div className="seat-bet">下注 ${player.bet.toLocaleString()}</div>
-        )}
       </div>
+
+      {player.bet > 0 && (
+        <div className="seat-bet">
+          <span className="seat-bet-label">下注</span>
+          <span className="seat-bet-amount">${player.bet.toLocaleString()}</span>
+        </div>
+      )}
 
     </div>
   );
