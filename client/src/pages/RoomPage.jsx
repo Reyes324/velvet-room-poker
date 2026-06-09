@@ -14,6 +14,35 @@ const PHASE_LABEL = {
   showdown: '摊牌',
 };
 
+// ── Oval seat positions (left%, top%) per player count ──────────────────────
+const SEAT_POSITIONS = {
+  2: [{ left:50, top:88 }, { left:50, top:12 }],
+  3: [{ left:50, top:88 }, { left:78, top:30 }, { left:22, top:30 }],
+  4: [{ left:50, top:88 }, { left:82, top:50 }, { left:50, top:12 }, { left:18, top:50 }],
+  5: [{ left:50, top:88 }, { left:82, top:62 }, { left:78, top:24 }, { left:22, top:24 }, { left:18, top:62 }],
+  6: [{ left:50, top:88 }, { left:82, top:65 }, { left:85, top:32 }, { left:50, top:10 }, { left:15, top:32 }, { left:18, top:65 }],
+  7: [{ left:50, top:88 }, { left:80, top:72 }, { left:88, top:45 }, { left:72, top:15 }, { left:28, top:15 }, { left:12, top:45 }, { left:20, top:72 }],
+  8: [{ left:50, top:88 }, { left:76, top:76 }, { left:88, top:50 }, { left:76, top:22 }, { left:50, top:10 }, { left:24, top:22 }, { left:12, top:50 }, { left:24, top:76 }],
+  9: [{ left:50, top:88 }, { left:73, top:80 }, { left:88, top:58 }, { left:85, top:28 }, { left:64, top:10 }, { left:36, top:10 }, { left:15, top:28 }, { left:12, top:58 }, { left:27, top:80 }],
+};
+
+// Rotate players array so hero (myPlayerId) is always at index 0
+function getOrderedPlayers(players, myPlayerId) {
+  const idx = players.findIndex(p => p.id === myPlayerId);
+  if (idx === -1) return players;
+  return [...players.slice(idx), ...players.slice(0, idx)];
+}
+
+// Push bet chip toward table center from its seat position
+function getBetChipOffset(pos) {
+  const dx = 50 - pos.left;
+  const dy = 50 - pos.top;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  return {
+    transform: `translate(calc(-50% + ${(dx / len) * 32}px), calc(-50% + ${(dy / len) * 32}px))`,
+  };
+}
+
 export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [roomState, setRoomState] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -135,8 +164,10 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   }
 
   // ─── Game Table ───────────────────────────────────────────────────────────
-  const myPlayer = gameState.players.find(p => p.id === playerId);
-  const isMyTurn = gameState.actionPlayerId === playerId;
+  const orderedPlayers = getOrderedPlayers(gameState.players, playerId);
+  const count = orderedPlayers.length;
+  const positions = SEAT_POSITIONS[count] ?? SEAT_POSITIONS[9];
+  const myPlayer = orderedPlayers[0]; // hero is always index 0 after rotation
 
   return (
     <div className="table-view">
@@ -147,49 +178,64 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           <div className="table-phase">{PHASE_LABEL[gameState.phase] ?? gameState.phase}</div>
         </div>
 
-        {/* Players */}
-        <div className={`players-layout players-layout--${gameState.players.length}`}>
-          {gameState.players.map(p => (
-            <div key={p.id} className="player-slot">
-              <PlayerSeat
-                player={p}
-                isMe={p.id === playerId}
-                isAction={gameState.actionPlayerId === p.id}
-                gamePhase={gameState.phase}
-              />
+        {/* Oval table */}
+        <div className="table-oval">
+          <div className="table-oval-felt" />
+
+          {/* Community cards + pot centered in oval */}
+          <div className="table-center">
+            <div className="community-cards">
+              {Array.from({ length: 5 }).map((_, i) => {
+                const card = gameState.communityCards[i];
+                return <Card key={i} card={card} size="sm" faceDown={!card} />;
+              })}
             </div>
-          ))}
-        </div>
+            <div className="pot-display">
+              <span className="pot-label">底池</span>
+              <span className="pot-amount">${gameState.pot.toLocaleString()}</span>
+            </div>
+            {gameState.currentBet > 0 && (
+              <div className="current-bet">当前注 ${gameState.currentBet.toLocaleString()}</div>
+            )}
+          </div>
 
-        {/* Center */}
-        <div className="table-center">
-          <div className="community-cards">
-            {Array.from({ length: 5 }).map((_, i) => {
-              const card = gameState.communityCards[i];
-              return <Card key={i} card={card} size="sm" faceDown={!card} />;
-            })}
-          </div>
-          <div className="pot-display">
-            <span className="pot-label">底池</span>
-            <span className="pot-amount">${gameState.pot.toLocaleString()}</span>
-          </div>
-          {gameState.currentBet > 0 && (
-            <div className="current-bet">当前注 ${gameState.currentBet.toLocaleString()}</div>
+          {/* Showdown overlay */}
+          {showdown && (
+            <div className="showdown-overlay">
+              {showdown.map((w, i) => (
+                <div key={i} className="showdown-winner">
+                  <span className="sw-icon">🏆</span>
+                  <span className="sw-name">{w.name}</span>
+                  <span className="sw-hand">{w.handName}</span>
+                </div>
+              ))}
+            </div>
           )}
-        </div>
 
-        {/* Showdown overlay */}
-        {showdown && (
-          <div className="showdown-overlay">
-            {showdown.map((w, i) => (
-              <div key={i} className="showdown-winner">
-                <span className="sw-icon">🏆</span>
-                <span className="sw-name">{w.name}</span>
-                <span className="sw-hand">{w.handName}</span>
+          {/* Player seats: absolutely positioned around oval */}
+          {orderedPlayers.map((p, idx) => {
+            const pos = positions[idx];
+            return (
+              <div
+                key={p.id}
+                className={`player-slot${idx === 0 ? ' player-slot--hero' : ''}`}
+                style={{ left: `${pos.left}%`, top: `${pos.top}%` }}
+              >
+                <PlayerSeat
+                  player={p}
+                  isMe={idx === 0}
+                  isAction={gameState.actionPlayerId === p.id}
+                  gamePhase={gameState.phase}
+                />
+                {p.bet > 0 && (
+                  <div className="bet-chip" style={getBetChipOffset(pos)}>
+                    ${p.bet.toLocaleString()}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
       </div>
 
       {/* My hole cards (fixed bottom center) */}
@@ -212,7 +258,6 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         disabled={actionDisabled}
       />
 
-      {/* Toast */}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </div>
   );

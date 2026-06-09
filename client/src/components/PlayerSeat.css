@@ -139,33 +139,6 @@
 }
 .seat--allin .seat-chips { color: var(--state-danger); }
 
-.seat-bet {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  margin-top: var(--sp-2);
-  padding: 5px 12px;
-  background: linear-gradient(135deg, rgba(212,175,55,.18), rgba(212,175,55,.08));
-  border: 1.5px solid rgba(212,175,55,.5);
-  border-radius: var(--r-pill);
-  box-shadow: 0 0 14px rgba(212,175,55,.25);
-}
-
-.seat-bet-label {
-  font-family: var(--font-mono);
-  font-size: 8px;
-  color: var(--gold-500);
-  text-transform: uppercase;
-  letter-spacing: .1em;
-}
-
-.seat-bet-amount {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--gold-200);
-}
 
 
 /* ── Mobile ── */
@@ -178,7 +151,4 @@
   .seat-avatar { width: 26px; height: 26px; font-size: 10px; }
   .seat-name { font-size: 10px; }
   .seat-chips { font-size: 11px; }
-  .seat-bet { padding: 4px 8px; }
-  .seat-bet-amount { font-size: 11px; }
-  .seat-bet-label { font-size: 7px; }
 }

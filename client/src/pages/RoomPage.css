@@ -168,7 +168,9 @@
   background:
     radial-gradient(ellipse at 50% 40%, var(--felt-400) 0%, var(--felt-600) 35%, var(--felt-800) 70%, var(--felt-900) 100%);
   position: relative;
-  padding: var(--sp-4) var(--sp-4) 180px;
+  padding: var(--sp-4) var(--sp-4) 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .table-header {
@@ -191,34 +193,70 @@
   padding: 4px 14px;
 }
 
-/* Players grid layout */
-.players-layout {
-  display: grid;
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
+/* ── Oval table ── */
+.table-oval {
+  position: relative;
+  width: 100%;
+  height: 56vh;
+  flex-shrink: 0;
+  margin-top: var(--sp-2);
+  overflow: visible;
 }
 
-.players-layout--2 { grid-template-columns: 1fr 1fr; }
-.players-layout--3 { grid-template-columns: 1fr 1fr 1fr; }
-.players-layout--4 { grid-template-columns: 1fr 1fr; }
-.players-layout--5 { grid-template-columns: 1fr 1fr 1fr; }
-.players-layout--6 { grid-template-columns: 1fr 1fr 1fr; }
-.players-layout--7,
-.players-layout--8,
-.players-layout--9 { grid-template-columns: repeat(3, 1fr); }
+.table-oval-felt {
+  position: absolute;
+  top: 3%; left: 5%; right: 5%; bottom: 3%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 45%,
+    var(--felt-300) 0%, var(--felt-500) 55%, var(--felt-700) 100%);
+  border: 3px solid rgba(212,175,55,.15);
+  box-shadow:
+    inset 0 0 40px rgba(0,0,0,.4),
+    0 0 0 6px rgba(212,175,55,.06),
+    0 8px 40px rgba(0,0,0,.6);
+  pointer-events: none;
+  z-index: 0;
+}
 
-.player-slot { display: flex; justify-content: center; }
+/* Player slots: absolutely positioned around oval */
+.player-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+}
+.player-slot--hero { z-index: 11; }
+.player-slot--hero .seat {
+  transform: scale(1.05);
+  transform-origin: center bottom;
+}
 
-/* Table center */
+/* Bet chip: floats between seat and table center */
+.bet-chip {
+  position: absolute;
+  top: 50%; left: 50%;
+  background: radial-gradient(circle, rgba(212,175,55,.95), rgba(180,140,20,.9));
+  color: var(--ink-black);
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  padding: 4px 8px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid rgba(212,175,55,.5);
+  box-shadow: 0 2px 8px rgba(0,0,0,.5), 0 0 12px rgba(212,175,55,.3);
+  white-space: nowrap;
+  z-index: 12;
+  pointer-events: none;
+}
+
+/* Table center: community cards + pot, centered in oval */
 .table-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -54%);
+  z-index: 5;
   display: flex; flex-direction: column;
-  align-items: center; gap: var(--sp-3);
-  padding: var(--sp-6);
-  background: rgba(0,0,0,.2);
-  border: 1px solid rgba(255,255,255,.05);
-  border-radius: var(--r-xl);
-  margin: 0 auto;
-  max-width: 460px;
+  align-items: center; gap: var(--sp-2);
+  background: none; border: none; padding: 0;
+  max-width: 260px; width: 100%;
 }
 
 .community-cards {
@@ -343,26 +381,14 @@
 
 /* ── Mobile: Game Table ── */
 @media (max-width: 640px) {
-  /* Player grid: cap 3-column layouts */
-  .players-layout--7,
-  .players-layout--8,
-  .players-layout--9 { grid-template-columns: 1fr 1fr; }
-
-  /* My hole cards: lift above taller mobile action bar */
+  .table-oval { height: 53vh; }
   .my-cards { bottom: 160px; }
-
-  /* Table padding allows action bar clearance */
-  .table-felt { padding-bottom: 190px; }
-
-  /* Toast: allow wrapping on narrow screens */
   .toast {
     white-space: normal;
     max-width: 88vw;
     text-align: center;
     font-size: 14px;
   }
-
-  /* Showdown overlay: fill width */
   .showdown-overlay {
     width: calc(100% - var(--sp-8));
     padding: var(--sp-4) var(--sp-5);
@@ -370,18 +396,11 @@
 }
 
 @media (max-width: 480px) {
-  /* Collapse all multi-column layouts to 2 columns */
-  .players-layout--5,
-  .players-layout--6,
-  .players-layout--7,
-  .players-layout--8,
-  .players-layout--9 { grid-template-columns: 1fr 1fr; }
-
-  .table-felt { padding: var(--sp-3) var(--sp-3) 210px; }
-  .table-center { padding: var(--sp-3); gap: var(--sp-2); }
-  .table-header { margin-bottom: var(--sp-4); }
+  .table-felt { padding: var(--sp-3) var(--sp-3) 0; }
+  .table-oval { height: 50vh; }
+  .table-header { margin-bottom: var(--sp-3); }
   .my-cards { bottom: 175px; gap: 6px; }
-
+  .bet-chip { font-size: 9px; padding: 3px 6px; }
   .pot-amount { font-size: 14px; }
   .current-bet { font-size: 10px; }
 }

@@ -29,14 +29,17 @@ export default function PlayerSeat({ player, isMe, isAction, gamePhase }) {
         </div>
       </div>
 
-      <div className="seat-cards">
-        {(player.holeCards && player.holeCards.length === 2)
-          ? player.holeCards.map((c, i) =>
-              <Card key={i} card={c} size="xs" faceDown={c === null && !isShowdown} />
-            )
-          : [<Card key={0} size="xs" faceDown />, <Card key={1} size="xs" faceDown />]
-        }
-      </div>
+      {/* Opponent card backs shown; hero cards displayed large at bottom instead */}
+      {!isMe && (
+        <div className="seat-cards">
+          {(player.holeCards && player.holeCards.length === 2)
+            ? player.holeCards.map((c, i) =>
+                <Card key={i} card={c} size="xs" faceDown={c === null && !isShowdown} />
+              )
+            : [<Card key={0} size="xs" faceDown />, <Card key={1} size="xs" faceDown />]
+          }
+        </div>
+      )}
 
       <div className="seat-footer">
         <div>
@@ -44,13 +47,6 @@ export default function PlayerSeat({ player, isMe, isAction, gamePhase }) {
           <div className="seat-chips">${player.chips.toLocaleString()}</div>
         </div>
       </div>
-
-      {player.bet > 0 && (
-        <div className="seat-bet">
-          <span className="seat-bet-label">下注</span>
-          <span className="seat-bet-amount">${player.bet.toLocaleString()}</span>
-        </div>
-      )}
 
     </div>
   );
