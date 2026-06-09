@@ -96,6 +96,19 @@
   justify-content: center;
 }
 
+/* ── Mobile card sizes ── */
+@media (max-width: 480px) {
+  .card--lg  { width: 72px;  height: 100px; }
+  .card--lg .card-rank { font-size: 14px; }
+  .card--lg .card-suit { font-size: 10px; }
+  .card--lg .card-center { font-size: 28px; }
+
+  .card--sm  { width: 44px;  height: 62px; }
+  .card--sm .card-rank { font-size: 9px; }
+  .card--sm .card-suit { font-size: 7px; }
+  .card--sm .card-center { font-size: 16px; }
+}
+
 /* Animation: deal in */
 @keyframes dealIn {
   from { opacity: 0; transform: translateY(-20px) rotate(-5deg); }

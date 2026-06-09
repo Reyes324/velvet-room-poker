@@ -48,7 +48,6 @@ export default function PlayerSeat({ player, isMe, isAction, gamePhase }) {
         )}
       </div>
 
-      {isAction && <div className="seat-timer"><div className="seat-timer-bar" /></div>}
     </div>
   );
 }

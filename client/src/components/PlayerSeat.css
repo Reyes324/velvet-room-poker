@@ -124,21 +124,16 @@
   color: var(--gold-300);
 }
 
-/* Timer bar */
-.seat-timer {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 3px;
-  border-radius: 0 0 var(--r-xl) var(--r-xl);
-  overflow: hidden;
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  .seat { min-width: 0; }
 }
-.seat-timer-bar {
-  height: 100%;
-  background: linear-gradient(90deg, var(--gold-400), var(--gold-300));
-  animation: timerDown 30s linear forwards;
-  transform-origin: left;
-}
-@keyframes timerDown {
-  from { width: 100%; }
-  to   { width: 0; }
+
+@media (max-width: 480px) {
+  .seat { padding: var(--sp-2) var(--sp-2); }
+  .seat-avatar { width: 26px; height: 26px; font-size: 10px; }
+  .seat-name { font-size: 10px; }
+  .seat-chips { font-size: 11px; }
+  .seat-bet { font-size: 9px; padding: 1px 5px; }
 }

@@ -68,6 +68,13 @@ class Room {
     return { ok: true };
   }
 
+  restart() {
+    for (const p of this.players) p.chips = STARTING_CHIPS;
+    this.status = 'waiting';
+    this.game = null;
+    this.dealerIndex = 0;
+  }
+
   playerAction(playerId, action, amount) {
     if (!this.game) return { error: '游戏未开始' };
     switch (action) {

@@ -151,3 +151,67 @@
   cursor: pointer;
   box-shadow: 0 0 6px rgba(212,175,55,.5);
 }
+
+/* ── Mobile: 2-row grid layout ── */
+@media (max-width: 600px) {
+  .action-bar {
+    padding: var(--sp-3) var(--sp-3) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .action-bar-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas:
+      "fold checkcall allin"
+      "raise raise raise";
+    gap: var(--sp-2);
+    align-items: stretch;
+    max-width: none;
+  }
+
+  .btn-fold    { grid-area: fold; }
+  .btn-check,
+  .btn-call    { grid-area: checkcall; }
+  .btn-allin   { grid-area: allin; }
+  .raise-group { grid-area: raise; width: 100%; }
+
+  .btn-fold,
+  .btn-check,
+  .btn-call,
+  .btn-allin {
+    min-height: 44px;
+    padding: 10px 6px;
+    font-size: 11px;
+    letter-spacing: .06em;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .btn-amount { font-size: 10px; }
+
+  .raise-group {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .raise-input-row { flex-shrink: 0; }
+  .raise-input { width: 76px; }
+
+  .raise-slider {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  .btn-raise {
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+}

@@ -4,9 +4,15 @@
   "scripts": {
     "build": "cd client && npm install && npm run build",
     "start": "node server/index.js",
-    "install:all": "npm install --prefix server && npm install --prefix client"
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "test": "npm test --prefix server",
+    "test:e2e": "npx playwright test",
+    "test:all": "npm test --prefix server && npx playwright test"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
   }
 }

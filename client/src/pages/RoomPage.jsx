@@ -28,7 +28,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   }, []);
 
   const { emit } = useSocket({
-    'room:state': (state) => setRoomState(state),
+    'room:state':  (state) => setRoomState(state),
     'game:state': (state) => {
       setGameState(state);
       setShowdown(null);
@@ -40,15 +40,19 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       showToast(`🏆 ${names} 赢得底池！`, 'win');
     },
     'game:ended': ({ reason }) => {
-      showToast(reason, 'info');
+      showToast(reason ?? '游戏结束', 'info');
       setGameState(null);
     },
     'room:kicked': () => {
       showToast('你已被房主移出房间', 'danger');
       setTimeout(onLeave, 2000);
     },
-    error: (msg) => showToast(msg, 'danger'),
+    'game:error': (msg) => showToast(msg, 'danger'),
   });
+
+  useEffect(() => {
+    emit('room:sync', { playerId });
+  }, []);
 
   function handleAction(action, amount) {
     setActionDisabled(true);
@@ -105,13 +109,21 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
 
           <div className="lobby-footer">
             {isHost
-              ? <button
-                  className="start-btn"
-                  disabled={(roomState?.players.length ?? 0) < 2}
-                  onClick={() => emit('room:start', { playerId })}
-                >
-                  {(roomState?.players.length ?? 0) < 2 ? '等待更多玩家…' : '开始游戏'}
-                </button>
+              ? <div className="lobby-host-actions">
+                  <button
+                    className="start-btn"
+                    disabled={(roomState?.players.length ?? 0) < 2}
+                    onClick={() => emit('room:start', { playerId })}
+                  >
+                    {(roomState?.players.length ?? 0) < 2 ? '等待更多玩家…' : '开始游戏'}
+                  </button>
+                  <button
+                    className="restart-btn"
+                    onClick={() => emit('room:restart', { playerId })}
+                  >
+                    重新开始
+                  </button>
+                </div>
               : <p className="waiting-text">等待房主开始游戏…</p>
             }
           </div>

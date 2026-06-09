@@ -133,6 +133,24 @@
 }
 .start-btn:disabled { opacity: .45; cursor: default; }
 
+.lobby-host-actions { display: flex; flex-direction: column; gap: 10px; }
+
+.restart-btn {
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  padding: 11px;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid rgba(255,255,255,.12);
+  transition: color .15s, border-color .15s;
+}
+.restart-btn:hover {
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,.3);
+}
+
 .waiting-text {
   text-align: center; color: var(--text-muted);
   font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em;
@@ -307,4 +325,63 @@
 .toast--info {
   background: linear-gradient(135deg, rgba(60,40,8,.95), rgba(90,60,10,.95));
   border: 1px solid rgba(212,175,55,.25); color: var(--gold-200);
+}
+
+/* ── Mobile: Lobby ── */
+@media (max-width: 480px) {
+  .lobby-card {
+    margin: var(--sp-3);
+    padding: var(--sp-6) var(--sp-5);
+    border-radius: 16px;
+  }
+  .lobby-logo { font-size: 24px; }
+  .lobby-code { font-size: 18px; letter-spacing: .2em; }
+  .lobby-code-label { font-size: 9px; }
+  .lobby-player { padding: var(--sp-2) var(--sp-3); }
+  .start-btn { padding: 13px; font-size: 13px; }
+}
+
+/* ── Mobile: Game Table ── */
+@media (max-width: 640px) {
+  /* Player grid: cap 3-column layouts */
+  .players-layout--7,
+  .players-layout--8,
+  .players-layout--9 { grid-template-columns: 1fr 1fr; }
+
+  /* My hole cards: lift above taller mobile action bar */
+  .my-cards { bottom: 160px; }
+
+  /* Table padding allows action bar clearance */
+  .table-felt { padding-bottom: 190px; }
+
+  /* Toast: allow wrapping on narrow screens */
+  .toast {
+    white-space: normal;
+    max-width: 88vw;
+    text-align: center;
+    font-size: 14px;
+  }
+
+  /* Showdown overlay: fill width */
+  .showdown-overlay {
+    width: calc(100% - var(--sp-8));
+    padding: var(--sp-4) var(--sp-5);
+  }
+}
+
+@media (max-width: 480px) {
+  /* Collapse all multi-column layouts to 2 columns */
+  .players-layout--5,
+  .players-layout--6,
+  .players-layout--7,
+  .players-layout--8,
+  .players-layout--9 { grid-template-columns: 1fr 1fr; }
+
+  .table-felt { padding: var(--sp-3) var(--sp-3) 210px; }
+  .table-center { padding: var(--sp-3); gap: var(--sp-2); }
+  .table-header { margin-bottom: var(--sp-4); }
+  .my-cards { bottom: 175px; gap: 6px; }
+
+  .pot-amount { font-size: 14px; }
+  .current-bet { font-size: 10px; }
 }

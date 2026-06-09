@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import './HomePage.css';
 
@@ -6,11 +6,18 @@ function genId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export default function HomePage({ onJoined }) {
+export default function HomePage({ onJoined, initialCode }) {
   const [name, setName] = useState('');
-  const [code, setCode] = useState('');
-  const [mode, setMode] = useState(null); // 'create' | 'join'
+  const [code, setCode] = useState(initialCode ?? '');
+  const [mode, setMode] = useState(initialCode ? 'join' : null);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (initialCode) {
+      setCode(initialCode);
+      setMode('join');
+    }
+  }, [initialCode]);
 
   const { emit } = useSocket({
     'room:joined': ({ code: roomCode, playerId }) => {
@@ -18,7 +25,7 @@ export default function HomePage({ onJoined }) {
       localStorage.setItem('vr_roomCode', roomCode);
       onJoined(roomCode, playerId, name);
     },
-    error: (msg) => setError(msg),
+    'game:error': (msg) => setError(msg),
   });
 
   function getPlayerId() {

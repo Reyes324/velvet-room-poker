@@ -157,3 +157,21 @@
   background: rgba(255,255,255,.07);
   color: var(--text-secondary);
 }
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+  .home-card {
+    margin: var(--sp-3);
+    padding: var(--sp-8) var(--sp-5);
+    border-radius: 16px;
+  }
+  .home-logo { font-size: 40px; }
+  .home-tagline { margin-bottom: var(--sp-6); }
+  .btn-primary,
+  .btn-secondary {
+    font-size: 12px;
+    padding: 13px 10px;
+    letter-spacing: .08em;
+  }
+  .btn-ghost { padding: 13px 12px; }
+}
