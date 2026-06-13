@@ -1,41 +1,42 @@
-import Card from './Card';
-import './PlayerSeat.css';
+// Rail seat: avatar + unified position badge + platinum stack (styled by shared velvet.css).
+// Emits the approved preview's classes (.seat/.avatar/.av-*/.pos-badge/.stack-chip/.reveal).
+// Bet chip is rendered by RoomPage (owns toward-center offset). Opponent cards reveal only at showdown.
+const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
-// v3 rail seat: avatar disc + unified position badge + platinum stack.
-// Bet chip is rendered by RoomPage (it owns the toward-center offset).
-// Opponent hole cards are hidden until showdown (no persistent card backs).
 export default function PlayerSeat({ player, isMe, isAction, gamePhase, color = 0 }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
   const badge = player.isDealer ? 'D' : player.isSB ? 'SB' : player.isBB ? 'BB' : null;
-  // Hero is gold; opponents take a stable color from the palette
-  const avatarClass = 'seat-avatar' + (isMe ? ' seat-avatar--me' : ` seat-avatar--c${color}`);
+  const avClass = isMe ? 'av-gold' : AV[color % AV.length];
+
+  const seatClass = [
+    'seat',
+    isAction && 'is-active',
+    folded && 'is-folded',
+    allin && 'is-allin',
+  ].filter(Boolean).join(' ');
 
   return (
-    <div className={[
-      'seat',
-      isAction && 'seat--active',
-      folded && 'seat--folded',
-      allin && 'seat--allin',
-      isMe && 'seat--me',
-    ].filter(Boolean).join(' ')}>
-
-      <div className={avatarClass}>
+    <div className={seatClass}>
+      <div className={`avatar ${avClass}`}>
         {player.name[0].toUpperCase()}
         {badge && <span className="pos-badge">{badge}</span>}
       </div>
 
       {folded
-        ? <div className="seat-tag seat-tag--fold">弃牌</div>
+        ? <div className="fold-tag">弃牌</div>
         : allin
-          ? <div className="seat-tag seat-tag--allin">ALL IN</div>
-          : <div className="seat-stack">¥{player.chips.toLocaleString()}</div>}
+          ? <div className="allin-tag">ALL IN</div>
+          : <div className="stack-chip">¥{player.chips.toLocaleString()}</div>}
 
-      {/* Reveal opponents' cards only at showdown (hero sees own cards large at bottom) */}
       {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && (
-        <div className="seat-reveal">
-          {player.holeCards.map((c, i) => <Card key={i} card={c} size="xs" />)}
+        <div className="reveal" style={{ position: 'absolute', bottom: 'calc(100% + 4px)', left: '50%', transform: 'translateX(-50%)' }}>
+          {player.holeCards.map((c, i) => (
+            <div key={i} className={`rc${c.color === 'red' ? ' red' : ''}`}>
+              <span className="rct">{c.rank}</span><span className="rcc">{c.suit}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
