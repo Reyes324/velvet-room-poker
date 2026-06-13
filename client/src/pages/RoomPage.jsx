@@ -26,6 +26,13 @@ const SEAT_POSITIONS = {
   9: [{ left:50, top:88 }, { left:73, top:80 }, { left:88, top:58 }, { left:85, top:28 }, { left:64, top:10 }, { left:36, top:10 }, { left:15, top:28 }, { left:12, top:58 }, { left:27, top:80 }],
 };
 
+// Stable avatar color (0-7) derived from player id, so a player keeps their color
+function colorForId(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h + ch.charCodeAt(0)) % 8;
+  return h;
+}
+
 // Rotate players array so hero (myPlayerId) is always at index 0
 function getOrderedPlayers(players, myPlayerId) {
   const idx = players.findIndex(p => p.id === myPlayerId);
@@ -226,6 +233,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
                   isMe={idx === 0}
                   isAction={gameState.actionPlayerId === p.id}
                   gamePhase={gameState.phase}
+                  color={colorForId(p.id)}
                 />
                 {p.bet > 0 && (
                   <div className="bet-chip" style={getBetChipOffset(pos)}>

@@ -5,7 +5,8 @@
 html { scroll-behavior: smooth; }
 
 body {
-  background: var(--surface-base);
+  /* ambient felt — fills desktop margins around the centered portrait stage */
+  background: radial-gradient(ellipse at 50% 26%, var(--felt-700) 0%, var(--felt-900) 55%, var(--surface-base) 100%);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: 16px;
@@ -29,3 +30,13 @@ input, button { font-family: inherit; }
 a { color: inherit; text-decoration: none; }
 
 #root { min-height: 100dvh; display: flex; flex-direction: column; }
+
+/* ── Desktop: center the mobile-portrait game as a framed column ── */
+@media (min-width: 600px) {
+  #root { align-items: center; }
+  .table-view, .lobby {
+    width: 100%;
+    max-width: 460px;
+    box-shadow: 0 0 120px rgba(0,0,0,.65);
+  }
+}

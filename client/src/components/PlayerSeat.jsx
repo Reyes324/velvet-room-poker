@@ -4,11 +4,13 @@ import './PlayerSeat.css';
 // v3 rail seat: avatar disc + unified position badge + platinum stack.
 // Bet chip is rendered by RoomPage (it owns the toward-center offset).
 // Opponent hole cards are hidden until showdown (no persistent card backs).
-export default function PlayerSeat({ player, isMe, isAction, gamePhase }) {
+export default function PlayerSeat({ player, isMe, isAction, gamePhase, color = 0 }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
   const badge = player.isDealer ? 'D' : player.isSB ? 'SB' : player.isBB ? 'BB' : null;
+  // Hero is gold; opponents take a stable color from the palette
+  const avatarClass = 'seat-avatar' + (isMe ? ' seat-avatar--me' : ` seat-avatar--c${color}`);
 
   return (
     <div className={[
@@ -19,7 +21,7 @@ export default function PlayerSeat({ player, isMe, isAction, gamePhase }) {
       isMe && 'seat--me',
     ].filter(Boolean).join(' ')}>
 
-      <div className="seat-avatar">
+      <div className={avatarClass}>
         {player.name[0].toUpperCase()}
         {badge && <span className="pos-badge">{badge}</span>}
       </div>
