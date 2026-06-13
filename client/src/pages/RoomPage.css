@@ -222,21 +222,25 @@
   transform-origin: center bottom;
 }
 
-/* Bet chip: floats between seat and table center */
+/* Bet chip: a gold chip token + bare amount (no pill box) — matches preview */
 .bet-chip {
   position: absolute;
   top: 50%; left: 50%;
-  background: radial-gradient(circle, rgba(212,175,55,.95), rgba(180,140,20,.9));
-  color: var(--ink-black);
+  display: flex; align-items: center; gap: 4px;
   font-family: var(--font-mono);
   font-size: 10px; font-weight: 700;
-  padding: 4px 8px;
-  border-radius: var(--r-pill);
-  border: 1.5px solid rgba(212,175,55,.5);
-  box-shadow: 0 2px 8px rgba(0,0,0,.5), 0 0 12px rgba(212,175,55,.3);
+  color: #F0DFA0;
+  text-shadow: 0 1px 3px rgba(0,0,0,.85);
   white-space: nowrap;
   z-index: 12;
   pointer-events: none;
+}
+.bet-chip::before {
+  content: '';
+  width: 12px; height: 12px; border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #F4E4A6, #C79A2E);
+  box-shadow: 0 0 7px rgba(212,175,55,.55), inset 0 0 0 2px rgba(255,255,255,.28);
+  flex-shrink: 0;
 }
 
 /* Table center: community cards + pot, centered in oval */

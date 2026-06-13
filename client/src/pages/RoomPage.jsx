@@ -193,7 +193,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
             <div className="community-cards">
               {Array.from({ length: 5 }).map((_, i) => {
                 const card = gameState.communityCards[i];
-                return <Card key={i} card={card} size="sm" faceDown={!card} />;
+                return <Card key={i} card={card} size="xs" faceDown={!card} />;
               })}
             </div>
             <div className="pot-display">
@@ -251,9 +251,9 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         <div className="my-cards">
           {myPlayer.holeCards?.length === 2
             ? myPlayer.holeCards.map((c, i) =>
-                <Card key={i} card={c} size="lg" className="card--animate" />
+                <Card key={i} card={c} size="md" />
               )
-            : [<Card key={0} size="lg" faceDown />, <Card key={1} size="lg" faceDown />]
+            : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]
           }
         </div>
       )}
