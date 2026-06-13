@@ -3,6 +3,7 @@ import { useSocket } from '../hooks/useSocket';
 import PlayerSeat from '../components/PlayerSeat';
 import ActionBar from '../components/ActionBar';
 import Card from '../components/Card';
+import Pot from '../components/Pot';
 import './RoomPage.css';
 
 const PHASE_LABEL = {
@@ -196,11 +197,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
                 return <Card key={i} card={card} size="xs" faceDown={!card} />;
               })}
             </div>
-            <div className="pot-display">
-              <span className="street-tag">{PHASE_LABEL[gameState.phase] ?? gameState.phase}</span>
-              <span className="pot-label">底池</span>
-              <span className="pot-amount">¥{gameState.pot.toLocaleString()}</span>
-            </div>
+            <Pot street={PHASE_LABEL[gameState.phase] ?? gameState.phase} amount={gameState.pot} />
             {gameState.currentBet > 0 && (
               <div className="current-bet">当前注 ¥{gameState.currentBet.toLocaleString()}</div>
             )}
