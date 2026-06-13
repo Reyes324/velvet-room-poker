@@ -1,67 +1,51 @@
 import { useState } from 'react';
-import './ActionBar.css';
 
+// Progressive disclosure: default 3 buttons (fold / call|check / raise▸);
+// tapping raise expands a stepper panel. Styled by shared velvet.css.
 export default function ActionBar({ gameState, myId, onAction, disabled }) {
-  const [raiseAmount, setRaiseAmount] = useState('');
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState(null);
 
-  if (!gameState || gameState.actionPlayerId !== myId || disabled) return null;
-
-  const me = gameState.players.find(p => p.id === myId);
-  if (!me) return null;
+  const me = gameState?.players.find(p => p.id === myId);
+  if (!gameState || gameState.actionPlayerId !== myId || disabled || !me) return null;
 
   const toCall = Math.max(0, gameState.currentBet - me.bet);
   const canCheck = toCall === 0;
-  const minRaise = gameState.currentBet * 2 || gameState.currentBet + 200;
+  const step = gameState.bigBlind || 20;
+  const minRaise = Math.max(gameState.currentBet * 2, gameState.currentBet + step) || step;
   const maxRaise = me.chips + me.bet;
-  const raiseVal = Number(raiseAmount) || minRaise;
+  const amt = Math.min(maxRaise, Math.max(minRaise, amount ?? minRaise));
 
-  function act(action, amount) {
-    onAction(action, amount);
-    setRaiseAmount('');
-  }
+  function openRaise() { setAmount(minRaise); setOpen(true); }
+  function adj(d) { setAmount(a => Math.min(maxRaise, Math.max(minRaise, (a ?? minRaise) + d))); }
+  function act(action, val) { onAction(action, val); setOpen(false); setAmount(null); }
 
   return (
     <div className="action-bar">
-      <div className="action-bar-inner">
-        <button className="btn btn-fold" onClick={() => act('fold')}>弃牌</button>
-
-        {canCheck
-          ? <button className="btn btn-check" onClick={() => act('check')}>过牌</button>
-          : <button className="btn btn-call" onClick={() => act('call')}>
-              跟注 <span className="btn-amount">${toCall.toLocaleString()}</span>
-            </button>
-        }
-
-        <div className="raise-group">
-          <div className="raise-input-row">
-            <span className="raise-prefix">$</span>
-            <input
-              className="raise-input"
-              type="number"
-              min={minRaise}
-              max={maxRaise}
-              value={raiseAmount}
-              placeholder={minRaise}
-              onChange={e => setRaiseAmount(e.target.value)}
-            />
-          </div>
-          <input
-            className="raise-slider"
-            type="range"
-            min={minRaise}
-            max={maxRaise}
-            value={raiseVal}
-            onChange={e => setRaiseAmount(e.target.value)}
-          />
-          <button className="btn btn-raise" onClick={() => act('raise', raiseVal)}>
-            加注 <span className="btn-amount">${raiseVal.toLocaleString()}</span>
-          </button>
+      {!open ? (
+        <div className="ab-main">
+          <button className="btn b-fold b-h52" onClick={() => act('fold')}>弃牌</button>
+          {canCheck
+            ? <button className="btn b-check b-h52" onClick={() => act('check')}>过牌</button>
+            : <button className="btn b-call b-h52" onClick={() => act('call')}>跟注 ¥{toCall.toLocaleString()}</button>}
+          <button className="btn b-raise-trigger b-h52" onClick={openRaise}>加注 ▸</button>
         </div>
-
-        <button className="btn btn-allin" onClick={() => act('allin')}>
-          全押 <span className="btn-amount">${(me.chips + me.bet).toLocaleString()}</span>
-        </button>
-      </div>
+      ) : (
+        <div className="ab-raise open">
+          <div className="stepper-row">
+            <div className="stepper">
+              <div className="step-btn" onClick={() => adj(-step)}>−</div>
+              <div className="step-val">¥{amt.toLocaleString()}</div>
+              <div className="step-btn" onClick={() => adj(step)}>+</div>
+            </div>
+            <button className="btn b-confirm-raise b-h46" onClick={() => act('raise', amt)}>确认加注</button>
+          </div>
+          <div className="raise-bottom">
+            <button className="btn b-cancel b-h46" onClick={() => setOpen(false)}>← 返回</button>
+            <button className="btn b-fold b-h46" style={{ flex: 1 }} onClick={() => act('fold')}>弃牌</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
