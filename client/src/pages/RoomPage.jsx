@@ -125,7 +125,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
               <div key={p.id} className="lobby-player">
                 <div className="lobby-player-avatar">{p.name[0].toUpperCase()}</div>
                 <div className="lobby-player-name">{p.name}{p.id === playerId ? ' (我)' : ''}</div>
-                <div className="lobby-player-chips">${p.chips.toLocaleString()}</div>
+                <div className="lobby-player-chips">¥{p.chips.toLocaleString()}</div>
                 {isHost && p.id !== playerId && (
                   <button className="kick-btn" onClick={() => kick(p.id)}>移出</button>
                 )}
@@ -175,7 +175,6 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         {/* Header */}
         <div className="table-header">
           <div className="table-code">{roomCode}</div>
-          <div className="table-phase">{PHASE_LABEL[gameState.phase] ?? gameState.phase}</div>
         </div>
 
         {/* Oval table */}
@@ -191,11 +190,12 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
               })}
             </div>
             <div className="pot-display">
+              <span className="street-tag">{PHASE_LABEL[gameState.phase] ?? gameState.phase}</span>
               <span className="pot-label">底池</span>
-              <span className="pot-amount">${gameState.pot.toLocaleString()}</span>
+              <span className="pot-amount">¥{gameState.pot.toLocaleString()}</span>
             </div>
             {gameState.currentBet > 0 && (
-              <div className="current-bet">当前注 ${gameState.currentBet.toLocaleString()}</div>
+              <div className="current-bet">当前注 ¥{gameState.currentBet.toLocaleString()}</div>
             )}
           </div>
 
@@ -229,7 +229,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
                 />
                 {p.bet > 0 && (
                   <div className="bet-chip" style={getBetChipOffset(pos)}>
-                    ${p.bet.toLocaleString()}
+                    ¥{p.bet.toLocaleString()}
                   </div>
                 )}
               </div>

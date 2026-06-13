@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════
    VELVET ROOM — Design Tokens (synced with design-system.html)
 ═══════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=DM+Serif+Display&family=Oswald:wght@600;700&family=Space+Mono:wght@400;700&display=swap');
 
 :root {
   /* Felt */
@@ -26,9 +26,9 @@
   --gold-100: #FAF0CC;
 
   /* Card */
-  --ivory: #F8F3EA;
-  --ink-red: #C0392B;
-  --ink-black: #1A1208;
+  --ivory: #FBF6EC;
+  --ink-red: #B3271E;
+  --ink-black: #1F2A33;
 
   /* Chips */
   --chip-white: #E8E4DC;
@@ -58,6 +58,8 @@
   --font-display: 'Cinzel', serif;
   --font-body: 'Crimson Pro', serif;
   --font-mono: 'Space Mono', monospace;
+  --font-numerals: 'DM Serif Display', serif;  /* hero numbers: pot / win amount */
+  --font-card: 'Oswald', sans-serif;            /* card ranks (tidy "10") */
 
   /* Spacing */
   --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px;

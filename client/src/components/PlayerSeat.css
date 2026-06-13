@@ -1,154 +1,79 @@
+/* v3 rail seat: an avatar disc with floating satellite labels.
+   RoomPage positions .player-slot on the oval rail; this styles the seat content. */
 .seat {
-  background: linear-gradient(135deg, rgba(8,18,10,.95), rgba(13,28,16,.95));
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: var(--r-xl);
-  padding: var(--sp-3) var(--sp-4);
-  min-width: 130px;
   position: relative;
-  box-shadow: var(--shadow-raised);
-  transition: border-color .2s, box-shadow .2s, opacity .2s;
-}
-
-@keyframes activePulse {
-  0%, 100% { box-shadow: var(--shadow-raised), 0 0 12px rgba(212,175,55,.35); }
-  50%       { box-shadow: var(--shadow-raised), 0 0 32px rgba(212,175,55,.75), 0 0 60px rgba(212,175,55,.2); }
-}
-
-@keyframes topShimmer {
-  0%   { opacity: 0; transform: scaleX(.4); }
-  50%  { opacity: 1; transform: scaleX(1); }
-  100% { opacity: 0; transform: scaleX(.4); }
-}
-
-.seat--active {
-  border-color: var(--gold-400);
-  animation: activePulse 1.8s ease-in-out infinite;
-}
-
-.seat--active::after {
-  content: '';
-  position: absolute;
-  top: -1px; left: 15%; right: 15%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--gold-300), transparent);
-  border-radius: 1px;
-  animation: topShimmer 1.8s ease-in-out infinite;
-}
-
-.seat--folded { opacity: .38; }
-
-.seat--allin { border-color: rgba(192,57,43,.35); }
-
-.seat--me { border-color: rgba(212,175,55,.25); }
-
-/* Badges */
-.dealer-btn {
-  position: absolute;
-  top: -9px; right: -9px;
-  width: 22px; height: 22px;
-  background: var(--gold-400);
-  color: var(--ink-black);
-  border-radius: 50%;
+  width: 52px; height: 52px;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-display);
-  font-size: 9px; font-weight: 700;
-  box-shadow: 0 2px 6px rgba(0,0,0,.5);
-}
-
-.blind-badge {
-  position: absolute;
-  bottom: -8px; left: 10px;
-  font-family: var(--font-display);
-  font-size: 8px; font-weight: 700;
-  letter-spacing: .08em;
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-.blind--sb {
-  background: rgba(26,95,173,.85);
-  color: #90C4E8;
-  border: 1px solid rgba(26,95,173,.5);
-}
-.blind--bb {
-  background: rgba(192,57,43,.85);
-  color: #E08080;
-  border: 1px solid rgba(192,57,43,.5);
-}
-
-/* Header */
-.seat-header {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-2);
 }
 
 .seat-avatar {
-  width: 30px; height: 30px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--felt-400), var(--felt-300));
+  width: 52px; height: 52px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-family: var(--font-display);
-  font-size: 12px; font-weight: 600;
-  color: var(--gold-300);
-  border: 1.5px solid rgba(212,175,55,.25);
-  flex-shrink: 0;
-}
-.seat--active .seat-avatar { border-color: var(--gold-400); box-shadow: 0 0 8px rgba(212,175,55,.3); }
-
-.seat-info { flex: 1; min-width: 0; }
-
-.seat-name {
-  font-family: var(--font-display);
-  font-size: 11px; font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 19px; font-weight: 700;
   color: var(--text-primary);
+  background: radial-gradient(circle at 38% 34%, var(--felt-300), var(--felt-700));
+  border: 2px solid rgba(212,175,55,.2);
+  position: relative;
+  transition: border-color .2s, box-shadow .2s, filter .2s;
 }
 
-.seat-status {
-  font-family: var(--font-mono);
-  font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+/* Active: gold pulse ring (no countdown — per design S6) */
+.seat--active .seat-avatar {
+  border-color: var(--gold-400);
+  box-shadow: 0 0 0 4px rgba(212,175,55,.2), 0 0 26px rgba(212,175,55,.65);
+  animation: seatPulse 1.8s ease-in-out infinite;
 }
-.seat-status--active {
-  color: var(--gold-300);
-  font-weight: 700;
-  letter-spacing: .12em;
-}
-.seat-status--folded { color: var(--text-muted); }
-.seat-status--allin  { color: var(--state-danger); }
-
-/* Cards */
-.seat-cards { display: flex; gap: 3px; margin-bottom: var(--sp-2); }
-
-/* Footer */
-.seat-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
+@keyframes seatPulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(212,175,55,.2), 0 0 16px rgba(212,175,55,.5); }
+  50%      { box-shadow: 0 0 0 5px rgba(212,175,55,.34), 0 0 40px rgba(212,175,55,.9); }
 }
 
-.seat-label {
-  font-family: var(--font-mono);
-  font-size: 9px; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .08em;
+/* Folded: solid dim (not translucent — keeps avatar opaque, recedes) */
+.seat--folded .seat-avatar { filter: grayscale(.75) brightness(.45); border-color: rgba(150,145,130,.2); }
+
+/* All-in: red ring */
+.seat--allin .seat-avatar { border-color: var(--state-danger); box-shadow: 0 0 16px rgba(192,57,43,.6); }
+
+/* Hero seat: gold rim */
+.seat--me .seat-avatar { border-color: var(--gold-400); }
+
+/* Position badge — ONE unified ivory "button" for D/SB/BB */
+.pos-badge {
+  position: absolute; bottom: -3px; right: -5px;
+  min-width: 16px; height: 16px; padding: 0 3px;
+  border-radius: 5px;
+  background: #EAE0C8; color: var(--ink-black);
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  line-height: 16px; text-align: center; white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+.seat--folded .pos-badge { opacity: .5; }
+
+/* Stack — platinum plain text below avatar (auxiliary, not gold) */
+.seat-stack {
+  position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  font-family: var(--font-mono); font-size: 11px; color: #9FB0AC;
+  text-shadow: 0 1px 3px rgba(0,0,0,.85); white-space: nowrap;
 }
 
-.seat-chips {
-  font-family: var(--font-mono);
-  font-size: 13px; color: var(--gold-300);
+/* Fold / all-in label below avatar */
+.seat-tag {
+  position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  font-family: var(--font-mono); font-size: 9px; white-space: nowrap;
 }
-.seat--allin .seat-chips { color: var(--state-danger); }
+.seat-tag--fold  { color: #4A5A4C; letter-spacing: 1px; }
+.seat-tag--allin { color: #E07A6E; font-weight: 700; letter-spacing: 1px; }
 
-
+/* Showdown reveal — small cards above the avatar (outward, off the felt) */
+.seat-reveal {
+  position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 3px;
+}
 
 /* ── Mobile ── */
-@media (max-width: 640px) {
-  .seat { min-width: 0; }
-}
-
 @media (max-width: 480px) {
-  .seat { padding: var(--sp-2) var(--sp-2); }
-  .seat-avatar { width: 26px; height: 26px; font-size: 10px; }
-  .seat-name { font-size: 10px; }
-  .seat-chips { font-size: 11px; }
+  .seat, .seat-avatar { width: 44px; height: 44px; }
+  .seat-avatar { font-size: 16px; }
+  .seat-stack { font-size: 10px; }
 }
