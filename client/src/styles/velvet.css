@@ -1,0 +1,59 @@
+/* ══════════════════════════════════════════════════════════════
+   VELVET — 翡翠厅 共享游戏样式（唯一事实源）
+   预览（状态画廊）与生产组件都 import 这一份。改这里 = 两边同步。
+   值优先用 tokens.css 的 var()，特定调校值就地写明。
+   class 命名沿用已确认的预览：c-lg / c-face / c-tl / seat / pot-amt …
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── CARDS ────────────────────────────────────────────────── */
+.card {
+  position: relative;
+  border-radius: 7px;
+  font-family: Georgia, var(--font-body);
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; user-select: none;
+}
+/* sizes */
+.c-xs { width: 28px; height: 40px; border-radius: 5px; }
+.c-sm { width: 36px; height: 50px; }
+.c-md { width: 52px; height: 72px; border-radius: 8px; }
+.c-lg { width: 62px; height: 84px; border-radius: 9px; }
+
+/* face — warm ivory paper, frameless (per approved design) */
+.c-face {
+  background: linear-gradient(158deg, #FDFAF2 0%, #F5EEDD 60%, #EFE6D0 100%);
+  box-shadow: 0 4px 16px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.95), inset 0 0 0 1px rgba(40,25,5,.07);
+  color: var(--ink-black);
+}
+.c-face.c-red { color: var(--ink-red); }
+
+/* corner indices — top-left + bottom-right (rotated); spacing fixed so rank/suit never overlap */
+.c-tl, .c-br { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1; gap: 2px; }
+.c-tl { top: 4px; left: 5px; }
+.c-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
+.c-tl .cr, .c-br .cr { font-family: var(--font-card); font-size: 11px; font-weight: 600; letter-spacing: -.3px; line-height: 1; }
+.c-tl .cs, .c-br .cs { font-size: 8px; line-height: 1; }
+.c-md .c-tl .cr, .c-md .c-br .cr { font-size: 15px; }
+.c-md .c-tl .cs, .c-md .c-br .cs { font-size: 10px; }
+.c-lg .c-tl .cr, .c-lg .c-br .cr { font-size: 18px; }
+.c-lg .c-tl .cs, .c-lg .c-br .cs { font-size: 12px; }
+.c-xs .c-tl .cr, .c-xs .c-br .cr { font-size: 9px; }
+.c-xs .c-tl .cs, .c-xs .c-br .cs { font-size: 6px; }
+
+/* center suit pip */
+.c-ct { font-size: 15px; line-height: 1; opacity: .9; }
+.c-md .c-ct { font-size: 24px; }
+.c-lg .c-ct { font-size: 30px; }
+.c-xs .c-ct { font-size: 12px; }
+
+/* back — dark-green felt + gold flourish */
+.c-back {
+  background: linear-gradient(145deg, #0B2410 0%, #040E06 100%);
+  border: 1px solid rgba(212,175,55,.18);
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
+}
+.c-back::after { content: '✦'; color: rgba(212,175,55,.22); font-family: var(--font-display); font-size: 15px; }
+.c-md.c-back::after { font-size: 22px; }
+.c-lg.c-back::after { font-size: 26px; }
+.c-xs.c-back::after { font-size: 12px; }

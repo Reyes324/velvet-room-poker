@@ -189,6 +189,22 @@ GameState {
 
 ---
 
+### 样式架构：设计系统为唯一源，预览即状态画廊（方案 B）
+
+**问题**：早期 `states-preview.html` 预览**脱离 design token 体系**单独手调，调出的最终值困在预览内联 CSS 里，没沉淀回 tokens/组件；生产组件又用另一套 class（`card--lg` 等）"翻译"预览，每次翻译走样，预览失去"一次确认直接落地"的意义。
+
+**选择（方案 B）**：
+- **唯一事实源 = `tokens.css`（值） + 共享组件 CSS**（`client/src/styles/velvet.css`，用预览那套 class，引用 token）。
+- **预览 = 状态画廊**：`states-preview.html` 改为 link 共享 CSS、用同样 class 摆出所有状态，不再内联另写一份。
+- **生产 = 同一套 CSS + 数据**：Card/PlayerSeat/RoomPage 直接 import 共享 CSS、输出预览的 class 与 DOM 结构。
+- 三者同源，改一处 CSS/token，画廊与生产同步，永不翻译。
+
+**落地步骤（一次性返工）**：① 把已确认预览的最终值回收进 tokens + `velvet.css`；② 预览改造为画廊；③ 生产组件改用预览 class + import velvet.css。
+
+**理由**：用户的诉求是"轻量预览确认设计 → 直接复制进生产"。只有让生产**消费**预览的 CSS（而非重写），该工作流才成立。详见协作手册「设计迭代要在设计系统上做」。
+
+**备选（未选）**：方案 A —— 直接把预览 `<style>` 当生产 CSS，token 退役。更快但丢失 token 抽象（语义色名/主题化），用户看重 token 故选 B。
+
 ## Open Questions（待决策）
 
 ### Q1：筹码归零处理
