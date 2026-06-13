@@ -189,15 +189,15 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         <div className="table-oval">
           <div className="table-oval-felt" />
 
-          {/* Community cards + pot centered in oval */}
+          {/* Pot above, community cards below — matches the approved preview order */}
           <div className="table-center">
+            <Pot street={PHASE_LABEL[gameState.phase] ?? gameState.phase} amount={gameState.pot} />
             <div className="community-cards">
               {Array.from({ length: 5 }).map((_, i) => {
                 const card = gameState.communityCards[i];
                 return <Card key={i} card={card} size="xs" faceDown={!card} />;
               })}
             </div>
-            <Pot street={PHASE_LABEL[gameState.phase] ?? gameState.phase} amount={gameState.pot} />
             {gameState.currentBet > 0 && (
               <div className="current-bet">当前注 ¥{gameState.currentBet.toLocaleString()}</div>
             )}
