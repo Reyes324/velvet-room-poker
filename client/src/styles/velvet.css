@@ -73,7 +73,7 @@
 .pot-amt { font-family:var(--font-numerals); font-size:33px; font-weight:400; color:#E8C24A; letter-spacing:.5px; text-shadow:0 0 26px rgba(212,175,55,.5), 0 2px 10px rgba(0,0,0,.65); line-height:1.05; }
 
 /* community placeholder (pre-flop) */
-.community { display:flex; gap:5px; align-items:center; }
+.community { display:flex; gap:5px; align-items:center; perspective:600px; }
 .c-empty { width:36px; height:50px; border-radius:6px; border:1px dashed rgba(212,175,55,.1); background:transparent; }
 
 /* ── SEAT + AVATAR + STATES ───────────────────────────────── */
@@ -113,8 +113,9 @@
 .allin-tag { position:absolute; top:calc(100% + 5px); left:50%; transform:translateX(-50%); font-family:var(--font-mono); font-size:8px; font-weight:700; color:#E07A6E; letter-spacing:1px; white-space:nowrap; }
 
 /* bet chip — gold token + bare amount (visual; positioning is contextual) */
-.bet-chip { display:flex; align-items:center; gap:4px; font-family:var(--font-mono); font-size:10px; color:#F0DFA0; white-space:nowrap; text-shadow:0 1px 3px rgba(0,0,0,.85); }
+.bet-chip { display:flex; align-items:center; gap:4px; font-family:var(--font-mono); font-size:10px; color:#F0DFA0; white-space:nowrap; text-shadow:0 1px 3px rgba(0,0,0,.85); animation:chipAppear .25s ease-out both; }
 .bet-chip::before { content:''; width:12px; height:12px; border-radius:50%; background:radial-gradient(circle at 36% 30%, #F4E4A6, #C79A2E); box-shadow:0 0 7px rgba(212,175,55,.55), inset 0 0 0 2px rgba(255,255,255,.28); flex-shrink:0; }
+@keyframes chipAppear { from{opacity:0;} to{opacity:1;} }
 
 /* showdown reveal */
 .reveal { display:flex; gap:3px; }
@@ -134,8 +135,31 @@
 .menu-btn { width:32px; height:32px; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.14); border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--text-secondary); }
 .bankroll { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:18px; padding:4px 12px; font-family:var(--font-mono); font-size:12px; color:#D4AF37; }
 
+/* ── KEY ANIMATION KEYFRAMES ──────────────────────────────── */
+@keyframes dealFly {
+  from { opacity:0; transform:translate(var(--dx,0px),var(--dy,-24px)) scale(.35); }
+  to   { opacity:1; transform:translate(0,0) scale(1); }
+}
+@keyframes flipIn {
+  from { transform:rotateY(-90deg); opacity:0; }
+  1%   { opacity:1; }
+  to   { transform:rotateY(0); opacity:1; }
+}
+@keyframes slideUp {
+  from { transform:translateY(110%); opacity:0; }
+  to   { transform:translateY(0); opacity:1; }
+}
+@keyframes potBurst {
+  0%,100% { filter:brightness(1); }
+  40%     { filter:brightness(1.6) drop-shadow(0 0 20px rgba(212,175,55,.9)); }
+}
+/* Utility classes — applied dynamically in GameTable/ActionBar */
+.deal-in { animation:dealFly .5s cubic-bezier(.2,1,.4,1) both; animation-delay:var(--d,0s); }
+.flip-reveal { animation:flipIn .38s ease-out both; animation-delay:var(--d,0s); }
+.pot-burst { animation:potBurst .7s ease-out; }
+
 /* ── ACTION BAR ───────────────────────────────────────────── */
-.action-bar { position:absolute; bottom:0; left:0; right:0; padding:10px 14px 26px; background:linear-gradient(to top,#050D06 68%,transparent); z-index:40; }
+.action-bar { position:absolute; bottom:0; left:0; right:0; padding:10px 14px 26px; background:linear-gradient(to top,#050D06 68%,transparent); z-index:40; animation:slideUp .42s cubic-bezier(.34,1.56,.64,1) both; }
 .ab-main { display:flex; gap:9px; }
 .btn { border-radius:26px; font-family:var(--font-display); font-weight:600; display:flex; align-items:center; justify-content:center; letter-spacing:1px; cursor:pointer; transition:opacity .15s; }
 .btn:active { opacity:.75; }
@@ -185,6 +209,7 @@
 .pr-name { font-family:var(--font-body); font-size:14px; color:var(--text-primary); }
 .pr-chips { font-family:var(--font-mono); font-size:9px; color:#8A7850; }
 .pr-badge { font-family:var(--font-mono); font-size:8px; background:rgba(212,175,55,.12); color:#D4AF37; border-radius:7px; padding:2px 7px; }
+.debt-badge { background:rgba(192,100,43,.15); color:#E08A4A; border:1px solid rgba(192,100,43,.3); }
 .lobby-btn { height:52px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:26px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:15px; font-weight:700; color:#050D06; letter-spacing:1px; box-shadow:0 4px 24px rgba(212,175,55,.28); cursor:pointer; }
 
 /* ── GAME LAYOUT (preview's fixed 375×812 phone; centered on desktop) ─────── */

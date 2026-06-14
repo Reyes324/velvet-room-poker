@@ -13,7 +13,7 @@ class Room {
     do { code = randomCode(); } while (false); // uniqueness checked by RoomManager
     this.code = code;
     this.hostId = hostId;
-    this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null }];
+    this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null, debt: 0 }];
     this.game = null;       // GameEngine instance when in progress
     this.dealerIndex = 0;
     this.status = 'waiting'; // waiting | playing
@@ -23,7 +23,16 @@ class Room {
     if (this.players.length >= 9) return { error: '房间已满，无法加入' };
     if (this.status !== 'waiting') return { error: '游戏已开始，无法加入' };
     if (this.players.find(p => p.id === id)) return { error: '已在房间内' };
-    this.players.push({ id, name, chips: STARTING_CHIPS, socketId });
+    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0 });
+    return { ok: true };
+  }
+
+  rebuy(playerId) {
+    const p = this.players.find(p => p.id === playerId);
+    if (!p) return { error: '玩家不存在' };
+    if (this.status !== 'waiting') return { error: '只能在等待阶段借入筹码' };
+    p.chips += STARTING_CHIPS;
+    p.debt = (p.debt || 0) + STARTING_CHIPS;
     return { ok: true };
   }
 
@@ -48,20 +57,20 @@ class Room {
   }
 
   nextRound() {
-    // Keep chips from last game state
+    // Sync chips from game engine back to room players; keep busted players for rebuy
     for (const rp of this.players) {
       const gp = this.game?.players.find(p => p.id === rp.id);
       if (gp) rp.chips = gp.chips;
     }
-    // Remove busted players
-    this.players = this.players.filter(p => p.chips > 0);
-    if (this.players.length < 2) {
+    // Only active (chips > 0) players enter the next hand
+    const active = this.players.filter(p => p.chips > 0);
+    if (active.length < 2) {
       this.status = 'waiting';
       this.game = null;
-      return { ended: true, reason: '筹码不足，游戏结束' };
+      return { ended: true, reason: '筹码不足，等待玩家买入后重新开始' };
     }
-    this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
-    this.game = new GameEngine(this.players, this.dealerIndex, BIG_BLIND);
+    this.dealerIndex = (this.dealerIndex + 1) % active.length;
+    this.game = new GameEngine(active, this.dealerIndex, BIG_BLIND);
     return { ok: true };
   }
 
@@ -94,7 +103,7 @@ class Room {
       code: this.code,
       hostId: this.hostId,
       status: this.status,
-      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0 })),
     };
   }
 }

@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react';
 import PlayerSeat from './PlayerSeat';
 import ActionBar from './ActionBar';
 import Card from './Card';
@@ -38,10 +39,28 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const me = ordered[0];
   const opponents = ordered.slice(1);
   const pos = oppPositions(opponents.length);
-  const dense = opponents.length + 1 >= 7;
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
   const myTurn = gameState.actionPlayerId === myId && !actionDisabled;
+  const dense = opponents.length + 1 >= 7;
+
+  // ── Animation refs (track prev state to compute what's newly visible) ──────
+  // prevPhaseRef starts null so justDealt fires exactly on first mount (game start)
+  const prevPhaseRef = useRef(null);
+  // prevCardCountRef starts at current length to skip flip-reveal on reconnect
+  const prevCardCountRef = useRef(gameState.communityCards.length);
+  const prevShowdownRef = useRef(null);
+
+  const cardCount = gameState.communityCards.length;
+  const justDealt = prevPhaseRef.current === null && gameState.phase === 'preflop';
+  const newCardFrom = prevCardCountRef.current; // indices >= this are newly revealed
+  const justShowdown = !prevShowdownRef.current && showdown && showdown.length > 0;
+
+  useEffect(() => {
+    prevPhaseRef.current = gameState.phase;
+    prevCardCountRef.current = cardCount;
+    prevShowdownRef.current = showdown;
+  }, [gameState.phase, cardCount, showdown]);
 
   return (
     <div className={`game-stage${dense ? ' game-stage--dense' : ''}`}>
@@ -51,12 +70,23 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       </div>
 
       <div className="table-oval">
-        <Pot street={PHASE_LABEL[gameState.phase] ?? gameState.phase} amount={gameState.pot} />
+        <Pot
+          street={PHASE_LABEL[gameState.phase] ?? gameState.phase}
+          amount={gameState.pot}
+          burst={justShowdown}
+        />
         <div className="community">
           {Array.from({ length: 5 }).map((_, i) => {
             const card = gameState.communityCards[i];
+            const isNew = card && i >= newCardFrom;
             return card
-              ? <Card key={i} card={card} size="sm" />
+              ? <Card
+                  key={i}
+                  card={card}
+                  size="sm"
+                  animate={isNew ? 'flip-reveal' : null}
+                  delay={isNew ? (i - newCardFrom) * 0.1 : 0}
+                />
               : <div key={i} className="c-empty" />;
           })}
         </div>
@@ -66,8 +96,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         const s = pos[i];
         const dx = 187.5 - s.x, dy = 292 - s.y, len = Math.hypot(dx, dy) || 1;
         const betStyle = { transform: `translate(calc(-50% + ${(dx / len) * 40}px), calc(-50% + ${(dy / len) * 40}px))` };
+        const dealDelay = i * 0.1;
         return (
-          <div key={p.id} className="player-slot" style={{ left: `${s.x}px`, top: `${s.y}px` }}>
+          <div
+            key={p.id}
+            className={`player-slot${justDealt ? ' deal-in' : ''}`}
+            style={{ left: `${s.x}px`, top: `${s.y}px`, '--d': `${dealDelay}s` }}
+          >
             <PlayerSeat
               player={p}
               isMe={false}
@@ -84,7 +119,15 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       <div className="hero-section">
         <div className="hero-cards">
           {me.holeCards?.length === 2
-            ? me.holeCards.map((c, i) => <Card key={i} card={c} size="lg" />)
+            ? me.holeCards.map((c, i) => (
+                <Card
+                  key={i}
+                  card={c}
+                  size="lg"
+                  animate={justDealt ? 'deal-in' : null}
+                  delay={justDealt ? opponents.length * 0.1 + 0.15 + i * 0.1 : 0}
+                />
+              ))
             : [<Card key={0} size="lg" faceDown />, <Card key={1} size="lg" faceDown />]}
         </div>
         <div className="hero-info">

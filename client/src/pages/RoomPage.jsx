@@ -77,6 +77,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           onKick={kick}
           onStart={() => emit('room:start', { playerId })}
           onRestart={() => emit('room:restart', { playerId })}
+          onRebuy={() => emit('player:rebuy', { playerId })}
           copied={copied}
         />
         {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}

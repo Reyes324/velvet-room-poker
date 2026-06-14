@@ -90,6 +90,14 @@ function createServer() {
       handleActionResult(room, result);
     });
 
+    socket.on('player:rebuy', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.rebuy(playerId);
+      if (result.error) return socket.emit('game:error', result.error);
+      io.to(room.code).emit('room:state', room.getLobbyState());
+    });
+
     socket.on('room:restart', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return socket.emit('game:error', '未找到房间');

@@ -6,11 +6,11 @@ function colorForId(id) {
 }
 
 // Lobby / waiting room — styled by shared velvet.css (.lobby/.room-code/.pl-row/...)
-export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, copied, maxSeats = 9 }) {
+export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, onRebuy, copied, maxSeats = 9 }) {
   const players = roomState?.players ?? [];
   const isHost = roomState?.hostId === playerId;
   const me = players.find(p => p.id === playerId);
-  const canStart = players.length >= 2;
+  const canStart = players.filter(p => p.chips > 0).length >= 2;
   const empty = Math.max(0, Math.min(maxSeats, 6) - players.length);
 
   return (
@@ -36,9 +36,21 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
             <div className={`pr-av ${p.id === playerId ? 'av-gold' : AV[colorForId(p.id)]}`}>{p.name[0].toUpperCase()}</div>
             <div className="pr-info">
               <div className="pr-name">{p.name}{p.id === playerId ? '（我）' : ''}</div>
-              <div className="pr-chips">¥{p.chips.toLocaleString()}</div>
+              <div className="pr-chips">
+                {p.chips === 0 ? <span style={{ color: '#E08A4A' }}>¥0 · 筹码不足</span> : `¥${p.chips.toLocaleString()}`}
+              </div>
             </div>
             {roomState.hostId === p.id && <span className="pr-badge">房主</span>}
+            {p.debt > 0 && <span className="pr-badge debt-badge">借¥{p.debt.toLocaleString()}</span>}
+            {p.id === playerId && p.chips === 0 && onRebuy && (
+              <span
+                className="pr-badge"
+                style={{ cursor: 'pointer', color: '#E8C24A', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)' }}
+                onClick={onRebuy}
+              >
+                +借一底
+              </span>
+            )}
             {isHost && p.id !== playerId && (
               <span className="pr-badge" style={{ cursor: 'pointer', color: '#E08080', background: 'rgba(192,57,43,.15)' }} onClick={() => onKick(p.id)}>移出</span>
             )}

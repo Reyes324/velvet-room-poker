@@ -205,13 +205,43 @@ GameState {
 
 **备选（未选）**：方案 A —— 直接把预览 `<style>` 当生产 CSS，token 退役。更快但丢失 token 抽象（语义色名/主题化），用户看重 token 故选 B。
 
-## Open Questions（待决策）
+---
 
-### Q1：筹码归零处理
-- **现状**：玩家筹码变 0 后，下一局无法 post 盲注，GameEngine 无显式处理，行为未定义（bug）
-- **选项 A**：筹码归零时自动踢出，触发 `game:ended`
-- **选项 B**：允许 rebuy，房主可重置该玩家筹码
-- **选项 C**："重新开始"按钮兜底（现已实现），归零玩家在当局结束后自然退出
+### 关键节点动效：落地到 React 组件（task 9.9）
+
+**选择**：将 `states-preview.html` 中验证过的 5 组 keyframe（dealFly / flipOut+flipIn / chipToPot / potToWinner / slideUp）提取进 `velvet.css`，在 React 组件内用 `useRef` 追踪阶段变化触发动画，不引入第三方动效库。
+
+**触发机制**：
+- `GameTable.jsx` 用 `useRef` 追踪 `prevPhase`、`prevCardCount`，在渲染期计算"哪些牌是新出现的"，给对应 `<Card>` 传 `animate` + `delay` prop
+- 社区牌：从 `c-empty` 切换为实际牌时附加 `flip-reveal` 类（flipOut 0.22s → flipIn 0.3s 接力）
+- 英雄手牌 + 对手牌：游戏开局（`prevPhase=null→preflop`）时附加 `deal-in` 类 + `--d` stagger
+- 行动栏：`ActionBar.jsx` 用 `key={myTurn}` 在轮到我时 remount，触发 `slide-up` 进场动画
+- 下注筹码/底池：通过 `.chip-to-pot` / `.pot-to-winner` 工具类在 DOM 出现时触发，位移量通过 CSS var 设定
+
+**理由**：keyframe 已在预览中验证视觉节奏，直接复用。`useRef` 方案无需引入 Framer Motion 等，与 velvet.css 单一源架构一致。
+
+---
+
+### 筹码归零 Rebuy（借一底）
+
+**决策（Q1 已确定）**：采用**选项 B** —— 支持 rebuy，玩家输光后留在房间，在大厅等待阶段自助借一底。
+
+**规则**：
+- 一底 = ¥1,000（与初始买入相同）
+- 每次 rebuy += 1,000 chips，debt += 1,000（无上限，由玩家自行决定）
+- 时机：仅在 **waiting 状态（大厅）** 下允许 rebuy，游戏进行中不可借
+- 仅输光筹码（chips=0）的玩家才会看到 rebuy 按钮（本人可见）
+- debt > 0 时，所有人都能在大厅 + 游戏桌看到该玩家的"借了¥X"债务状态
+
+**数据模型**：在 `players` 对象添加 `debt: 0` 字段，通过 `getLobbyState()` 广播给所有玩家。
+
+**nextRound 行为变更**：不再自动移除 chips=0 玩家，改为仅把有筹码的玩家传入 `GameEngine`；chips=0 玩家在大厅旁观等待 rebuy，rebuy 后下一局参战。
+
+**UI**：
+- 大厅：chips=0 时本人看到"+借一底"按钮；全员看到"借¥X底"橙色 badge
+- 游戏桌：PlayerSeat 暂不展示 debt（大厅展示已足够；避免游戏桌信息过载）
+
+## Open Questions（待决策）
 
 ### Q2：初始筹码 / 盲注可配置
 - **决策（已确认）**：初始筹码 ¥1,000，小盲 ¥10，大盲 ¥20
