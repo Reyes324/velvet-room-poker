@@ -153,7 +153,7 @@ class GameEngine {
     const p = this.players[idx];
     const minRaise = this.currentBet + this.lastRaiseAmount;
     if (totalAmount < minRaise && totalAmount < p.chips + p.bet) {
-      return { error: `最小加注至 $${minRaise}` };
+      return { error: `最小加注至 ¥${minRaise}` };
     }
     const raiseAmount = totalAmount - this.currentBet;
     this.lastRaiseAmount = raiseAmount;
@@ -217,6 +217,7 @@ class GameEngine {
     // Collect bets into pot (already done in _placeBet), reset street bets
     for (const p of this.players) p.bet = 0;
     this.currentBet = 0;
+    this.lastRaiseAmount = this.bigBlind; // reset to big blind for new street
     this.actedThisStreet = new Set();
 
     const phaseOrder = ['preflop', 'flop', 'turn', 'river', 'showdown'];

@@ -38,7 +38,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       showToast('你已被房主移出房间', 'danger');
       setTimeout(onLeave, 2000);
     },
-    'game:error': (msg) => showToast(msg, 'danger'),
+    'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
   });
 
   useEffect(() => {
