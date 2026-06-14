@@ -63,3 +63,18 @@ export const STATES = [
     },
   },
 ];
+
+// Settlement modal over the (dimmed) showdown table
+STATES.push({
+  name: '结算弹窗', myId: 'me', roomCode: '4827',
+  gameState: STATES[3].gameState,
+  settlement: {
+    winner: { id: 'chen', name: '陈美玲', amount: 1780, hand: '两对 Q 和 5' },
+    results: [
+      { name: '陈美玲', delta: 1780 },
+      { name: '王建国', delta: -500 },
+      { name: 'Augustine（我）', delta: -650, isMe: true },
+      { name: '张伟 / 李大明 / 赵军', delta: null },
+    ],
+  },
+});
