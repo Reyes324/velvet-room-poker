@@ -3,7 +3,7 @@
 // Bet chip is rendered by RoomPage (owns toward-center offset). Opponent cards reveal only at showdown.
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
-export default function PlayerSeat({ player, isMe, isAction, gamePhase, color = 0 }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0 }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -12,7 +12,8 @@ export default function PlayerSeat({ player, isMe, isAction, gamePhase, color = 
 
   const seatClass = [
     'seat',
-    isAction && 'is-active',
+    isWinner && 'is-winner',
+    isAction && !isWinner && 'is-active',
     folded && 'is-folded',
     allin && 'is-allin',
   ].filter(Boolean).join(' ');

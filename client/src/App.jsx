@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import './styles/global.css';
 import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
+import StatesGallery from './StatesGallery';
 
 export default function App() {
   const [room, setRoom] = useState(null); // { code, playerId, playerName } | { autoJoinCode }
@@ -17,6 +18,12 @@ export default function App() {
   function handleJoined(code, playerId, playerName) {
     window.history.replaceState({}, '', '/');
     setRoom({ code, playerId, playerName });
+  }
+
+  // Dev self-check: ?states=N renders the real GameTable for one fixed state
+  const statesParam = new URLSearchParams(window.location.search).get('states');
+  if (statesParam !== null) {
+    return <StatesGallery index={Number(statesParam) || 0} />;
   }
 
   if (!room?.code) {

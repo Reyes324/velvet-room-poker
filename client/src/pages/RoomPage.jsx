@@ -1,55 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
-import PlayerSeat from '../components/PlayerSeat';
-import ActionBar from '../components/ActionBar';
-import Card from '../components/Card';
-import Pot from '../components/Pot';
+import GameTable from '../components/GameTable';
 import './RoomPage.css';
-
-const PHASE_LABEL = {
-  waiting: '等待开始',
-  preflop: '翻牌前',
-  flop: '翻牌圈',
-  turn: '转牌圈',
-  river: '河牌圈',
-  showdown: '摊牌',
-};
-
-// ── Oval seat positions (left%, top%) per player count ──────────────────────
-const SEAT_POSITIONS = {
-  2: [{ left:50, top:88 }, { left:50, top:12 }],
-  3: [{ left:50, top:88 }, { left:78, top:30 }, { left:22, top:30 }],
-  4: [{ left:50, top:88 }, { left:82, top:50 }, { left:50, top:12 }, { left:18, top:50 }],
-  5: [{ left:50, top:88 }, { left:82, top:62 }, { left:78, top:24 }, { left:22, top:24 }, { left:18, top:62 }],
-  6: [{ left:50, top:88 }, { left:82, top:65 }, { left:85, top:32 }, { left:50, top:10 }, { left:15, top:32 }, { left:18, top:65 }],
-  7: [{ left:50, top:88 }, { left:80, top:72 }, { left:88, top:45 }, { left:72, top:15 }, { left:28, top:15 }, { left:12, top:45 }, { left:20, top:72 }],
-  8: [{ left:50, top:88 }, { left:76, top:76 }, { left:88, top:50 }, { left:76, top:22 }, { left:50, top:10 }, { left:24, top:22 }, { left:12, top:50 }, { left:24, top:76 }],
-  9: [{ left:50, top:88 }, { left:73, top:80 }, { left:88, top:58 }, { left:85, top:28 }, { left:64, top:10 }, { left:36, top:10 }, { left:15, top:28 }, { left:12, top:58 }, { left:27, top:80 }],
-};
-
-// Stable avatar color (0-7) derived from player id, so a player keeps their color
-function colorForId(id) {
-  let h = 0;
-  for (const ch of String(id)) h = (h + ch.charCodeAt(0)) % 8;
-  return h;
-}
-
-// Rotate players array so hero (myPlayerId) is always at index 0
-function getOrderedPlayers(players, myPlayerId) {
-  const idx = players.findIndex(p => p.id === myPlayerId);
-  if (idx === -1) return players;
-  return [...players.slice(idx), ...players.slice(0, idx)];
-}
-
-// Push bet chip toward table center from its seat position
-function getBetChipOffset(pos) {
-  const dx = 50 - pos.left;
-  const dy = 50 - pos.top;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  return {
-    transform: `translate(calc(-50% + ${(dx / len) * 32}px), calc(-50% + ${(dy / len) * 32}px))`,
-  };
-}
 
 export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [roomState, setRoomState] = useState(null);
@@ -171,99 +123,18 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     );
   }
 
-  // ─── Game Table ───────────────────────────────────────────────────────────
-  const orderedPlayers = getOrderedPlayers(gameState.players, playerId);
-  const count = orderedPlayers.length;
-  const positions = SEAT_POSITIONS[count] ?? SEAT_POSITIONS[9];
-  const myPlayer = orderedPlayers[0]; // hero is always index 0 after rotation
-
+  // ─── Game Table ───
   return (
-    <div className="table-view">
-      <div className="table-felt">
-        {/* Header */}
-        <div className="table-header">
-          <div className="table-code">{roomCode}</div>
-        </div>
-
-        {/* Oval table */}
-        <div className="table-oval">
-          <div className="table-oval-felt" />
-
-          {/* Pot above, community cards below — matches the approved preview order */}
-          <div className="table-center">
-            <Pot street={PHASE_LABEL[gameState.phase] ?? gameState.phase} amount={gameState.pot} />
-            <div className="community-cards">
-              {Array.from({ length: 5 }).map((_, i) => {
-                const card = gameState.communityCards[i];
-                return <Card key={i} card={card} size="xs" faceDown={!card} />;
-              })}
-            </div>
-            {gameState.currentBet > 0 && (
-              <div className="current-bet">当前注 ¥{gameState.currentBet.toLocaleString()}</div>
-            )}
-          </div>
-
-          {/* Showdown overlay */}
-          {showdown && (
-            <div className="showdown-overlay">
-              {showdown.map((w, i) => (
-                <div key={i} className="showdown-winner">
-                  <span className="sw-icon">🏆</span>
-                  <span className="sw-name">{w.name}</span>
-                  <span className="sw-hand">{w.handName}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Player seats: absolutely positioned around oval */}
-          {orderedPlayers.map((p, idx) => {
-            const pos = positions[idx];
-            return (
-              <div
-                key={p.id}
-                className={`player-slot${idx === 0 ? ' player-slot--hero' : ''}`}
-                style={{ left: `${pos.left}%`, top: `${pos.top}%` }}
-              >
-                <PlayerSeat
-                  player={p}
-                  isMe={idx === 0}
-                  isAction={gameState.actionPlayerId === p.id}
-                  gamePhase={gameState.phase}
-                  color={colorForId(p.id)}
-                />
-                {p.bet > 0 && (
-                  <div className="bet-chip" style={getBetChipOffset(pos)}>
-                    ¥{p.bet.toLocaleString()}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* My hole cards (fixed bottom center) */}
-      {myPlayer && (
-        <div className="my-cards">
-          {myPlayer.holeCards?.length === 2
-            ? myPlayer.holeCards.map((c, i) =>
-                <Card key={i} card={c} size="md" />
-              )
-            : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]
-          }
-        </div>
-      )}
-
-      {/* Action Bar */}
-      <ActionBar
+    <>
+      <GameTable
         gameState={gameState}
         myId={playerId}
+        roomCode={roomCode}
+        showdown={showdown}
         onAction={handleAction}
-        disabled={actionDisabled}
+        actionDisabled={actionDisabled}
       />
-
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
-    </div>
+    </>
   );
 }
