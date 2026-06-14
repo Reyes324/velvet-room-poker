@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 function colorForId(id) {
   let h = 0;
@@ -6,7 +8,8 @@ function colorForId(id) {
 }
 
 // Lobby / waiting room — styled by shared velvet.css (.lobby/.room-code/.pl-row/...)
-export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, onRebuy, copied, maxSeats = 9 }) {
+export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, onRebuy, onExit, copied, maxSeats = 9 }) {
+  const [showExit, setShowExit] = useState(false);
   const players = roomState?.players ?? [];
   const isHost = roomState?.hostId === playerId;
   const me = players.find(p => p.id === playerId);
@@ -16,9 +19,21 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
   return (
     <div className="game-stage">
       <div className="top-bar">
-        <div className="menu-btn">≡</div>
+        <div className="menu-btn" onClick={() => setShowExit(true)}>≡</div>
         <div className="bankroll">¥{(me?.chips ?? 0).toLocaleString()}</div>
       </div>
+      {showExit && (
+        <div className="modal-overlay" onClick={() => setShowExit(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">退出房间</div>
+            <div className="modal-body">确定要退出当前房间吗？</div>
+            <div className="modal-btns">
+              <div className="modal-btn-cancel" onClick={() => setShowExit(false)}>取消</div>
+              <div className="modal-btn-danger" onClick={onExit}>退出</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="lobby">
         <div className="lobby-head">

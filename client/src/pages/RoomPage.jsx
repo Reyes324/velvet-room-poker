@@ -51,7 +51,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   }
 
   function copyInvite() {
-    const url = `${window.location.origin}?room=${roomCode}`;
+    const url = `${window.location.origin}/room/${roomCode}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -77,6 +77,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           onStart={() => emit('room:start', { playerId })}
           onRestart={() => emit('room:restart', { playerId })}
           onRebuy={() => emit('player:rebuy', { playerId })}
+          onExit={onLeave}
           copied={copied}
         />
         {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
@@ -94,6 +95,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         showdown={showdown}
         onAction={handleAction}
         actionDisabled={actionDisabled}
+        onExit={onLeave}
       />
       {settlement && settlement.winners?.length > 0 && (
         <SettlementModal

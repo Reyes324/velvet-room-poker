@@ -10,6 +10,13 @@ export default function App() {
   const [room, setRoom] = useState(null); // { code, playerId, playerName } | { autoJoinCode }
 
   useEffect(() => {
+    // Path-based join: /room/123456
+    const pathMatch = window.location.pathname.match(/^\/room\/([0-9]{6})$/i);
+    if (pathMatch && !room) {
+      setRoom({ autoJoinCode: pathMatch[1].toUpperCase() });
+      return;
+    }
+    // Legacy query param: /?room=123456
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get('room');
     if (roomFromUrl && !room) {
@@ -17,9 +24,21 @@ export default function App() {
     }
   }, []);
 
+  // Browser back button → go home
+  useEffect(() => {
+    function onPop() { setRoom(null); }
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   function handleJoined(code, playerId, playerName) {
-    window.history.replaceState({}, '', '/');
+    window.history.pushState({}, '', '/room/' + code);
     setRoom({ code, playerId, playerName });
+  }
+
+  function handleLeave() {
+    window.history.pushState({}, '', '/');
+    setRoom(null);
   }
 
   // Dev self-check: ?states=N renders the real GameTable for one fixed state
@@ -38,7 +57,7 @@ export default function App() {
         roomCode={room.code}
         playerId={room.playerId}
         playerName={room.playerName}
-        onLeave={() => setRoom(null)}
+        onLeave={handleLeave}
       />
     </div>
   );

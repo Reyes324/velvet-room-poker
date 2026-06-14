@@ -197,6 +197,10 @@
 .sr-amt { font-family:var(--font-mono); font-size:12px; }
 .sr-win { color:var(--state-safe); } .sr-lose { color:var(--state-danger); } .sr-neutral { color:#5A6E5C; }
 .modal-btn { width:100%; height:48px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:24px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:#050D06; letter-spacing:1px; cursor:pointer; box-shadow:0 4px 20px rgba(212,175,55,.25); margin-top:4px; }
+.modal-body { font-family:var(--font-body); font-size:14px; color:#8A8A7A; text-align:center; line-height:1.5; }
+.modal-btns { display:flex; gap:9px; width:100%; }
+.modal-btn-cancel { flex:1; height:46px; border-radius:23px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); font-family:var(--font-display); font-size:13px; color:#5A6E5C; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.modal-btn-danger { flex:1; height:46px; border-radius:23px; background:linear-gradient(135deg,#7A1E1E,#C0392B); font-family:var(--font-display); font-size:13px; font-weight:700; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 16px rgba(192,57,43,.3); }
 .cd { display:inline-block; width:18px; text-align:center; }
 
 /* ── LOBBY ────────────────────────────────────────────────── */
@@ -251,5 +255,5 @@
 .toast--info { background:linear-gradient(135deg,rgba(60,40,8,.95),rgba(90,60,10,.95)); border:1px solid rgba(212,175,55,.25); color:var(--gold-200); }
 
 /* ── STAGE SCALE-TO-FIT (mobile universal wrapper) ─────────── */
-.stage-wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#030A04; overflow:hidden; }
-.game-stage { transform:scale(var(--stage-scale,1)); transform-origin:center center; }
+.stage-wrap { position:fixed; inset:0; display:flex; align-items:flex-end; justify-content:center; background:#030A04; overflow:hidden; padding-bottom:env(safe-area-inset-bottom,0px); }
+.game-stage { transform:scale(var(--stage-scale,1)); transform-origin:bottom center; }

@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import PlayerSeat from './PlayerSeat';
 import ActionBar from './ActionBar';
 import Card from './Card';
@@ -34,7 +34,8 @@ function oppPositions(n) {
   return out;
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit }) {
+  const [showExitModal, setShowExitModal] = useState(false);
   const ordered = getOrderedPlayers(gameState.players, myId);
   const me = ordered[0];
   const opponents = ordered.slice(1);
@@ -65,9 +66,21 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   return (
     <div className={`game-stage${dense ? ' game-stage--dense' : ''}`}>
       <div className="top-bar">
-        <div className="menu-btn">≡</div>
+        <div className="menu-btn" onClick={() => setShowExitModal(true)}>≡</div>
         <div className="bankroll">¥{me.chips.toLocaleString()}</div>
       </div>
+      {showExitModal && (
+        <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">退出游戏</div>
+            <div className="modal-body">游戏进行中，退出将自动弃牌。确定退出吗？</div>
+            <div className="modal-btns">
+              <div className="modal-btn-cancel" onClick={() => setShowExitModal(false)}>取消</div>
+              <div className="modal-btn-danger" onClick={onExit}>退出</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="table-oval">
         <Pot
