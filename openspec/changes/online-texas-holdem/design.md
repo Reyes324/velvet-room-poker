@@ -241,6 +241,44 @@ GameState {
 - 大厅：chips=0 时本人看到"+借一底"按钮；全员看到"借¥X底"橙色 badge
 - 游戏桌：PlayerSeat 暂不展示 debt（大厅展示已足够；避免游戏桌信息过载）
 
+---
+
+### 移动端设计规范：Scale-to-Fit（统一适配方案）
+
+**选择**：以 375×812（iPhone X）为标准设计画布，通过 JS 计算 scale 系数（`Math.min(vw/375, vh/712)`）自适应所有设备。
+
+**规则**：
+- 游戏画布固定 375×812，所有绝对坐标相对此画布
+- `vh/712` 而非 `vh/812`：允许顶部 100px（top-bar 区域）在小屏幕上被裁切，以换取更大 scale、更好宽度利用率
+- `transform-origin: bottom center` + `.stage-wrap { align-items: flex-end }`：游戏从底部锚定，确保操作栏（action bar）在任何设备上始终可见
+- 适配结果：iPhone SE（375×667）有约 17px 侧边空白（可接受），现代机型（390×844+）填满屏幕
+
+**背景**：早期版本存在两个根本性布局问题：
+1. `RoomPage.css` 中的旧 `.lobby { min-height:100dvh }` 与 velvet.css 的绝对定位大厅打架，导致"开始游戏"按钮被推出屏幕
+2. 移动端没有统一的适配规范，不同屏幕表现不一致
+
+**移除 RoomPage.css**：发现 `RoomPage.css` 是旧设计系统遗留的冲突文件（`.lobby-code`、`.start-btn`、`.table-view` 等已废弃 class），全部移除，Toast 样式迁入 velvet.css，统一单源架构。
+
+---
+
+### 退出游戏功能：菜单按钮（≡）
+
+**选择**：顶部 ≡ 按钮点击弹出二次确认弹窗；大厅显示"退出房间"，游戏中显示"游戏进行中退出将自动弃牌"警告。
+
+**理由**：≡ 按钮原为装饰性占位，但用户询问其用途，判断此处最自然的功能是退出当前房间/游戏，需二次确认防误触。
+
+---
+
+### URL 路由：基于路径的深链接
+
+**选择**：进入房间后 URL 变为 `/room/XXXXXX`（不再是 `/`），邀请链接改为 `/room/XXXXXX`（不再是 `/?room=XXXXXX`）。
+
+**实现**：使用 `window.history.pushState`，无需 React Router。初始化时同时检测 `/room/XXXXXX` 路径和 `?room=` 查询参数（向后兼容）。服务端已有通配路由 `/{*path}` → `index.html` 支持。
+
+**理由**：用户反馈"每个页面链接都一样不科学"，路径式 URL 更自然、可收藏、可直接分享，且浏览器后退键可返回首页。
+
+---
+
 ## Open Questions（待决策）
 
 ### Q2：初始筹码 / 盲注可配置
