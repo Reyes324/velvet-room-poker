@@ -72,8 +72,8 @@ describe('Room — 重新开始', () => {
     room.players[0].chips = 500;
     room.players[1].chips = 1500;
     room.restart();
-    expect(room.players[0].chips).toBe(10000);
-    expect(room.players[1].chips).toBe(10000);
+    expect(room.players[0].chips).toBe(1000);
+    expect(room.players[1].chips).toBe(1000);
   });
 
   it('restart 后状态回到 waiting', () => {

@@ -38,12 +38,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const me = ordered[0];
   const opponents = ordered.slice(1);
   const pos = oppPositions(opponents.length);
+  const dense = opponents.length + 1 >= 7;
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
   const myTurn = gameState.actionPlayerId === myId && !actionDisabled;
 
   return (
-    <div className="game-stage">
+    <div className={`game-stage${dense ? ' game-stage--dense' : ''}`}>
       <div className="top-bar">
         <div className="menu-btn">≡</div>
         <div className="bankroll">¥{me.chips.toLocaleString()}</div>

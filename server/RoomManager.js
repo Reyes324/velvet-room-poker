@@ -20,7 +20,7 @@ class Room {
   }
 
   addPlayer(id, name, socketId) {
-    if (this.players.length >= 9) return { error: '房间已满（最多9人）' };
+    if (this.players.length >= 9) return { error: '房间已满，无法加入' };
     if (this.status !== 'waiting') return { error: '游戏已开始，无法加入' };
     if (this.players.find(p => p.id === id)) return { error: '已在房间内' };
     this.players.push({ id, name, chips: STARTING_CHIPS, socketId });

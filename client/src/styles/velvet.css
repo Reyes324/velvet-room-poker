@@ -197,6 +197,12 @@
 .game-stage .action-bar { position:absolute; bottom:0; left:0; right:0; z-index:40; }
 .game-stage .waiting-bar { position:absolute; bottom:0; left:0; right:0; padding:12px 14px 26px; background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
 
+/* ── DENSE TABLE (7–9 players): shrink seat + avatar to 38px ─ */
+.game-stage--dense .seat { width:38px; height:38px; }
+.game-stage--dense .avatar { width:38px; height:38px; font-size:14px; }
+.game-stage--dense .stack-chip { font-size:9px; }
+.game-stage--dense .pos-badge { font-size:7px; height:13px; line-height:13px; min-width:13px; }
+
 /* ── LOBBY layout (in game-stage) ─────────────────────────── */
 .game-stage .lobby { position:absolute; top:86px; bottom:0; left:0; right:0; display:flex; flex-direction:column; padding:14px; z-index:5; }
 .lobby-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }

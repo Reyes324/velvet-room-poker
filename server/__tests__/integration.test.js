@@ -126,7 +126,7 @@ describe('集成测试 — 游戏流程', () => {
     c1.emit('room:restart', { playerId: 'p1' });
     const [state1] = await Promise.all([rs1, rs2]);
     expect(state1.status).toBe('waiting');
-    expect(state1.players.every(p => p.chips === 10000)).toBe(true);
+    expect(state1.players.every(p => p.chips === 1000)).toBe(true);
   });
 
   it('非房主发送 room:restart → 收到 game:error', async () => {
