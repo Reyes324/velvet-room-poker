@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
+import SettlementModal from '../components/SettlementModal';
 import './RoomPage.css';
 
 export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [roomState, setRoomState] = useState(null);
   const [gameState, setGameState] = useState(null);
   const [showdown, setShowdown] = useState(null);
+  const [settlement, setSettlement] = useState(null);
   const [toast, setToast] = useState(null);
   const [copied, setCopied] = useState(false);
   const [actionDisabled, setActionDisabled] = useState(false);
@@ -22,12 +24,12 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     'game:state': (state) => {
       setGameState(state);
       setShowdown(null);
+      setSettlement(null);
       setActionDisabled(false);
     },
-    'game:showdown': (winners) => {
+    'game:showdown': ({ winners, pot, settle }) => {
       setShowdown(winners);
-      const names = winners.map(w => `${w.name}（${w.handName}）`).join('、');
-      showToast(`🏆 ${names} 赢得底池！`, 'win');
+      setSettlement({ winners, pot, settle });
     },
     'game:ended': ({ reason }) => {
       showToast(reason ?? '游戏结束', 'info');
@@ -93,6 +95,24 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         onAction={handleAction}
         actionDisabled={actionDisabled}
       />
+      {settlement && settlement.winners?.length > 0 && (
+        <SettlementModal
+          winner={{
+            id: settlement.winners[0].id,
+            name: settlement.winners[0].name,
+            amount: settlement.winners[0].won,
+            hand: settlement.winners[0].handName,
+            isMe: settlement.winners[0].id === playerId,
+          }}
+          results={(settlement.settle ?? []).map(s => ({
+            name: s.name + (s.id === playerId ? '（我）' : ''),
+            delta: s.net === 0 ? null : s.net,
+            isMe: s.id === playerId,
+          }))}
+          onClose={() => setSettlement(null)}
+          seconds={5}
+        />
+      )}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </>
   );

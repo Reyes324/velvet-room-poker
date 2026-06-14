@@ -242,15 +242,28 @@ class GameEngine {
   _endHand(contenders) {
     this.phase = 'showdown';
     const winners = this._determineWinners(contenders);
+    const potWon = this.pot;
+    const share = Math.floor(potWon / winners.length);
+    const won = {};
+    winners.forEach((w, i) => { won[w.id] = share + (i === 0 ? potWon - share * winners.length : 0); });
     this._distributePot(winners, contenders);
     return {
       state: this.getPublicState(),
       showdown: true,
+      pot: potWon,
       winners: winners.map(w => ({
         id: w.id,
         name: w.name,
         handName: w.handName,
+        won: won[w.id] || 0,
         holeCards: w.holeCards.map(parseCard),
+      })),
+      // per-player net for the settlement modal: won (gross) − committed this hand
+      settle: this.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        net: (won[p.id] || 0) - p.totalBet,
       })),
     };
   }

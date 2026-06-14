@@ -33,7 +33,11 @@ function createServer() {
     broadcastRoom(room);
 
     if (result.showdown) {
-      io.to(room.code).emit('game:showdown', result.winners);
+      io.to(room.code).emit('game:showdown', {
+        winners: result.winners,
+        pot: result.pot,
+        settle: result.settle,
+      });
       setTimeout(() => {
         const nr = room.nextRound();
         if (nr.ended) {
