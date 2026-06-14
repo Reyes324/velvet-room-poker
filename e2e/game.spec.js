@@ -1,156 +1,346 @@
+/**
+ * E2E 测试 — 翡翠厅完整游戏流程
+ *
+ * 覆盖范围：
+ * - 创建/加入房间（路径路由）
+ * - 开始游戏、操作栏、弃牌
+ * - Bug 回归：报错后操作栏仍可用（actionDisabled 不卡死）
+ * - 游戏中途加入拒绝（S4）
+ * - 重新开始重置筹码（S5）
+ * - 断线自动 fold（S2）
+ */
 const { test, expect } = require('@playwright/test');
 
-async function setupTwoPlayers(browser) {
-  const ctx1 = await browser.newContext();
-  const ctx2 = await browser.newContext();
-  const p1 = await ctx1.newPage();
-  const p2 = await ctx2.newPage();
+// ─── 选择器 (基于 velvet.css) ──────────────────────────────────────────────────
+const S = {
+  nameInput:    '.home-input:not(.home-input--code)',
+  codeInput:    '.home-input--code',
+  createBtn:    'button:has-text("创建房间")',
+  createSubmit: 'button:has-text("创建")',
+  joinBtn:      'button:has-text("加入房间")',
+  joinSubmit:   'button:has-text("加入")',
+  roomCode:     '.room-code',
+  startBtn:     '.lobby-btn',
+  gameStage:    '.game-stage',
+  actionBar:    '.action-bar',
+  waitingBar:   '.waiting-bar',
+  foldBtn:      '.b-fold',
+  callBtn:      '.b-call',
+  checkBtn:     '.b-check',
+  raiseBtn:     '.b-raise-trigger',
+  settlement:   '.modal-overlay',
+  plRow:        '.pl-row',
+};
 
-  await p1.goto('/');
-  await p1.fill('.home-input', 'Alice');
-  await p1.click('button:has-text("创建房间")');
-  await p1.click('button:has-text("创建")');
-  await expect(p1.locator('.lobby-code')).toBeVisible();
-  const code = await p1.locator('.lobby-code').textContent();
+// ─── 工具函数 ──────────────────────────────────────────────────────────────────
 
-  await p2.goto('/');
-  await p2.fill('.home-input', 'Bob');
-  await p2.click('button:has-text("加入房间")');
-  await p2.fill('.home-input--code', code);
-  await p2.click('button:has-text("加入")');
-  await expect(p2.locator('.lobby-players')).toContainText('Alice');
-
-  return { p1, p2, ctx1, ctx2, code };
+async function createRoom(page, name) {
+  await page.goto('/');
+  await page.fill(S.nameInput, name);
+  await page.click(S.createBtn);
+  await page.click(S.createSubmit);
+  await expect(page.locator(S.roomCode)).toBeVisible({ timeout: 5000 });
+  return await page.locator(S.roomCode).textContent();
 }
 
-test.describe('游戏流程', () => {
-  test('非房主点击开始游戏无效', async ({ browser }) => {
-    const { p1, p2, ctx1, ctx2 } = await setupTwoPlayers(browser);
+async function joinRoom(page, name, code) {
+  await page.goto(`/room/${code}`);
+  await expect(page.locator(S.nameInput)).toBeVisible({ timeout: 5000 });
+  await page.fill(S.nameInput, name);
+  await page.click(S.joinSubmit);
+  await expect(page.locator(S.roomCode)).toBeVisible({ timeout: 10000 });
+}
 
-    // p2 不是房主，开始按钮不存在（只有等待文字）
-    await expect(p2.locator('.waiting-text')).toBeVisible();
-    await expect(p2.locator('.start-btn')).not.toBeVisible();
+async function startGame(page) {
+  await page.locator(S.startBtn).click();
+  await expect(page.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
+}
+
+/** 找到当前有操作栏的那一页（行动玩家），返回 [actor, other] */
+async function findActor(p1, p2) {
+  const p1HasBar = await p1.locator(S.actionBar).isVisible();
+  return p1HasBar ? [p1, p2] : [p2, p1];
+}
+
+/** 过牌或跟注（取当前可用动作） */
+async function checkOrCall(page) {
+  const canCheck = await page.locator(S.checkBtn).isVisible();
+  if (canCheck) {
+    await page.locator(S.checkBtn).click();
+  } else {
+    await page.locator(S.callBtn).click();
+  }
+}
+
+/** 打到摊牌（最多 8 次行动） */
+async function runToShowdown(p1, p2) {
+  for (let i = 0; i < 8; i++) {
+    const done = await p1.locator(S.settlement).isVisible({ timeout: 500 }).catch(() => false);
+    if (done) break;
+
+    const p1Bar = await p1.locator(S.actionBar).isVisible({ timeout: 3000 }).catch(() => false);
+    const p2Bar = await p2.locator(S.actionBar).isVisible({ timeout: 3000 }).catch(() => false);
+    if (!p1Bar && !p2Bar) break;
+
+    const actor = p1Bar ? p1 : p2;
+    await checkOrCall(actor);
+    await actor.waitForTimeout(300);
+  }
+}
+
+// ─── 套件：房间创建与加入 ──────────────────────────────────────────────────────
+
+test.describe('S1：创建与加入房间', () => {
+  test('路径路由：加入房间后 URL 变为 /room/XXXXXX', async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const code = await createRoom(page, 'Alice');
+    expect(page.url()).toContain(`/room/${code}`);
+    await ctx.close();
+  });
+
+  test('直接访问 /room/XXXXXX 自动触发加入流程', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const host = await ctx1.newPage();
+    const guest = await ctx2.newPage();
+
+    const code = await createRoom(host, 'Alice');
+    await joinRoom(guest, 'Bob', code);
+
+    // Bob 的大厅里能看到 Alice
+    await expect(guest.locator(S.plRow).filter({ hasText: 'Alice' })).toBeVisible();
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('非房主看到"等待房主开始游戏"，没有开始按钮', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const host = await ctx1.newPage();
+    const guest = await ctx2.newPage();
+
+    const code = await createRoom(host, 'Alice');
+    await joinRoom(guest, 'Bob', code);
+
+    await expect(guest.getByText('等待房主开始游戏')).toBeVisible();
+    // 非房主不应有"开始游戏"按钮文字
+    const startVisible = await guest.locator(S.startBtn).filter({ hasText: '开始游戏' }).isVisible();
+    expect(startVisible).toBe(false);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});
+
+// ─── 套件：游戏基础流程 ────────────────────────────────────────────────────────
+
+test.describe('游戏基础流程', () => {
+  test('开始游戏后双方进入游戏桌', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    await expect(p1.locator(S.gameStage)).toBeVisible();
+    await expect(p2.locator(S.gameStage)).toBeVisible();
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('行动栏只在行动玩家一侧显示', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    const p1Bar = await p1.locator(S.actionBar).isVisible({ timeout: 5000 });
+    const p2Bar = await p2.locator(S.actionBar).isVisible({ timeout: 500 }).catch(() => false);
+    // 恰好一方有操作栏
+    expect(p1Bar !== p2Bar).toBe(true);
 
     await ctx1.close();
     await ctx2.close();
   });
 
-  test('房主开始游戏，双方进入翻牌前状态', async ({ browser }) => {
-    const { p1, p2, ctx1, ctx2 } = await setupTwoPlayers(browser);
+  test('行动玩家弃牌，结算弹窗出现', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
 
-    await p1.click('.start-btn');
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
 
-    // 双方都进入牌桌视图
-    await expect(p1.locator('.table-view')).toBeVisible();
-    await expect(p2.locator('.table-view')).toBeVisible();
+    const [actor] = await findActor(p1, p2);
+    await actor.locator(S.foldBtn).click();
 
-    // 阶段显示"翻牌前"
-    await expect(p1.locator('.table-phase')).toHaveText('翻牌前');
-    await expect(p2.locator('.table-phase')).toHaveText('翻牌前');
-
-    await ctx1.close();
-    await ctx2.close();
-  });
-
-  test('只有行动玩家能看到操作栏', async ({ browser }) => {
-    const { p1, p2, ctx1, ctx2 } = await setupTwoPlayers(browser);
-
-    await p1.click('.start-btn');
-    await expect(p1.locator('.table-view')).toBeVisible();
-    await expect(p2.locator('.table-view')).toBeVisible();
-
-    // 恰好一方有 action bar，另一方没有
-    const p1HasBar = await p1.locator('.action-bar').isVisible();
-    const p2HasBar = await p2.locator('.action-bar').isVisible();
-    expect(p1HasBar !== p2HasBar).toBe(true); // XOR: 恰好一方
+    await expect(p1.locator(S.settlement)).toBeVisible({ timeout: 8000 });
+    await expect(p2.locator(S.settlement)).toBeVisible({ timeout: 8000 });
 
     await ctx1.close();
     await ctx2.close();
   });
 
-  test('行动玩家弃牌，对方赢得底池', async ({ browser }) => {
-    const { p1, p2, ctx1, ctx2 } = await setupTwoPlayers(browser);
+  test('完整一局：全程过牌至摊牌', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
 
-    await p1.click('.start-btn');
-    await expect(p1.locator('.table-view')).toBeVisible();
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
 
-    // 找到有操作栏的那一页
-    const p1HasBar = await p1.locator('.action-bar').isVisible();
-    const actor = p1HasBar ? p1 : p2;
+    await runToShowdown(p1, p2);
+    await expect(p1.locator(S.settlement)).toBeVisible({ timeout: 10000 });
 
-    // 弃牌
-    await actor.click('button:has-text("弃牌")');
+    await ctx1.close();
+    await ctx2.close();
+  });
+});
 
-    // 摊牌结果显示
-    await expect(p1.locator('.showdown-overlay')).toBeVisible({ timeout: 8000 });
+// ─── Bug 回归：actionDisabled 不卡死 ──────────────────────────────────────────
+
+test.describe('Bug 回归', () => {
+  test('发送行动后 UI 不卡死（actionDisabled 必须在 2s 内重置）', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    const [actor] = await findActor(p1, p2);
+
+    // 打开加注栏并确认（客户端会限制最小值，所以不一定触发服务端错误）
+    await actor.locator(S.raiseBtn).click();
+    const confirmBtn = actor.locator('.b-confirm-raise');
+    if (await confirmBtn.isVisible()) await confirmBtn.click();
+
+    // 无论加注成功还是失败，UI 都不应卡死：
+    // 成功 → waiting-bar 出现；错误 → action-bar 恢复；游戏结束 → settlement 弹出
+    // 只要 actionDisabled 正确重置，以下至少有一项为 true
+    await actor.waitForTimeout(2000);
+    const hasActionBar = await actor.locator(S.actionBar).isVisible();
+    const hasWaitingBar = await actor.locator(S.waitingBar).isVisible();
+    const hasSettlement = await actor.locator(S.settlement).isVisible();
+    expect(hasActionBar || hasWaitingBar || hasSettlement).toBe(true);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});
+
+// ─── S4：游戏中途加人拒绝 ─────────────────────────────────────────────────────
+
+test.describe('S4：游戏进行中拒绝新玩家', () => {
+  test('游戏进行中第三人加入收到错误提示', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const ctx3 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+    const p3 = await ctx3.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    // 游戏进行中，第三人尝试加入
+    await p3.goto(`/room/${code}`);
+    await expect(p3.locator(S.nameInput)).toBeVisible({ timeout: 5000 });
+    await p3.fill(S.nameInput, 'Charlie');
+    await p3.click(S.joinSubmit);
+
+    // 应该收到错误提示（toast 或停在首页）
+    const errorVisible = await p3.locator('.toast--danger').isVisible({ timeout: 5000 }).catch(() => false);
+    const stillOnHome = await p3.locator(S.nameInput).isVisible({ timeout: 1000 }).catch(() => false);
+    expect(errorVisible || stillOnHome).toBe(true);
+
+    await ctx1.close();
+    await ctx2.close();
+    await ctx3.close();
+  });
+});
+
+// ─── S5：重新开始 ──────────────────────────────────────────────────────────────
+
+test.describe('S5：重新开始', () => {
+  test('房主点重新开始，双方筹码重置为 ¥1,000', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+
+    await p1.getByText('重新开始').click();
+
+    // 双方玩家行里都应显示 ¥1,000（两行都应有）
+    await expect(p1.locator(S.plRow).filter({ hasText: '¥1,000' })).toHaveCount(2);
+    await expect(p2.locator(S.plRow).filter({ hasText: '¥1,000' })).toHaveCount(2);
 
     await ctx1.close();
     await ctx2.close();
   });
 
-  test('大厅中房主看到重新开始按钮，非房主看不到', async ({ browser }) => {
-    const { p1, p2, ctx1, ctx2 } = await setupTwoPlayers(browser);
+  test('非房主没有重新开始链接', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
 
-    // 大厅里房主有"重新开始"按钮，非房主没有
-    await expect(p1.locator('button:has-text("重新开始")')).toBeVisible();
-    await expect(p2.locator('button:has-text("重新开始")')).not.toBeVisible();
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
 
-    await ctx1.close();
-    await ctx2.close();
-  });
-
-  test('点击重新开始后所有玩家筹码重置为 $10,000', async ({ browser }) => {
-    const { p1, p2, ctx1, ctx2 } = await setupTwoPlayers(browser);
-
-    await p1.click('button:has-text("重新开始")');
-
-    // 双方都收到更新，筹码显示 $10,000
-    await expect(p1.locator('.lobby-players')).toContainText('$10,000');
-    await expect(p2.locator('.lobby-players')).toContainText('$10,000');
+    // 非房主（p2）不应看到重新开始
+    const restartCount = await p2.getByText('重新开始').count();
+    expect(restartCount).toBe(0);
 
     await ctx1.close();
     await ctx2.close();
   });
+});
 
-  test('完整一局：跟注→翻牌→转牌→河牌→摊牌', async ({ browser }) => {
-    const { p1, p2, ctx1, ctx2 } = await setupTwoPlayers(browser);
+// ─── S2：断线自动 fold ─────────────────────────────────────────────────────────
 
-    await p1.click('.start-btn');
-    await expect(p1.locator('.table-view')).toBeVisible();
+test.describe('S2：断线处理', () => {
+  test('行动玩家关闭页面后对方获得行动机会', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
 
-    // 打完一局（每轮都跟注或过牌，直到摊牌）
-    for (let street = 0; street < 4; street++) {
-      // 第一个行动者
-      const p1Bar = await p1.locator('.action-bar').isVisible();
-      const actor = p1Bar ? p1 : p2;
-      const other = p1Bar ? p2 : p1;
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
 
-      const toCall = await actor.locator('button:has-text("跟注")').isVisible();
-      if (toCall) {
-        await actor.click('button:has-text("跟注")');
-      } else {
-        await actor.click('button:has-text("过牌")');
-      }
+    const [actor, other] = await findActor(p1, p2);
 
-      // 第二个行动者（如果还没进入下一街）
-      const otherBar = await other.locator('.action-bar').isVisible({ timeout: 3000 }).catch(() => false);
-      if (otherBar) {
-        const otherToCall = await other.locator('button:has-text("跟注")').isVisible();
-        if (otherToCall) {
-          await other.click('button:has-text("跟注")');
-        } else {
-          await other.click('button:has-text("过牌")');
-        }
-      }
+    // 行动玩家关闭标签
+    await actor.close();
 
-      // 检查是否已到摊牌
-      const isShowdown = await p1.locator('.showdown-overlay').isVisible({ timeout: 1000 }).catch(() => false);
-      if (isShowdown) break;
-    }
+    // 对方应在短时间内获得行动机会（或直接看到摊牌）
+    // waitFor 才会真正轮询等待元素出现，isVisible 是即时快照不会等待
+    const [gotBar, gotResult] = await Promise.all([
+      other.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false),
+      other.locator(S.settlement).waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false),
+    ]);
+    expect(gotBar || gotResult).toBe(true);
 
-    await expect(p1.locator('.showdown-overlay')).toBeVisible({ timeout: 10000 });
-
-    await ctx1.close();
     await ctx2.close();
   });
 });

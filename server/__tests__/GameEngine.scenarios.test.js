@@ -1,0 +1,292 @@
+/**
+ * GameEngine 场景测试 — 跨轮次、完整对局流程
+ *
+ * 测试策略：
+ * - 不测孤立动作（已有 GameEngine.test.js 覆盖）
+ * - 专测多动作序列，尤其是轮次切换时的状态重置
+ * - 对每手牌验证"底池守恒"不变量
+ */
+import { describe, it, expect } from 'vitest';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { GameEngine } = require('../GameEngine');
+
+const BIG_BLIND = 20;
+
+function makePlayers(n = 2, chips = 1000) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `p${i + 1}`,
+    name: `Player ${i + 1}`,
+    chips,
+  }));
+}
+
+/** 断言：底池 + 所有玩家筹码 = 初始总筹码（不变量） */
+function assertPotConservation(game, totalChips) {
+  const sumChips = game.players.reduce((s, p) => s + p.chips, 0);
+  expect(game.pot + sumChips).toBe(totalChips);
+}
+
+/** 推进到翻牌圈（2人局）：SB call → BB check */
+function advanceToFlop(game) {
+  expect(game.phase).toBe('preflop');
+  const sbId = game.players[game.actionIndex].id;
+  game.call(sbId);
+  const bbId = game.players[game.actionIndex].id;
+  game.check(bbId);
+  expect(game.phase).toBe('flop');
+}
+
+/** 双方依次过牌（新一轮无注），推进到下一个街道 */
+function bothCheck(game) {
+  const first = game.players[game.actionIndex].id;
+  game.check(first);
+  const second = game.players[game.actionIndex].id;
+  game.check(second);
+}
+
+// ─── 核心 bug 复现 ────────────────────────────────────────────────────────────
+
+describe('Bug 回归：lastRaiseAmount 轮次切换后应重置', () => {
+  it('翻牌前加注 80，进入翻牌圈后最小加注仍应为大盲 20', () => {
+    const game = new GameEngine(makePlayers(2), 0, BIG_BLIND);
+    // preflop: SB raises to 100 (raise increment = 80)
+    const sbId = game.players[game.actionIndex].id;
+    game.raise(sbId, 100);
+    const bbId = game.players[game.actionIndex].id;
+    game.call(bbId);
+
+    expect(game.phase).toBe('flop');
+    expect(game.lastRaiseAmount).toBe(BIG_BLIND); // 必须重置，不能是 80
+
+    // 翻牌圈尝试加注 10（低于大盲 20）→ 应该报错
+    const actor = game.players[game.actionIndex].id;
+    const tooSmall = game.raise(actor, 10);
+    expect(tooSmall.error).toBeDefined();
+
+    // 加注 20（等于大盲）→ 应该通过
+    const valid = game.raise(actor, 20);
+    expect(valid.error).toBeUndefined();
+  });
+
+  it('转牌圈加注 120，进入河牌圈后最小加注应为大盲 20', () => {
+    const game = new GameEngine(makePlayers(2), 0, BIG_BLIND);
+    // preflop: call + check → flop
+    const sb0 = game.players[game.actionIndex].id;
+    game.call(sb0);
+    game.check(game.players[game.actionIndex].id);
+    // flop: check + check → turn
+    bothCheck(game);
+    expect(game.phase).toBe('turn');
+
+    // turn: raise to 120
+    const turnActor = game.players[game.actionIndex].id;
+    game.raise(turnActor, 120);
+    game.call(game.players[game.actionIndex].id);
+    expect(game.phase).toBe('river');
+
+    expect(game.lastRaiseAmount).toBe(BIG_BLIND); // reset!
+    expect(game.currentBet).toBe(0);
+
+    // river: min raise = 20, not 120
+    const riverActor = game.players[game.actionIndex].id;
+    const bad = game.raise(riverActor, 15);
+    expect(bad.error).toBeDefined();
+    const good = game.raise(riverActor, BIG_BLIND);
+    expect(good.error).toBeUndefined();
+  });
+});
+
+// ─── 完整手牌流程 ─────────────────────────────────────────────────────────────
+
+describe('完整手牌：全程过牌至摊牌', () => {
+  it('2人局，双方每轮过牌直至摊牌', () => {
+    const game = new GameEngine(makePlayers(2), 0, BIG_BLIND);
+    const total = 2000;
+
+    advanceToFlop(game);
+    assertPotConservation(game, total);
+
+    bothCheck(game); // flop
+    expect(game.phase).toBe('turn');
+    assertPotConservation(game, total);
+
+    bothCheck(game); // turn
+    expect(game.phase).toBe('river');
+    assertPotConservation(game, total);
+
+    const r1 = game.check(game.players[game.actionIndex].id);
+    const r2 = game.check(game.players[game.actionIndex].id);
+    const result = r2.showdown ? r2 : r1;
+    expect(result.showdown).toBe(true);
+    expect(result.winners).toHaveLength(1);
+    assertPotConservation(game, total);
+  });
+});
+
+describe('完整手牌：每轮都有加注', () => {
+  it('每个街道各加注一次，最终摊牌', () => {
+    const game = new GameEngine(makePlayers(2), 0, BIG_BLIND);
+    const total = 2000;
+
+    // preflop: raise + call
+    const sb = game.players[game.actionIndex].id;
+    game.raise(sb, 60);
+    game.call(game.players[game.actionIndex].id);
+    expect(game.phase).toBe('flop');
+    assertPotConservation(game, total);
+
+    // flop: raise + call
+    const f1 = game.players[game.actionIndex].id;
+    game.raise(f1, 40);
+    game.call(game.players[game.actionIndex].id);
+    expect(game.phase).toBe('turn');
+    assertPotConservation(game, total);
+
+    // turn: raise + call
+    const t1 = game.players[game.actionIndex].id;
+    game.raise(t1, 50);
+    game.call(game.players[game.actionIndex].id);
+    expect(game.phase).toBe('river');
+    assertPotConservation(game, total);
+
+    // river: check + check → showdown
+    const rv1 = game.check(game.players[game.actionIndex].id);
+    const rv2 = game.check(game.players[game.actionIndex].id);
+    const result = rv2.showdown ? rv2 : rv1;
+    expect(result.showdown).toBe(true);
+    assertPotConservation(game, total);
+  });
+});
+
+// ─── 报错不破坏状态 ───────────────────────────────────────────────────────────
+
+describe('报错后游戏状态保持完整', () => {
+  it('加注金额非法报错后，仍可重新合法加注', () => {
+    const game = new GameEngine(makePlayers(2), 0, BIG_BLIND);
+    const actor = game.players[game.actionIndex];
+
+    const phaseBeforeError = game.phase;
+    const potBeforeError = game.pot;
+    const chipsBeforeError = actor.chips;
+
+    // 非法加注（金额太小）
+    const bad = game.raise(actor.id, 1);
+    expect(bad.error).toBeDefined();
+
+    // 状态不变
+    expect(game.phase).toBe(phaseBeforeError);
+    expect(game.pot).toBe(potBeforeError);
+    expect(actor.chips).toBe(chipsBeforeError);
+    expect(game.actionIndex).toBe(game.players.indexOf(actor));
+
+    // 重新合法加注
+    const good = game.raise(actor.id, 60);
+    expect(good.error).toBeUndefined();
+    expect(good.state).toBeDefined();
+  });
+
+  it('轮次错误操作后，下一个合法操作正常推进', () => {
+    const game = new GameEngine(makePlayers(2), 0, BIG_BLIND);
+    const wrong = game.players.find((_, i) => i !== game.actionIndex);
+    const err = game.fold(wrong.id);
+    expect(err.error).toBeDefined();
+    // 正确玩家仍可操作
+    const ok = game.call(game.players[game.actionIndex].id);
+    expect(ok.error).toBeUndefined();
+  });
+});
+
+// ─── 底池守恒不变量 ───────────────────────────────────────────────────────────
+
+describe('底池守恒不变量', () => {
+  it('3人局每次操作后 pot + chips === 3000', () => {
+    const total = 3000;
+    const game = new GameEngine(makePlayers(3), 0, BIG_BLIND);
+    assertPotConservation(game, total);
+
+    // p0 = dealer, p1=SB, p2=BB, action at p0 first
+    const utg = game.players[game.actionIndex].id;
+    game.call(utg);
+    assertPotConservation(game, total);
+
+    const sb = game.players[game.actionIndex].id;
+    game.call(sb);
+    assertPotConservation(game, total);
+
+    const bb = game.players[game.actionIndex].id;
+    game.check(bb);
+    assertPotConservation(game, total);
+
+    expect(game.phase).toBe('flop');
+
+    // flop: all check
+    game.check(game.players[game.actionIndex].id);
+    game.check(game.players[game.actionIndex].id);
+    game.check(game.players[game.actionIndex].id);
+    assertPotConservation(game, total);
+  });
+
+  it('All-In 场景底池正确', () => {
+    const game = new GameEngine(makePlayers(2, 200), 0, BIG_BLIND);
+    const total = 400;
+    assertPotConservation(game, total);
+
+    const actor = game.players[game.actionIndex].id;
+    game.allIn(actor);
+    assertPotConservation(game, total);
+
+    const resp = game.players[game.actionIndex].id;
+    game.allIn(resp);
+    assertPotConservation(game, total);
+  });
+});
+
+// ─── All-In 场景 ─────────────────────────────────────────────────────────────
+
+describe('All-In 场景', () => {
+  it('双方 all-in 后直接进入摊牌', () => {
+    const game = new GameEngine(makePlayers(2, 500), 0, BIG_BLIND);
+    const a1 = game.players[game.actionIndex].id;
+    game.allIn(a1);
+    const a2 = game.players[game.actionIndex].id;
+    const result = game.allIn(a2);
+    expect(result.showdown).toBe(true);
+  });
+
+  it('chips 耗尽的玩家状态为 allin', () => {
+    const game = new GameEngine(makePlayers(2, 500), 0, BIG_BLIND);
+    const actor = game.players[game.actionIndex];
+    game.allIn(actor.id);
+    // actor 筹码全压，应为 allin
+    expect(actor.chips).toBe(0);
+    expect(actor.status).toBe('allin');
+  });
+});
+
+// ─── 多人折牌 ─────────────────────────────────────────────────────────────────
+
+describe('3人局折牌', () => {
+  it('两人折牌后仅剩一人，直接获胜', () => {
+    const game = new GameEngine(makePlayers(3), 0, BIG_BLIND);
+    // UTG folds
+    const utg = game.players[game.actionIndex].id;
+    game.fold(utg);
+    // SB folds
+    const sb = game.players[game.actionIndex].id;
+    const result = game.fold(sb);
+    expect(result.showdown).toBe(true);
+    expect(result.winners).toHaveLength(1);
+  });
+
+  it('折牌后底池归赢家，守恒', () => {
+    const game = new GameEngine(makePlayers(3), 0, BIG_BLIND);
+    const total = 3000;
+    const utg = game.players[game.actionIndex].id;
+    game.fold(utg);
+    const sb = game.players[game.actionIndex].id;
+    const result = game.fold(sb);
+    assertPotConservation(game, total);
+    expect(result.winners[0]).toBeDefined();
+  });
+});

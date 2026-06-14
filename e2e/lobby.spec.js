@@ -14,8 +14,8 @@ test.describe('大厅流程', () => {
     await page.click('button:has-text("创建房间")');
     await page.click('button:has-text("创建")');
 
-    await expect(page.locator('.lobby-code')).toBeVisible();
-    const code = await page.locator('.lobby-code').textContent();
+    await expect(page.locator('.room-code')).toBeVisible();
+    const code = await page.locator('.room-code').textContent();
     expect(code).toMatch(/^[A-Z0-9]{6}$/);
   });
 
@@ -30,8 +30,8 @@ test.describe('大厅流程', () => {
     await p1.fill('.home-input', 'Alice');
     await p1.click('button:has-text("创建房间")');
     await p1.click('button:has-text("创建")');
-    await expect(p1.locator('.lobby-code')).toBeVisible();
-    const code = await p1.locator('.lobby-code').textContent();
+    await expect(p1.locator('.room-code')).toBeVisible();
+    const code = await p1.locator('.room-code').textContent();
 
     // Player 2 加入
     await p2.goto('/');
@@ -41,8 +41,8 @@ test.describe('大厅流程', () => {
     await p2.click('button:has-text("加入")');
 
     // 双方大厅里都能看到对方
-    await expect(p1.locator('.lobby-players')).toContainText('Bob');
-    await expect(p2.locator('.lobby-players')).toContainText('Alice');
+    await expect(p1.locator('.pl-row').filter({ hasText: 'Bob' })).toBeVisible();
+    await expect(p2.locator('.pl-row').filter({ hasText: 'Alice' })).toBeVisible();
 
     await ctx1.close();
     await ctx2.close();
@@ -69,11 +69,11 @@ test.describe('大厅流程', () => {
     await p1.fill('.home-input', 'Alice');
     await p1.click('button:has-text("创建房间")');
     await p1.click('button:has-text("创建")');
-    await expect(p1.locator('.lobby-code')).toBeVisible();
-    const code = await p1.locator('.lobby-code').textContent();
+    await expect(p1.locator('.room-code')).toBeVisible();
+    const code = await p1.locator('.room-code').textContent();
 
-    // 用邀请链接打开
-    await p2.goto(`/?room=${code}`);
+    // 用邀请链接打开（新版路由用 /room/CODE 格式）
+    await p2.goto(`/room/${code}`);
     await expect(p2.locator('.home-input--code')).toHaveValue(code);
 
     await ctx1.close();

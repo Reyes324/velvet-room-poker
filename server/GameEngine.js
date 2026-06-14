@@ -237,6 +237,10 @@ class GameEngine {
 
     // Action starts left of dealer among active players
     this.actionIndex = this._nextActive((this.dealerIndex + 1) % this.players.length);
+
+    // All remaining players are all-in — run out the board automatically
+    if (this.actionIndex === -1) return this._nextStreet();
+
     return { state: this.getPublicState() };
   }
 
