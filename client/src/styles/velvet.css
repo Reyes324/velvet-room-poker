@@ -78,11 +78,11 @@
 
 /* ── SEAT + AVATAR + STATES ───────────────────────────────── */
 /* seat = avatar slot; positioned on the rail by the layout context (gallery/RoomPage) */
-.seat { position:relative; width:46px; height:46px; }
+.seat { position:relative; width:40px; height:40px; }
 .avatar {
-  width:46px; height:46px; border-radius:50%;
+  width:40px; height:40px; border-radius:50%;
   display:flex; align-items:center; justify-content:center;
-  font-family:var(--font-display); font-size:17px; font-weight:700; color:var(--text-primary);
+  font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--text-primary);
   border:2px solid rgba(212,175,55,.18); position:relative; background:#0A1A0E;
 }
 .av-green  { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
@@ -137,8 +137,8 @@
 
 /* ── KEY ANIMATION KEYFRAMES ──────────────────────────────── */
 @keyframes dealFly {
-  from { opacity:0; transform:translate(var(--dx,0px),var(--dy,-24px)) scale(.35); }
-  to   { opacity:1; transform:translate(0,0) scale(1); }
+  from { opacity:0; transform:translate(calc(-50% + var(--dx,0px)),calc(-50% + var(--dy,-24px))) scale(.35); }
+  to   { opacity:1; transform:translate(-50%,-50%) scale(1); }
 }
 @keyframes flipIn {
   from { transform:rotateY(-90deg); opacity:0; }

@@ -108,7 +108,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       {opponents.map((p, i) => {
         const s = pos[i];
         const dx = 187.5 - s.x, dy = 292 - s.y, len = Math.hypot(dx, dy) || 1;
-        const betStyle = { transform: `translate(calc(-50% + ${(dx / len) * 40}px), calc(-50% + ${(dy / len) * 40}px))` };
+        const betStyle = { transform: `translate(calc(-50% + ${(dx / len) * 65}px), calc(-50% + ${(dy / len) * 65}px))` };
         const dealDelay = i * 0.1;
         return (
           <div
