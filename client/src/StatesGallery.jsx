@@ -1,11 +1,30 @@
 import GameTable from './components/GameTable';
 import SettlementModal from './components/SettlementModal';
+import Lobby from './components/Lobby';
 import { STATES } from './fixtures';
 
-// Dev self-check page: renders the REAL GameTable with fixed data for one state.
-// Open ?states=0..N to render each production state fullscreen.
+const badge = (index, name) => (
+  <div style={{
+    position: 'fixed', top: 6, left: 6, zIndex: 999,
+    font: '11px monospace', color: '#D4AF37',
+    background: 'rgba(0,0,0,.6)', padding: '3px 8px', borderRadius: 6,
+  }}>{index} · {name}</div>
+);
+
+// Dev self-check page: renders the REAL components with fixed data for one state.
 export default function StatesGallery({ index = 0 }) {
   const s = STATES[index] || STATES[0];
+
+  if (s.lobby) {
+    return (
+      <>
+        <Lobby roomState={s.lobby.roomState} playerId={s.lobby.playerId}
+          onCopy={() => {}} onKick={() => {}} onStart={() => {}} onRestart={() => {}} copied={false} maxSeats={9} />
+        {badge(index, s.name)}
+      </>
+    );
+  }
+
   return (
     <>
       <GameTable
@@ -24,11 +43,7 @@ export default function StatesGallery({ index = 0 }) {
           seconds={99}
         />
       )}
-      <div style={{
-        position: 'fixed', top: 6, left: 6, zIndex: 999,
-        font: '11px monospace', color: '#D4AF37',
-        background: 'rgba(0,0,0,.6)', padding: '3px 8px', borderRadius: 6,
-      }}>{index} · {s.name}</div>
+      {badge(index, s.name)}
     </>
   );
 }

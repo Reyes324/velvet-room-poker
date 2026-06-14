@@ -64,6 +64,22 @@ export const STATES = [
   },
 ];
 
+// Lobby / waiting room
+STATES.push({
+  name: '大厅',
+  lobby: {
+    playerId: 'me',
+    roomState: {
+      code: '4827', hostId: 'me',
+      players: [
+        { id: 'me', name: 'Augustine', chips: 12549 },
+        { id: 'wang', name: '王建国', chips: 1000 },
+        { id: 'chen', name: '陈美玲', chips: 15999 },
+      ],
+    },
+  },
+});
+
 // Settlement modal over the (dimmed) showdown table
 STATES.push({
   name: '结算弹窗', myId: 'me', roomCode: '4827',

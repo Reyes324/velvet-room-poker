@@ -196,3 +196,14 @@
 .game-stage .hero-section { position:absolute; bottom:178px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; }
 .game-stage .action-bar { position:absolute; bottom:0; left:0; right:0; z-index:40; }
 .game-stage .waiting-bar { position:absolute; bottom:0; left:0; right:0; padding:12px 14px 26px; background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
+
+/* ── LOBBY layout (in game-stage) ─────────────────────────── */
+.game-stage .lobby { position:absolute; top:86px; bottom:0; left:0; right:0; display:flex; flex-direction:column; padding:14px; z-index:5; }
+.lobby-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.pr-info { flex:1; min-width:0; }
+.pl-row { margin-bottom:7px; }
+.empty-slot { display:flex; align-items:center; gap:11px; padding:9px 11px; border:1px dashed rgba(28,48,30,.28); border-radius:11px; margin-bottom:7px; }
+.es-dot { width:36px; height:36px; border-radius:50%; border:1px dashed rgba(28,48,30,.4); display:flex; align-items:center; justify-content:center; color:#1E3820; font-size:18px; flex-shrink:0; }
+.es-txt { font-family:var(--font-body); font-size:14px; color:#1E3820; }
+.lobby-btn { margin-top:auto; }
+.room-code { cursor:pointer; }
