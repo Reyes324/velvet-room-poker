@@ -3,7 +3,6 @@ import { useSocket } from '../hooks/useSocket';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
-import './RoomPage.css';
 
 export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [roomState, setRoomState] = useState(null);

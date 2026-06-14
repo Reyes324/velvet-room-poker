@@ -31,45 +31,49 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
 
         <div className="lobby-sec">玩家 {players.length} / {maxSeats}{copied ? ' · 链接已复制 ✓' : ''}</div>
 
-        {players.map(p => (
-          <div key={p.id} className="pl-row">
-            <div className={`pr-av ${p.id === playerId ? 'av-gold' : AV[colorForId(p.id)]}`}>{p.name[0].toUpperCase()}</div>
-            <div className="pr-info">
-              <div className="pr-name">{p.name}{p.id === playerId ? '（我）' : ''}</div>
-              <div className="pr-chips">
-                {p.chips === 0 ? <span style={{ color: '#E08A4A' }}>¥0 · 筹码不足</span> : `¥${p.chips.toLocaleString()}`}
+        <div className="lobby-scroll">
+          {players.map(p => (
+            <div key={p.id} className="pl-row">
+              <div className={`pr-av ${p.id === playerId ? 'av-gold' : AV[colorForId(p.id)]}`}>{p.name[0].toUpperCase()}</div>
+              <div className="pr-info">
+                <div className="pr-name">{p.name}{p.id === playerId ? '（我）' : ''}</div>
+                <div className="pr-chips">
+                  {p.chips === 0 ? <span style={{ color: '#E08A4A' }}>¥0 · 筹码不足</span> : `¥${p.chips.toLocaleString()}`}
+                </div>
               </div>
+              {roomState.hostId === p.id && <span className="pr-badge">房主</span>}
+              {p.debt > 0 && <span className="pr-badge debt-badge">借¥{p.debt.toLocaleString()}</span>}
+              {p.id === playerId && p.chips === 0 && onRebuy && (
+                <span
+                  className="pr-badge"
+                  style={{ cursor: 'pointer', color: '#E8C24A', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)' }}
+                  onClick={onRebuy}
+                >
+                  +借一底
+                </span>
+              )}
+              {isHost && p.id !== playerId && (
+                <span className="pr-badge" style={{ cursor: 'pointer', color: '#E08080', background: 'rgba(192,57,43,.15)' }} onClick={() => onKick(p.id)}>移出</span>
+              )}
             </div>
-            {roomState.hostId === p.id && <span className="pr-badge">房主</span>}
-            {p.debt > 0 && <span className="pr-badge debt-badge">借¥{p.debt.toLocaleString()}</span>}
-            {p.id === playerId && p.chips === 0 && onRebuy && (
-              <span
-                className="pr-badge"
-                style={{ cursor: 'pointer', color: '#E8C24A', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)' }}
-                onClick={onRebuy}
-              >
-                +借一底
-              </span>
-            )}
-            {isHost && p.id !== playerId && (
-              <span className="pr-badge" style={{ cursor: 'pointer', color: '#E08080', background: 'rgba(192,57,43,.15)' }} onClick={() => onKick(p.id)}>移出</span>
-            )}
-          </div>
-        ))}
+          ))}
 
-        {Array.from({ length: empty }).map((_, i) => (
-          <div key={i} className="empty-slot"><div className="es-dot">+</div><div className="es-txt">等待玩家加入…</div></div>
-        ))}
+          {Array.from({ length: empty }).map((_, i) => (
+            <div key={i} className="empty-slot"><div className="es-dot">+</div><div className="es-txt">等待玩家加入…</div></div>
+          ))}
+        </div>
 
         {isHost ? (
-          <>
+          <div className="lobby-footer">
             <div className="lobby-btn" onClick={canStart ? onStart : undefined} style={!canStart ? { opacity: .5, cursor: 'default' } : undefined}>
               {canStart ? '开始游戏' : '等待更多玩家…'}
             </div>
-            <div className="lobby-sec" style={{ textAlign: 'center', border: 'none', margin: '8px 0 0', cursor: 'pointer', opacity: .7 }} onClick={onRestart}>重新开始</div>
-          </>
+            <div className="lobby-restart" onClick={onRestart}>重新开始</div>
+          </div>
         ) : (
-          <div className="lobby-sec" style={{ textAlign: 'center', marginTop: 'auto', borderBottom: 'none' }}>等待房主开始游戏…</div>
+          <div className="lobby-footer">
+            <div className="lobby-restart" style={{ color: '#2A4A2C', cursor: 'default' }}>等待房主开始游戏…</div>
+          </div>
         )}
       </div>
     </div>

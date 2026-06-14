@@ -3,8 +3,10 @@ import './styles/global.css';
 import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
 import StatesGallery from './StatesGallery';
+import { useStageScale } from './hooks/useStageScale';
 
 export default function App() {
+  useStageScale();
   const [room, setRoom] = useState(null); // { code, playerId, playerName } | { autoJoinCode }
 
   useEffect(() => {
@@ -31,11 +33,13 @@ export default function App() {
   }
 
   return (
-    <RoomPage
-      roomCode={room.code}
-      playerId={room.playerId}
-      playerName={room.playerName}
-      onLeave={() => setRoom(null)}
-    />
+    <div className="stage-wrap">
+      <RoomPage
+        roomCode={room.code}
+        playerId={room.playerId}
+        playerName={room.playerName}
+        onLeave={() => setRoom(null)}
+      />
+    </div>
   );
 }
