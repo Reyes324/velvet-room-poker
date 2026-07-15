@@ -93,6 +93,95 @@ describe('Room — 重新开始', () => {
   });
 });
 
+describe('Room — 借一底 (rebuy)', () => {
+  it('等待阶段可借入初始筹码并累计欠款', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.players[0].chips = 0;
+    const result = room.rebuy('p1');
+    expect(result.ok).toBe(true);
+    expect(room.players[0].chips).toBe(1000);
+    expect(room.players[0].debt).toBe(1000);
+  });
+
+  it('多次借入累计欠款', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.players[0].chips = 0;
+    room.rebuy('p1');
+    room.rebuy('p1');
+    expect(room.players[0].chips).toBe(2000);
+    expect(room.players[0].debt).toBe(2000);
+  });
+
+  it('游戏进行中不能借入', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    room.startGame();
+    const result = room.rebuy('p1');
+    expect(result.error).toBeDefined();
+  });
+
+  it('不存在的玩家借入 → 返回错误', () => {
+    const room = rooms.create('p1', 'Alice');
+    const result = room.rebuy('nobody');
+    expect(result.error).toBeDefined();
+  });
+});
+
+describe('Room — nextRound 筹码归零处理', () => {
+  it('筹码归零的玩家不进入下一手，但仍留在房间里', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    rooms.join(room.code, 'p3', 'Charlie', 's3');
+    room.startGame();
+    // 模拟 p2 本局输光
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+    room.game.players.find(p => p.id === 'p1').chips = 1500;
+    room.game.players.find(p => p.id === 'p3').chips = 1500;
+
+    const result = room.nextRound();
+
+    expect(result.ended).toBeUndefined();
+    expect(room.status).toBe('playing');
+    // p2 筹码同步为0，但仍在房间玩家列表中（可借一底）
+    expect(room.players.find(p => p.id === 'p2').chips).toBe(0);
+    expect(room.players.find(p => p.id === 'p2')).toBeDefined();
+    // 新一手的游戏引擎里只有筹码>0的两人
+    expect(room.game.players.map(p => p.id).sort()).toEqual(['p1', 'p3']);
+  });
+
+  it('少于2人有筹码时游戏结束，回到等待阶段', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    room.startGame();
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+    room.game.players.find(p => p.id === 'p1').chips = 2000;
+
+    const result = room.nextRound();
+
+    expect(result.ended).toBe(true);
+    expect(room.status).toBe('waiting');
+    expect(room.game).toBeNull();
+    // 筹码同步依然发生，p2 显示为0，可借一底后重开
+    expect(room.players.find(p => p.id === 'p2').chips).toBe(0);
+  });
+
+  it('借一底后归零玩家可重新加入下一手', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    room.startGame();
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+    room.game.players.find(p => p.id === 'p1').chips = 2000;
+    room.nextRound(); // 游戏结束，回到 waiting
+
+    room.rebuy('p2');
+    expect(room.players.find(p => p.id === 'p2').chips).toBe(1000);
+
+    const startResult = room.startGame();
+    expect(startResult.error).toBeUndefined();
+    expect(room.game.players).toHaveLength(2);
+  });
+});
+
 describe('RoomManager — 离开房间', () => {
   it('离开后从玩家列表移除', () => {
     const room = rooms.create('p1', 'Alice');

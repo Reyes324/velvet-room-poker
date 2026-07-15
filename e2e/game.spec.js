@@ -30,6 +30,7 @@ const S = {
   raiseBtn:     '.b-raise-trigger',
   settlement:   '.modal-overlay',
   plRow:        '.pl-row',
+  lobby:        '.lobby',
 };
 
 // ─── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -341,6 +342,68 @@ test.describe('S2：断线处理', () => {
     ]);
     expect(gotBar || gotResult).toBe(true);
 
+    await ctx2.close();
+  });
+});
+
+// ─── S3：筹码归零与借一底 ───────────────────────────────────────────────────────
+
+test.describe('S3：筹码归零与借一底', () => {
+  test('全下分出胜负后落败方归零 → 游戏因筹码不足结束 → 借一底后可重新开始', async ({ browser }) => {
+    test.setTimeout(60000);
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const jsErrors = [];
+    p1.on('pageerror', e => jsErrors.push(`p1: ${e.message}`));
+    p2.on('pageerror', e => jsErrors.push(`p2: ${e.message}`));
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    // 行动方一路点"+"把加注额顶到自己全部筹码（全下），对方跟注（也全下）
+    const [actor, other] = await findActor(p1, p2);
+    await actor.locator(S.raiseBtn).click();
+    const plusBtn = actor.locator('.step-btn').nth(1);
+    for (let i = 0; i < 60; i++) await plusBtn.click();
+    await actor.locator('.b-confirm-raise').click();
+    await other.locator(S.callBtn).click();
+
+    // 全下 → 自动摊牌
+    await expect(p1.locator(S.settlement)).toBeVisible({ timeout: 10000 });
+    await expect(p2.locator(S.settlement)).toBeVisible({ timeout: 10000 });
+
+    // 结算弹窗自动关闭(~5s) + 服务端 nextRound 定时器(4s)后，落败方筹码归零、
+    // 房间人数不足2人可继续 → 回到大厅。
+    // 注意：.game-stage / .room-code 在 Lobby 和 GameTable 里都会用到，不能用来
+    // 区分是否已回到大厅，这里用 .lobby（仅 Lobby 组件有）判断。
+    await expect(p1.locator(S.lobby)).toBeVisible({ timeout: 15000 });
+    await expect(p2.locator(S.lobby)).toBeVisible({ timeout: 15000 });
+
+    // 找到筹码归零的一方：两页都能看到对方的 ¥0 行，但"+借一底"只出现在
+    // 归零玩家自己的页面上（Lobby.jsx 里 p.id===playerId 才渲染），不能用 ¥0
+    // 行数来判断是哪一页，要直接看哪一页能看到这个按钮。
+    const p1HasRebuy = await p1.getByText('+借一底').isVisible().catch(() => false);
+    const zeroPage = p1HasRebuy ? p1 : p2;
+
+    const rebuyBadge = zeroPage.getByText('+借一底');
+    await expect(rebuyBadge).toBeVisible({ timeout: 5000 });
+    await rebuyBadge.click();
+
+    await expect(zeroPage.locator(S.plRow).filter({ hasText: '¥1,000' })).toHaveCount(1);
+    await expect(zeroPage.getByText(/借¥1,000/)).toBeVisible();
+
+    // 借入后双方筹码都 > 0，房主可以重新开始下一局
+    await p1.getByText('开始游戏').click();
+    await expect(p1.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
+    await expect(p2.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
+
+    expect(jsErrors).toEqual([]);
+
+    await ctx1.close();
     await ctx2.close();
   });
 });

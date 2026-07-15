@@ -290,3 +290,77 @@ describe('3人局折牌', () => {
     expect(result.winners[0]).toBeDefined();
   });
 });
+
+// ─── 边池（Side Pot）─────────────────────────────────────────────────────────
+// 短码全下玩家只能赢主池；主池以外的边池只在没全下/全下更多的玩家之间瓜分，
+// 短码玩家不应分到任何边池份额。
+
+describe('边池 — 三人不等额 All-In', () => {
+  it('短码赢家只拿主池，边池归另外两人中牌力更强者', () => {
+    // A(庄, 1000) / B(小盲, 300, 短码) / C(大盲, 1000)
+    const players = [
+      { id: 'A', name: 'A', chips: 1000 },
+      { id: 'B', name: 'B', chips: 300 },
+      { id: 'C', name: 'C', chips: 1000 },
+    ];
+    const game = new GameEngine(players, 0, BIG_BLIND);
+    const total = 2300;
+
+    const byId = id => game.players.find(p => p.id === id);
+    // 牌力：B(AA) > A(KK) > C(QQ)，公共牌不成对/不成顺/不成同花，纯比对子
+    byId('A').holeCards = ['Kh', 'Kd'];
+    byId('B').holeCards = ['Ah', 'Ad'];
+    byId('C').holeCards = ['Qh', 'Qd'];
+    // 固定发牌顺序：翻牌 2s,7c,9d／转牌 Tc／河牌 3h（pop() 从数组尾部取）
+    game.deck = ['3h', 'Tc', '9d', '7c', '2s'];
+
+    expect(game.players[game.actionIndex].id).toBe('A');
+    game.allIn('A'); // A 全下 1000（视为加注到1000）
+    expect(game.players[game.actionIndex].id).toBe('B');
+    game.allIn('B'); // B 全下剩余290（总入池300），不足跟注额，不算加注
+    expect(game.players[game.actionIndex].id).toBe('C');
+    const result = game.allIn('C'); // C 全下剩余980（总入池1000）→ 三人全下，直接摊牌
+
+    assertPotConservation(game, total);
+    expect(result.showdown).toBe(true);
+    expect(game.communityCards).toHaveLength(5);
+
+    // 主池 = 300*3 = 900，全归 B（AA 全场最大）
+    // 边池 = (1000-300)*2 = 1400，只在 A/C 间瓜分，A(KK) 胜出，C 拿 0
+    expect(byId('B').chips).toBe(900);
+    expect(byId('A').chips).toBe(1400);
+    expect(byId('C').chips).toBe(0);
+
+    const netOf = id => result.settle.find(s => s.id === id).net;
+    expect(netOf('B')).toBe(600);   // 赢900 − 投入300
+    expect(netOf('A')).toBe(400);   // 赢1400 − 投入1000
+    expect(netOf('C')).toBe(-1000); // 赢0 − 投入1000
+  });
+
+  it('两人全下、一人过牌未跟注更多：多出的注额原路退还', () => {
+    // A(庄,1000)/B(小盲,200,短码)/C(大盲,1000) — C 只跟注到200（不加注），
+    // A 全下1000后 B/C 都只需要面对1000的注，B 全下到200(短码封顶)。
+    const players = [
+      { id: 'A', name: 'A', chips: 1000 },
+      { id: 'B', name: 'B', chips: 200 },
+      { id: 'C', name: 'C', chips: 1000 },
+    ];
+    const game = new GameEngine(players, 0, BIG_BLIND);
+    const byId = id => game.players.find(p => p.id === id);
+    byId('A').holeCards = ['4h', '4d'];
+    byId('B').holeCards = ['5h', '5d'];
+    byId('C').holeCards = ['6h', '6d']; // C 牌力最强
+    game.deck = ['3h', 'Tc', '9d', '7c', '2s']; // 公共牌不连续/不成顺，纯比对子
+
+    game.allIn('A'); // A 全下1000
+    game.allIn('B'); // B 短码全下200
+    const result = game.allIn('C'); // C 全下1000
+
+    const total = 2200;
+    assertPotConservation(game, total);
+    // 主池 600 全场最强的 C 拿；边池 (1000-200)*2=1600 也在 A/C 间由 C 拿（C 最强）
+    expect(byId('C').chips).toBe(2200);
+    expect(byId('A').chips).toBe(0);
+    expect(byId('B').chips).toBe(0);
+  });
+});

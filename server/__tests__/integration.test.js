@@ -6,6 +6,7 @@ const { io: Client } = require('socket.io-client');
 
 let server;
 let url;
+let rooms;
 const clients = [];
 
 function connect() {
@@ -27,6 +28,7 @@ function waitFor(socket, event, timeout = 3000) {
 beforeEach(async () => {
   const created = createServer();
   server = created.server;
+  rooms = created.rooms;
   await new Promise((resolve) => server.listen(0, resolve));
   const port = server.address().port;
   url = `http://localhost:${port}`;
@@ -137,6 +139,31 @@ describe('集成测试 — 游戏流程', () => {
     expect(msg).toBeDefined();
   });
 
+  it('房主踢人 → 目标玩家收到 room:kicked，房间人数减少', async () => {
+    const { c1, c2 } = await setupRoom();
+    const kicked = waitFor(c2, 'room:kicked');
+    c1.emit('room:kick', { hostId: 'p1', targetId: 'p2' });
+    await kicked;
+    // room:kicked 先于 room:state 广播发出（见 index.js room:kick 处理顺序），
+    // 用 room:sync 主动拉取最新状态，避免与广播事件产生竞态断言。
+    const stateCheck = waitFor(c1, 'room:state');
+    c1.emit('room:sync', { playerId: 'p1' });
+    const state = await stateCheck;
+    expect(state.players).toHaveLength(1);
+    expect(state.players.map(p => p.id)).not.toContain('p2');
+  });
+
+  it('非房主发送 room:kick → 房间人数不变（被静默忽略）', async () => {
+    const { c1, c2 } = await setupRoom();
+    c2.emit('room:kick', { hostId: 'p2', targetId: 'p1' });
+    // 给服务端一点时间处理（若错误地生效会广播 room:state 变化）
+    await new Promise(r => setTimeout(r, 200));
+    const stateCheck = waitFor(c1, 'room:state');
+    c1.emit('room:sync', { playerId: 'p1' });
+    const state = await stateCheck;
+    expect(state.players).toHaveLength(2);
+  });
+
   it('不是自己回合时行动 → 收到 game:error', async () => {
     const { c1, c2 } = await setupRoom();
     const gs1 = waitFor(c1, 'game:state');
@@ -150,5 +177,33 @@ describe('集成测试 — 游戏流程', () => {
     notActing.emit('game:action', { playerId: notActingId, action: 'check' });
     const msg = await errMsg;
     expect(msg).toBeDefined();
+  });
+
+  it('筹码归零导致游戏结束时，双方仍收到含最新筹码的 room:state（回归：曾经只发 game:ended 不发 room:state）', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    const state1 = await gs1;
+    // 首手 dealerIndex=0：p1 是庄+大盲，p2 是小盲，小盲先行动（确定性，不依赖随机发牌）
+    expect(state1.actionPlayerId).toBe('p2');
+
+    // 直接模拟 p2 本局已经输光（不依赖具体牌局随机结果）
+    const room = rooms.getRoomByPlayer('p1');
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+
+    // 用持续监听收集每一次 room:state 广播，取 game:ended 后的最后一次，
+    // 避免与 fold 处理本身立即触发的那次广播（此时 status 还是 'playing'）产生竞态。
+    const roomStates = [];
+    c1.on('room:state', (s) => roomStates.push(s));
+
+    // p2 弃牌 → p1 赢下底池，p2 维持 0 筹码 → 不足2人有筹码，游戏结束
+    const ended = waitFor(c1, 'game:ended', 6000);
+    c2.emit('game:action', { playerId: 'p2', action: 'fold' });
+    await ended;
+    await new Promise((r) => setTimeout(r, 200)); // 让同批次的 room:state 广播送达
+
+    const finalState = roomStates[roomStates.length - 1];
+    expect(finalState.status).toBe('waiting');
+    expect(finalState.players.find(p => p.id === 'p2').chips).toBe(0);
   });
 });

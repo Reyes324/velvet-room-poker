@@ -40,11 +40,8 @@ function createServer() {
       });
       setTimeout(() => {
         const nr = room.nextRound();
-        if (nr.ended) {
-          io.to(room.code).emit('game:ended', nr);
-        } else {
-          broadcastRoom(room);
-        }
+        if (nr.ended) io.to(room.code).emit('game:ended', nr);
+        broadcastRoom(room);
       }, 4000);
     }
   }

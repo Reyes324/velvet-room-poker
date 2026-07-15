@@ -246,12 +246,27 @@ class GameEngine {
 
   _endHand(contenders) {
     this.phase = 'showdown';
-    const winners = this._determineWinners(contenders);
     const potWon = this.pot;
-    const share = Math.floor(potWon / winners.length);
+    const pots = this._buildSidePots();
     const won = {};
-    winners.forEach((w, i) => { won[w.id] = share + (i === 0 ? potWon - share * winners.length : 0); });
-    this._distributePot(winners, contenders);
+    const winnersById = new Map();
+
+    for (const layer of pots) {
+      const eligible = this.players.filter(p => layer.eligibleIds.includes(p.id));
+      const layerWinners = this._determineWinners(eligible);
+      const share = Math.floor(layer.amount / layerWinners.length);
+      layerWinners.forEach((w, i) => {
+        const amt = share + (i === 0 ? layer.amount - share * layerWinners.length : 0);
+        w.chips += amt;
+        won[w.id] = (won[w.id] || 0) + amt;
+        winnersById.set(w.id, w);
+      });
+    }
+
+    this.pot = 0;
+    this.sidePots = pots;
+    const winners = [...winnersById.values()];
+
     return {
       state: this.getPublicState(),
       showdown: true,
@@ -275,7 +290,7 @@ class GameEngine {
 
   _determineWinners(contenders) {
     if (contenders.length === 1) {
-      contenders[0].handName = '对手全部弃牌';
+      contenders[0].handName = contenders[0].handName || '对手全部弃牌';
       return contenders;
     }
     const hands = contenders.map(p => ({
@@ -291,13 +306,27 @@ class GameEngine {
       });
   }
 
-  _distributePot(winners, contenders) {
-    // Simple split (no side pot for now in basic version)
-    const share = Math.floor(this.pot / winners.length);
-    for (const w of winners) w.chips += share;
-    // Leftover goes to first winner
-    winners[0].chips += this.pot - share * winners.length;
-    this.pot = 0;
+  // Splits the pot into layers ("side pots") based on each player's total
+  // commitment this hand. A player can only win layers up to their own
+  // totalBet — money above that belongs to a layer they're not eligible for.
+  _buildSidePots() {
+    const contributors = this.players.filter(p => p.totalBet > 0);
+    const levels = [...new Set(contributors.map(p => p.totalBet))].sort((a, b) => a - b);
+    let prevLevel = 0;
+    const pots = [];
+    for (const level of levels) {
+      const layerSize = level - prevLevel;
+      let amount = 0;
+      for (const p of contributors) {
+        amount += Math.min(Math.max(p.totalBet - prevLevel, 0), layerSize);
+      }
+      const eligibleIds = this.players
+        .filter(p => p.status !== 'folded' && p.totalBet >= level)
+        .map(p => p.id);
+      if (amount > 0) pots.push({ amount, eligibleIds });
+      prevLevel = level;
+    }
+    return pots;
   }
 
   // Returns state safe to send to a specific player (hides others' cards)

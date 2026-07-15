@@ -1,57 +1,57 @@
 ## 1. 项目初始化与依赖
 
-- [ ] 1.1 初始化 Node.js 项目（`npm init`），安装后端依赖：`express`、`socket.io`、`pokersolver`
-- [ ] 1.2 使用 Vite 初始化 React 前端项目，安装 `socket.io-client`
-- [ ] 1.3 配置开发环境：后端 nodemon 热重载，前端 Vite dev server 代理到后端
+- [x] 1.1 初始化 Node.js 项目（`npm init`），安装后端依赖：`express`、`socket.io`、`pokersolver`
+- [x] 1.2 使用 Vite 初始化 React 前端项目，安装 `socket.io-client`
+- [x] 1.3 配置开发环境：后端 `node --watch` 热重载，前端 Vite dev server
 
 ## 2. 游戏引擎核心
 
-- [ ] 2.1 实现 `Deck` 类：52 张牌生成、Fisher-Yates 洗牌算法
-- [ ] 2.2 实现 `GameState` 数据结构：players、communityCards、pot、phase、currentBet 等字段
-- [ ] 2.3 实现盲注逻辑：庄家位确定、SB/BB 自动下注、行动顺序计算
-- [ ] 2.4 实现下注轮次状态机：preflop → flop → turn → river → showdown 流转逻辑
-- [ ] 2.5 实现玩家操作处理：fold/check/call/raise 合法性校验与状态更新
-- [ ] 2.6 集成 `pokersolver` 实现摊牌判定：取每位玩家最佳 5 张牌型、多人比较、平局处理
-- [ ] 2.7 实现边池（Side Pot）计算逻辑（All-In 场景）
-- [ ] 2.8 实现底池分配与下一局初始化：筹码结算、庄家位轮换、超时自动 fold
+- [x] 2.1 实现 `Deck` 类：52 张牌生成、Fisher-Yates 洗牌算法 — `GameEngine.js` `makeDeck`/`shuffle`
+- [x] 2.2 实现 `GameState` 数据结构：players、communityCards、pot、phase、currentBet 等字段
+- [x] 2.3 实现盲注逻辑：庄家位确定、SB/BB 自动下注、行动顺序计算
+- [x] 2.4 实现下注轮次状态机：preflop → flop → turn → river → showdown 流转逻辑
+- [x] 2.5 实现玩家操作处理：fold/check/call/raise 合法性校验与状态更新
+- [x] 2.6 集成 `pokersolver` 实现摊牌判定：取每位玩家最佳 5 张牌型、多人比较、平局处理
+- [x] 2.7 实现边池（Side Pot）计算逻辑（All-In 场景）— `GameEngine._buildSidePots`/`_endHand`；修复了此前"不等额 All-In 时短码玩家赢得全部底池"的错误分配 bug，见 `GameEngine.scenarios.test.js`「边池」用例
+- [x] 2.8 实现底池分配与下一局初始化：筹码结算、庄家位轮换（超时自动 fold 已取消，见 4.4）
 
 ## 3. 房间管理（后端）
 
-- [ ] 3.1 实现 `RoomManager`：创建房间（生成唯一 6 位码）、加入/离开房间、内存存储
-- [ ] 3.2 实现房主踢人功能
+- [x] 3.1 实现 `RoomManager`：创建房间（生成唯一 6 位码）、加入/离开房间、内存存储
+- [x] 3.2 实现房主踢人功能 — `room:kick` 已实现（server/index.js + Lobby.jsx 房主可见的"移出"按钮），补充集成测试覆盖成功踢人与非房主踢人被静默忽略两种情况
 - [x] 3.3 房间座位上限（统一 9 人）与不存在校验：满 9 人即拒绝加入并返回"房间已满，无法加入"（见 design.md 容量决策）；与 S4"游戏中途加人拒绝"为两条独立校验
 
 ## 4. WebSocket 服务（后端）
 
-- [ ] 4.1 配置 Socket.io，定义事件：`join-room`、`start-game`、`player-action`、`kick-player`
-- [ ] 4.2 实现状态广播：每次状态变化后对房间 channel 广播，手牌按玩家身份过滤
-- [ ] 4.3 实现断线处理：socket 断开时自动 fold 并广播玩家离线
+- [x] 4.1 配置 Socket.io，定义事件：`room:create`/`room:join`/`room:start`/`game:action`/`room:kick` 等（详见 index.js）
+- [x] 4.2 实现状态广播：每次状态变化后对房间 channel 广播，手牌按玩家身份过滤 — 修复了"筹码归零导致游戏结束"分支曾经只发 `game:ended` 不发 `room:state` 的 bug（大厅筹码/借一底按钮不会更新），见 `integration.test.js` 回归用例
+- [x] 4.3 实现断线处理：socket 断开时自动 fold 并广播玩家离线
 - [x] ~~4.4 实现操作超时（30 秒）：服务端 setTimeout 到期后自动 check/fold~~ **已取消** — 用户决策：不加超时，体验上朋友局不需要强制限时
 
 ## 5. 前端 — 路由与状态管理
 
-- [ ] 5.1 配置 React Router：`/`（首页）、`/room/:code`（房间页）
-- [ ] 5.2 封装 `useSocket` hook，管理 Socket.io 连接与事件监听
-- [ ] 5.3 用 React Context 或 Zustand 管理全局游戏状态
+- [x] 5.1 配置 React Router：`/`（首页）、`/room/:code`（房间页）
+- [x] 5.2 封装 `useSocket` hook，管理 Socket.io 连接与事件监听
+- [x] 5.3 用 React 组件内 state（RoomPage）管理房间/游戏状态（未引入 Context/Zustand，规模上足够）
 
 ## 6. 前端 — 页面与组件
 
-- [ ] 6.1 实现首页：昵称输入、创建房间按钮、加入房间（输入码）按钮
-- [ ] 6.2 实现等待室：玩家列表、房间码展示、复制邀请链接、开始游戏按钮（房主限定）
-- [ ] 6.3 实现牌桌布局：椭圆形桌面、玩家座位分布（支持 2-9 人）、庄家/SB/BB 标记
-- [ ] 6.4 实现公共牌区域：5 张牌位，未发出的显示牌背
-- [ ] 6.5 实现玩家卡片组件：昵称、筹码、当前注、状态标签（active/folded/all-in）、高亮当前操作者
-- [ ] 6.6 实现手牌展示：本玩家正面朝上，其他玩家牌背，摊牌翻开动画
-- [ ] 6.7 实现操作按钮区：Fold/Check/Call/Raise，Raise 附带金额 slider 和输入框
+- [x] 6.1 实现首页：昵称输入、创建房间按钮、加入房间（输入码）按钮
+- [x] 6.2 实现等待室：玩家列表、房间码展示、复制邀请链接、开始游戏按钮（房主限定）
+- [x] 6.3 实现牌桌布局：椭圆形桌面、玩家座位分布（支持 2-9 人）、庄家/SB/BB 标记
+- [x] 6.4 实现公共牌区域：5 张牌位，未发出的显示牌背
+- [x] 6.5 实现玩家卡片组件：昵称、筹码、当前注、状态标签（active/folded/all-in）、高亮当前操作者
+- [x] 6.6 实现手牌展示：本玩家正面朝上，其他玩家牌背，摊牌翻开动画
+- [x] 6.7 实现操作按钮区：Fold/Check/Call/Raise，Raise 附带 stepper（未做拖动 slider，点击 +/- 步进）
 - [x] ~~6.8 实现倒计时组件：当前操作玩家显示 30 秒倒计时进度条~~ **已取消** — 同 4.4，整个倒计时功能移除
-- [ ] 6.9 实现结算界面：获胜者高亮、赢得筹码提示、3 秒后自动下一局
+- [x] 6.9 实现结算界面：获胜者高亮、赢得筹码提示、自动进入下一局（SettlementModal，见 8.1/8.2）
 
 ## 8. 场景补全（来自用户场景评审）
 
 - [x] 8.1 实现"重新开始"功能：`room:restart` 事件，服务端重置所有玩家筹码为初始值，状态回到 waiting，广播 `room:state`
 - [x] 8.2 前端大厅显示"重新开始"按钮（房主限定）
 - [x] 8.3 为 S5 场景补充单元 + 集成 + E2E 测试（共 7 个新测试）
-- [ ] 8.4 S2/S3/S4 场景 E2E 测试（断线、筹码归零、中途加人）
+- [x] 8.4 S2/S3/S4 场景 E2E 测试（断线、筹码归零、中途加人）— 新增 S3「全下分出胜负后落败方归零 → 游戏因筹码不足结束 → 借一底后可重新开始」完整流程用例（e2e/game.spec.js），过程中发现并修复了 4.2 记录的 room:state 广播 bug
 
 ## 9. 迭代变更（对话评审后）
 
@@ -71,7 +71,12 @@
 
 ## 7. 收尾与测试
 
-- [ ] 7.1 在本地同时打开 2 个浏览器标签页，验证完整一局流程（preflop → showdown）
-- [ ] 7.2 验证边界情况：All-In、只剩一人获胜、超时自动操作
+- [x] 7.1 在本地同时打开 2 个浏览器标签页，验证完整一局流程（preflop → showdown）— 用 Playwright 双页驱动真实浏览器走完整流程验证（非 UI 打磨），过牌到摊牌、全下到摊牌均已验证
+- [x] 7.2 验证边界情况：All-In、只剩一人获胜（超时自动操作已取消，不适用）— All-In 双人对局在真实浏览器中验证；不等额多人 All-In 边池分配用单元测试覆盖（见 2.7）
 - [x] 7.3 移动端响应式检查 — 已完成，添加 480px/640px 断点适配所有页面
 - [x] 7.4 构建生产包（`npm run build`），确认静态资源正常加载
+
+## 10. Bug 修复记录
+
+- [x] 10.1 边池分配错误：不等额 All-In 时，全场最强牌力的短码玩家会赢得包括边池在内的全部底池（应只赢主池，边池只在没被短码封顶的玩家间瓜分）。修复：`GameEngine.js` 新增 `_buildSidePots()`，`_endHand` 按池层分别结算。回归测试：`GameEngine.scenarios.test.js`「边池」describe 块（2 个用例）
+- [x] 10.2 筹码归零导致游戏结束时，大厅数据不更新：`nextRound()` 返回 `ended:true` 时，服务端只广播了 `game:ended`，没有再广播 `room:state`，导致落败玩家的客户端筹码显示、"+借一底"按钮都停留在游戏开始前的旧数据，需要手动刷新/离开重进才能看到。修复：`server/index.js` 的 `handleActionResult` 里，`nextRound()` 之后统一调用 `broadcastRoom(room)`。回归测试：`integration.test.js`「筹码归零导致游戏结束时...」+ `e2e/game.spec.js` S3 场景（真实浏览器复现过一次，确认修复前后行为差异）
