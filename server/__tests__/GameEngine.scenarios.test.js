@@ -399,3 +399,28 @@ describe('加注金额上限校验', () => {
     expect(actor.status).toBe('allin');
   });
 });
+
+describe('对手全下后，剩余唯一可行动玩家不应被重复要求操作', () => {
+  it('短码方全下、长码方跟注后仍有余额，应直接自动摊牌，不再弹出行动机会', () => {
+    const game = new GameEngine(makePlayers(2, 1000), 0, BIG_BLIND);
+
+    // heads-up 里 dealerIndex=0 时，SB 先手；把 SB 改造成"短码"
+    const short = game.players[game.actionIndex];
+    short.chips = 100;
+
+    // 盲注已在构造函数里扣过（且已计入 game.pot），直接改写 chips 会让桌面
+    // 总筹码偏离 2*1000；用改写后的实际结存重新计算守恒基准，而不是硬编码 2000。
+    const total = game.players.reduce((s, p) => s + p.chips, 0) + game.pot;
+
+    const r1 = game.allIn(short.id);
+    expect(r1.showdown).toBeFalsy(); // 对手还没决定跟注/弃牌，不该直接结束
+
+    const caller = game.players[game.actionIndex];
+    const r2 = game.call(caller.id);
+
+    expect(caller.status).toBe('active'); // 跟注方筹码有富余，跟注后不是 allin
+    expect(r2.showdown).toBe(true);       // 应该直接摊牌——不应该再给它发牌后的行动机会
+    expect(r2.state.communityCards).toHaveLength(5);
+    assertPotConservation(game, total);
+  });
+});

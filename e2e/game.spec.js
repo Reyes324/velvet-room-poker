@@ -407,3 +407,36 @@ test.describe('S3：筹码归零与借一底', () => {
     await ctx2.close();
   });
 });
+
+// ─── S6：对手全下后不应再被要求继续行动 ───────────────────────────────────────
+
+test.describe('S6：对手全下后自动摊牌', () => {
+  test('一方全下、对方跟注仍有余额后，不应再看到行动栏，应直接看到结算', async ({ browser }) => {
+    test.setTimeout(60000);
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    const [actor, other] = await findActor(p1, p2);
+    await actor.locator(S.raiseBtn).click();
+    const plusBtn = actor.locator('.step-btn').nth(1);
+    for (let i = 0; i < 60; i++) await plusBtn.click();
+    await actor.locator('.b-confirm-raise').click();
+    await other.locator(S.callBtn).click();
+
+    // 跟注后不应该再看到任何一方的行动栏（除非是全新的下一局，这里只看这一局内）
+    const actionBarStillThere = await other.locator(S.actionBar).isVisible({ timeout: 1500 }).catch(() => false);
+    expect(actionBarStillThere).toBe(false);
+
+    await expect(p1.locator(S.settlement)).toBeVisible({ timeout: 10000 });
+    await expect(p2.locator(S.settlement)).toBeVisible({ timeout: 10000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});

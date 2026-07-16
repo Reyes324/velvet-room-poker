@@ -242,8 +242,13 @@ class GameEngine {
     // Action starts left of dealer among active players
     this.actionIndex = this._nextActive((this.dealerIndex + 1) % this.players.length);
 
-    // All remaining players are all-in — run out the board automatically
-    if (this.actionIndex === -1) return this._nextStreet();
+    // If at most one player can still act (everyone else is folded or
+    // all-in), there's no one left to bet against — no more meaningful
+    // action is possible. Run the board out automatically instead of
+    // prompting the lone remaining player for a pointless check/bet.
+    if (this.actionIndex === -1 || this._activePlayers().length <= 1) {
+      return this._nextStreet();
+    }
 
     return { state: this.getPublicState() };
   }
