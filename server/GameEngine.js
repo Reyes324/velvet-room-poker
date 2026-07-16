@@ -151,8 +151,12 @@ class GameEngine {
     const idx = this._playerIndex(playerId);
     if (idx !== this.actionIndex) return { error: '还没轮到你' };
     const p = this.players[idx];
+    const maxTotal = p.chips + p.bet;
+    if (totalAmount > maxTotal) {
+      return { error: `最多下注 ¥${maxTotal}` };
+    }
     const minRaise = this.currentBet + this.lastRaiseAmount;
-    if (totalAmount < minRaise && totalAmount < p.chips + p.bet) {
+    if (totalAmount < minRaise && totalAmount < maxTotal) {
       return { error: `最小加注至 ¥${minRaise}` };
     }
     const raiseAmount = totalAmount - this.currentBet;

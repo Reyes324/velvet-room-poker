@@ -364,3 +364,38 @@ describe('边池 — 三人不等额 All-In', () => {
     expect(byId('B').chips).toBe(0);
   });
 });
+
+describe('加注金额上限校验', () => {
+  it('加注超过自己筹码时应报错，且不改变任何状态', () => {
+    const game = new GameEngine(makePlayers(2, 500), 0, BIG_BLIND);
+    const actor = game.players[game.actionIndex];
+    const before = {
+      chips: actor.chips,
+      bet: actor.bet,
+      pot: game.pot,
+      currentBet: game.currentBet,
+      lastRaiseAmount: game.lastRaiseAmount,
+    };
+
+    const result = game.raise(actor.id, 999999); // 远超 actor 实际筹码
+
+    expect(result.error).toBeDefined();
+    expect(actor.chips).toBe(before.chips);
+    expect(actor.bet).toBe(before.bet);
+    expect(game.pot).toBe(before.pot);
+    expect(game.currentBet).toBe(before.currentBet);
+    expect(game.lastRaiseAmount).toBe(before.lastRaiseAmount);
+  });
+
+  it('加注到刚好等于自己全部筹码（全下）应该成功', () => {
+    const game = new GameEngine(makePlayers(2, 500), 0, BIG_BLIND);
+    const actor = game.players[game.actionIndex];
+    const maxTotal = actor.chips + actor.bet;
+
+    const result = game.raise(actor.id, maxTotal);
+
+    expect(result.error).toBeUndefined();
+    expect(actor.chips).toBe(0);
+    expect(actor.status).toBe('allin');
+  });
+});
