@@ -245,4 +245,43 @@ describe('集成测试 — 游戏流程', () => {
     const state = await nextHand;
     expect(state.phase).toBe('preflop');
   });
+
+  it('结算等待期内，导致本局结束的那位玩家断线 → 不应重入 _endHand（回归：actionIndex 未推进导致弃牌者断线时重复弃牌）', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    // 首手 dealerIndex=0：p1 是庄+大盲，p2 是小盲，小盲（p2）先行动（确定性，见上文用例说明）。
+    // 让 p2 直接弃牌结束本局 —— 此时 GameEngine.actionIndex 仍停留在 p2（fold/_advance/_endHand
+    // 都不会推进 actionIndex），为下面的断线重入场景创造前提条件。
+    const showdown1 = waitFor(c1, 'game:showdown');
+    const showdown2 = waitFor(c2, 'game:showdown');
+    c2.emit('game:action', { playerId: 'p2', action: 'fold' });
+    await Promise.all([showdown1, showdown2]);
+
+    // 结算等待期开始后，持续监听存活玩家 c1 是否再收到第二次 game:showdown
+    // （若 bug 未修复：p2 断线会被误判为"轮到 p2 时弃牌"，重新执行一次 fold →
+    // _advance → _endHand，广播一个 pot=0 的伪造 showdown）。
+    let extraShowdowns = 0;
+    c1.on('game:showdown', () => { extraShowdowns += 1; });
+
+    // 正是刚才那个让本局结束的弃牌者（p2）此时断线
+    c2.disconnect();
+
+    // 给服务端一点时间处理断线逻辑
+    await new Promise((r) => setTimeout(r, 400));
+    expect(extraShowdowns).toBe(0);
+
+    // p2 断线时已从 eligiblePlayerIds 中移除，且已被整体移出房间（人数不足2）。
+    // 此时只需 p1 确认，房间即可正确推进 —— 由于只剩1名有筹码玩家，应触发 game:ended。
+    const ended = waitFor(c1, 'game:ended', 3000);
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    const endedResult = await ended;
+    expect(endedResult.ended).toBe(true);
+
+    const room = rooms.getRoomByPlayer('p1');
+    expect(room.status).toBe('waiting');
+    expect(room.players).toHaveLength(1);
+  });
 });

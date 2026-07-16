@@ -148,7 +148,7 @@ function createServer() {
     socket.on('disconnect', () => {
       if (!myPlayerId) return;
       const room = rooms.getRoomByPlayer(myPlayerId);
-      if (room?.game) {
+      if (room?.game && !room._advanceRound) {
         const result = room.playerAction(myPlayerId, 'fold');
         handleActionResult(room, result);
       }
