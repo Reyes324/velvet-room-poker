@@ -42,11 +42,20 @@ function createServer() {
         pot: result.pot,
         settle: result.settle,
       });
-      setTimeout(() => {
+
+      const eligiblePlayerIds = new Set(room.players.filter(p => p.socketId).map(p => p.id));
+      const readyPlayerIds = new Set();
+
+      function advance() {
+        clearTimeout(fallbackTimer);
+        room._advanceRound = null;
         const nr = room.nextRound();
         if (nr.ended) io.to(room.code).emit('game:ended', nr);
         broadcastRoom(room);
-      }, 4000);
+      }
+
+      const fallbackTimer = setTimeout(advance, 15000);
+      room._advanceRound = { readyPlayerIds, eligiblePlayerIds, advance };
     }
   }
 
@@ -126,6 +135,16 @@ function createServer() {
       io.to(room.code).emit('room:state', room.getLobbyState());
     });
 
+    socket.on('game:ready-next', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room?._advanceRound) return;
+      const { readyPlayerIds, eligiblePlayerIds, advance } = room._advanceRound;
+      readyPlayerIds.add(playerId);
+      if ([...eligiblePlayerIds].every((id) => readyPlayerIds.has(id))) {
+        advance();
+      }
+    });
+
     socket.on('disconnect', () => {
       if (!myPlayerId) return;
       const room = rooms.getRoomByPlayer(myPlayerId);
@@ -134,6 +153,11 @@ function createServer() {
         handleActionResult(room, result);
       }
       rooms.leave(myPlayerId);
+      if (room?._advanceRound) {
+        room._advanceRound.eligiblePlayerIds.delete(myPlayerId);
+        const { readyPlayerIds, eligiblePlayerIds, advance } = room._advanceRound;
+        if ([...eligiblePlayerIds].every((id) => readyPlayerIds.has(id))) advance();
+      }
       if (room && room.players.length > 0) {
         io.to(room.code).emit('room:state', room.getLobbyState());
       }

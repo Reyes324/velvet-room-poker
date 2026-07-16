@@ -196,14 +196,53 @@ describe('集成测试 — 游戏流程', () => {
     const roomStates = [];
     c1.on('room:state', (s) => roomStates.push(s));
 
-    // p2 弃牌 → p1 赢下底池，p2 维持 0 筹码 → 不足2人有筹码，游戏结束
-    const ended = waitFor(c1, 'game:ended', 6000);
+    // p2 弃牌 → p1 赢下底池，p2 维持 0 筹码 → 触发结算；结算后需双方都发 game:ready-next
+    // 才会推进（新协议），推进时才判定"不足2人有筹码，游戏结束"。
+    const showdown = waitFor(c1, 'game:showdown');
     c2.emit('game:action', { playerId: 'p2', action: 'fold' });
+    await showdown;
+
+    const ended = waitFor(c1, 'game:ended', 6000);
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
     await ended;
     await new Promise((r) => setTimeout(r, 200)); // 让同批次的 room:state 广播送达
 
     const finalState = roomStates[roomStates.length - 1];
     expect(finalState.status).toBe('waiting');
     expect(finalState.players.find(p => p.id === 'p2').chips).toBe(0);
+  });
+
+  it('结算后必须所有在线玩家都发 game:ready-next，才会推进到下一局', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    // 让当前行动方直接弃牌，快速制造一次 showdown
+    const actingId = (await new Promise((resolve) => {
+      c1.once('game:state', (s) => resolve(s.actionPlayerId));
+      c1.emit('room:sync', { playerId: 'p1' });
+    }));
+    const actingSocket = actingId === 'p1' ? c1 : c2;
+
+    const showdown = waitFor(c1, 'game:showdown');
+    actingSocket.emit('game:action', { playerId: actingId, action: 'fold' });
+    await showdown;
+
+    // 只有 p1 确认，还不该收到下一局的 game:state
+    let gotNextHand = false;
+    const nextHandListener = () => { gotNextHand = true; };
+    c1.on('game:state', nextHandListener);
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    await new Promise((r) => setTimeout(r, 800));
+    expect(gotNextHand).toBe(false);
+    c1.off('game:state', nextHandListener);
+
+    // p2 也确认后，应该很快收到下一局 game:state（不用等 4 秒/15 秒兜底）
+    const nextHand = waitFor(c1, 'game:state', 3000);
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    const state = await nextHand;
+    expect(state.phase).toBe('preflop');
   });
 });
