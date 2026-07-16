@@ -8,7 +8,7 @@ export function useStageScale() {
       // address-bar visibility), so the scale never shrinks when the browser chrome
       // appears — prevents narrow black side-bars on iPhone SE / small phones.
       const vh = window.screen?.height ?? window.innerHeight;
-      const scale = Math.min(vw / 375, vh / 712);
+      const scale = Math.min(vw / 375, vh / 812);
       document.documentElement.style.setProperty('--stage-scale', scale);
     }
     update();
