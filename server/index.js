@@ -15,7 +15,11 @@ function createServer() {
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
-  app.get('/{*path}', (_, res) => res.sendFile(path.join(__dirname, '../client/dist/index.html')));
+  // Pass root+relative (not a raw absolute path) so express/send's dotfile
+  // check only inspects "index.html", not every ancestor directory in the
+  // checkout path — a raw absolute path 404s if the checkout lives under
+  // any dot-prefixed directory (e.g. a `.claude/worktrees/...` worktree).
+  app.get('/{*path}', (_, res) => res.sendFile('index.html', { root: path.join(__dirname, '../client/dist') }));
 
   // ─── helpers ───────────────────────────────────────────────────────────────
 
