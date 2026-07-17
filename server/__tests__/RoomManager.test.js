@@ -202,3 +202,55 @@ describe('RoomManager — 离开房间', () => {
     expect(rooms.getRoomByPlayer('p1')).toBeNull();
   });
 });
+
+describe('Room — 结算等待期（settlementWait）', () => {
+  function setupTwoConnectedPlayers() {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    room.updateSocket('p1', 's1');
+    room.updateSocket('p2', 's2');
+    return room;
+  }
+
+  it('beginSettlementWait 后 isAwaitingSettlementAck 为 true，只包含有 socketId 的玩家', () => {
+    const room = setupTwoConnectedPlayers();
+    // p3 加入但从未连上 socket（socketId 仍是 join 时传入的值，这里模拟未连接）
+    room.players.push({ id: 'p3', name: 'Charlie', chips: 1000, socketId: null, debt: 0 });
+
+    expect(room.isAwaitingSettlementAck()).toBe(false);
+    room.beginSettlementWait();
+    expect(room.isAwaitingSettlementAck()).toBe(true);
+    expect(room.settlementWait.eligiblePlayerIds).toEqual(new Set(['p1', 'p2']));
+    expect(room.settlementWait.readyPlayerIds.size).toBe(0);
+  });
+
+  it('ackReady：只有全部符合条件的玩家都确认后才返回 true', () => {
+    const room = setupTwoConnectedPlayers();
+    room.beginSettlementWait();
+
+    expect(room.ackReady('p1')).toBe(false); // p2 还没确认
+    expect(room.ackReady('p2')).toBe(true);  // 两人都确认了
+  });
+
+  it('ackReady：没有进行中的结算等待时返回 false，不报错', () => {
+    const room = setupTwoConnectedPlayers();
+    expect(room.ackReady('p1')).toBe(false);
+  });
+
+  it('dropFromSettlementWait：移除一个待确认玩家后，剩余玩家确认即可推进', () => {
+    const room = setupTwoConnectedPlayers();
+    room.beginSettlementWait();
+
+    // p2 断线离开等待名单，只剩 p1 需要确认
+    expect(room.dropFromSettlementWait('p2')).toBe(false); // p1 还没确认
+    expect(room.ackReady('p1')).toBe(true);
+  });
+
+  it('clearSettlementWait 后 isAwaitingSettlementAck 变回 false', () => {
+    const room = setupTwoConnectedPlayers();
+    room.beginSettlementWait();
+    room.clearSettlementWait();
+    expect(room.isAwaitingSettlementAck()).toBe(false);
+    expect(room.settlementWait).toBeNull();
+  });
+});

@@ -17,6 +17,7 @@ class Room {
     this.game = null;       // GameEngine instance when in progress
     this.dealerIndex = 0;
     this.status = 'waiting'; // waiting | playing
+    this.settlementWait = null; // { eligiblePlayerIds, readyPlayerIds } while waiting for post-showdown acks
   }
 
   addPlayer(id, name, socketId) {
@@ -79,6 +80,49 @@ class Room {
     this.status = 'waiting';
     this.game = null;
     this.dealerIndex = 0;
+  }
+
+  // ─── post-showdown "wait for everyone to ack" state ───────────────────────
+  // Owned here (like `game`/`status`/`dealerIndex`) rather than as an ad-hoc
+  // property set from outside — index.js only decides *when* to advance
+  // (the fallback timer) and broadcasts the result; the ready-tracking data
+  // itself belongs to the room.
+
+  beginSettlementWait() {
+    this.settlementWait = {
+      eligiblePlayerIds: new Set(this.players.filter(p => p.socketId).map(p => p.id)),
+      readyPlayerIds: new Set(),
+    };
+  }
+
+  isAwaitingSettlementAck() {
+    return this.settlementWait !== null;
+  }
+
+  // Records that a player has acked. Returns true if everyone currently
+  // eligible has now acked (caller should advance the round).
+  ackReady(playerId) {
+    if (!this.settlementWait) return false;
+    this.settlementWait.readyPlayerIds.add(playerId);
+    return this._allSettlementAcksIn();
+  }
+
+  // Removes a departing player from the eligible set (e.g. on disconnect)
+  // so they can't block the room forever. Returns true if everyone
+  // remaining has now acked.
+  dropFromSettlementWait(playerId) {
+    if (!this.settlementWait) return false;
+    this.settlementWait.eligiblePlayerIds.delete(playerId);
+    return this._allSettlementAcksIn();
+  }
+
+  clearSettlementWait() {
+    this.settlementWait = null;
+  }
+
+  _allSettlementAcksIn() {
+    const { eligiblePlayerIds, readyPlayerIds } = this.settlementWait;
+    return [...eligiblePlayerIds].every((id) => readyPlayerIds.has(id));
   }
 
   playerAction(playerId, action, amount) {

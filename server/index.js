@@ -12,6 +12,10 @@ function createServer() {
   });
 
   const rooms = new RoomManager();
+  // Fallback-timer handles for rooms currently awaiting settlement acks,
+  // keyed by room code. Pure transport/timing plumbing — the actual
+  // ready-tracking data lives on the Room itself (room.settlementWait).
+  const settlementFallbacks = new Map();
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
@@ -32,6 +36,21 @@ function createServer() {
     io.to(room.code).emit('room:state', room.getLobbyState());
   }
 
+  // Advances a room past its post-showdown settlement wait: clears the
+  // fallback timer, clears the room's ready-tracking state, and moves the
+  // game on. This is the single place that does so — every trigger (all
+  // acks in, a departing player unblocking the rest, or the 15s fallback)
+  // funnels through here, so the timer and the room's settlementWait state
+  // can never end up out of sync.
+  function advanceRoom(room) {
+    clearTimeout(settlementFallbacks.get(room.code));
+    settlementFallbacks.delete(room.code);
+    room.clearSettlementWait();
+    const nr = room.nextRound();
+    if (nr.ended) io.to(room.code).emit('game:ended', nr);
+    broadcastRoom(room);
+  }
+
   function handleActionResult(room, result) {
     if (result.error) return;
     broadcastRoom(room);
@@ -43,19 +62,8 @@ function createServer() {
         settle: result.settle,
       });
 
-      const eligiblePlayerIds = new Set(room.players.filter(p => p.socketId).map(p => p.id));
-      const readyPlayerIds = new Set();
-
-      function advance() {
-        clearTimeout(fallbackTimer);
-        room._advanceRound = null;
-        const nr = room.nextRound();
-        if (nr.ended) io.to(room.code).emit('game:ended', nr);
-        broadcastRoom(room);
-      }
-
-      const fallbackTimer = setTimeout(advance, 15000);
-      room._advanceRound = { readyPlayerIds, eligiblePlayerIds, advance };
+      room.beginSettlementWait();
+      settlementFallbacks.set(room.code, setTimeout(() => advanceRoom(room), 15000));
     }
   }
 
@@ -137,26 +145,20 @@ function createServer() {
 
     socket.on('game:ready-next', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
-      if (!room?._advanceRound) return;
-      const { readyPlayerIds, eligiblePlayerIds, advance } = room._advanceRound;
-      readyPlayerIds.add(playerId);
-      if ([...eligiblePlayerIds].every((id) => readyPlayerIds.has(id))) {
-        advance();
-      }
+      if (!room?.isAwaitingSettlementAck()) return;
+      if (room.ackReady(playerId)) advanceRoom(room);
     });
 
     socket.on('disconnect', () => {
       if (!myPlayerId) return;
       const room = rooms.getRoomByPlayer(myPlayerId);
-      if (room?.game && !room._advanceRound) {
+      if (room?.game && !room.isAwaitingSettlementAck()) {
         const result = room.playerAction(myPlayerId, 'fold');
         handleActionResult(room, result);
       }
       rooms.leave(myPlayerId);
-      if (room?._advanceRound) {
-        room._advanceRound.eligiblePlayerIds.delete(myPlayerId);
-        const { readyPlayerIds, eligiblePlayerIds, advance } = room._advanceRound;
-        if ([...eligiblePlayerIds].every((id) => readyPlayerIds.has(id))) advance();
+      if (room?.isAwaitingSettlementAck()) {
+        if (room.dropFromSettlementWait(myPlayerId)) advanceRoom(room);
       }
       if (room && room.players.length > 0) {
         io.to(room.code).emit('room:state', room.getLobbyState());
