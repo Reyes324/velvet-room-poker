@@ -28,7 +28,7 @@ const S = {
   callBtn:      '.b-call',
   checkBtn:     '.b-check',
   raiseBtn:     '.b-raise-trigger',
-  settlement:   '.modal-overlay',
+  settlement:   '.settlement-sheet',
   plRow:        '.pl-row',
   lobby:        '.lobby',
 };
@@ -376,10 +376,12 @@ test.describe('S3：筹码归零与借一底', () => {
     await expect(p1.locator(S.settlement)).toBeVisible({ timeout: 10000 });
     await expect(p2.locator(S.settlement)).toBeVisible({ timeout: 10000 });
 
-    // 结算弹窗自动关闭(~5s) + 服务端 nextRound 定时器(4s)后，落败方筹码归零、
-    // 房间人数不足2人可继续 → 回到大厅。
+    // 结算面板不再自动关闭，双方都要点"我知道了"确认，服务端才会推进
+    // （game:ready-next）。确认后落败方筹码归零、房间人数不足2人可继续 → 回到大厅。
     // 注意：.game-stage / .room-code 在 Lobby 和 GameTable 里都会用到，不能用来
     // 区分是否已回到大厅，这里用 .lobby（仅 Lobby 组件有）判断。
+    await p1.getByText('我知道了').click();
+    await p2.getByText('我知道了').click();
     await expect(p1.locator(S.lobby)).toBeVisible({ timeout: 15000 });
     await expect(p2.locator(S.lobby)).toBeVisible({ timeout: 15000 });
 

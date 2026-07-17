@@ -12,6 +12,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [toast, setToast] = useState(null);
   const [copied, setCopied] = useState(false);
   const [actionDisabled, setActionDisabled] = useState(false);
+  const [iAmReady, setIAmReady] = useState(false);
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ msg, type });
@@ -24,6 +25,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setGameState(state);
       setShowdown(null);
       setSettlement(null);
+      setIAmReady(false);
       setActionDisabled(false);
     },
     'game:showdown': ({ winners, pot, settle }) => {
@@ -33,6 +35,8 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     'game:ended': ({ reason }) => {
       showToast(reason ?? '游戏结束', 'info');
       setGameState(null);
+      setSettlement(null);
+      setIAmReady(false);
     },
     'room:kicked': () => {
       showToast('你已被房主移出房间', 'danger');
@@ -48,6 +52,11 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   function handleAction(action, amount) {
     setActionDisabled(true);
     emit('game:action', { playerId, action, amount });
+  }
+
+  function handleReady() {
+    setIAmReady(true);
+    emit('game:ready-next', { playerId });
   }
 
   function copyInvite() {
@@ -99,20 +108,13 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       />
       {settlement && settlement.winners?.length > 0 && (
         <SettlementModal
-          winner={{
-            id: settlement.winners[0].id,
-            name: settlement.winners[0].name,
-            amount: settlement.winners[0].won,
-            hand: settlement.winners[0].handName,
-            isMe: settlement.winners[0].id === playerId,
-          }}
-          results={(settlement.settle ?? []).map(s => ({
-            name: s.name + (s.id === playerId ? '（我）' : ''),
-            delta: s.net === 0 ? null : s.net,
-            isMe: s.id === playerId,
-          }))}
-          onClose={() => setSettlement(null)}
-          seconds={5}
+          winners={settlement.winners}
+          settle={(settlement.settle ?? []).map(s => ({ ...s }))}
+          myId={playerId}
+          iAmReady={iAmReady}
+          readyCount={iAmReady ? 1 : 0}
+          totalCount={(roomState?.players ?? []).length}
+          onReady={handleReady}
         />
       )}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}

@@ -180,6 +180,20 @@
 .waiting-text { font-family:var(--font-mono); font-size:9px; color:#203820; letter-spacing:2px; }
 
 /* ── SETTLEMENT MODAL ─────────────────────────────────────── */
+.settlement-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 50;
+  background: linear-gradient(to top, #050D06 78%, rgba(5,13,6,.94));
+  border-top: 1px solid rgba(212,175,55,.3);
+  border-radius: 20px 20px 0 0;
+  padding: 18px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  max-height: 62%;
+  overflow-y: auto;
+  animation: slideUp .35s cubic-bezier(.34,1.56,.64,1) both;
+  box-shadow: 0 -10px 40px rgba(0,0,0,.5);
+}
+.settlement-winners { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+.settlement-winner-row { display: flex; align-items: center; gap: 12px; }
+.modal-btn--waiting { opacity: .55; cursor: default; }
 .modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,.68); backdrop-filter:blur(5px); display:flex; align-items:center; justify-content:center; z-index:60; animation:overlayFade .3s ease; }
 @keyframes overlayFade { from{opacity:0;} to{opacity:1;} }
 .modal { width:318px; background:linear-gradient(145deg,#0C1E0E,#060C07); border:1px solid rgba(212,175,55,.32); border-radius:22px; padding:24px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:13px; box-shadow:0 24px 80px rgba(0,0,0,.9); animation:modalPop .35s cubic-bezier(.34,1.56,.64,1); }
