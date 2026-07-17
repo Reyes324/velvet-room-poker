@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 function colorForId(id) {
   let h = 0;
