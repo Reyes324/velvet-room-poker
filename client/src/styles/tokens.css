@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════
    VELVET ROOM — Design Tokens (synced with design-system.html)
 ═══════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=DM+Serif+Display&family=Oswald:wght@600;700&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=DM+Serif+Display&family=Oswald:wght@600;700&family=Space+Mono:wght@400;700&family=Inter:wght@500;600;700&display=swap');
 
 :root {
   /* Felt */
@@ -60,6 +60,7 @@
   --font-mono: 'Space Mono', monospace;
   --font-numerals: 'DM Serif Display', serif;  /* hero numbers: pot / win amount */
   --font-card: 'Oswald', sans-serif;            /* card ranks (tidy "10") */
+  --font-amount: 'Inter', -apple-system, sans-serif; /* 所有金额数字统一用这个 */
 
   /* Spacing */
   --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px;

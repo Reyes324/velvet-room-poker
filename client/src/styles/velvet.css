@@ -70,7 +70,7 @@
 .pot { display:flex; flex-direction:column; align-items:center; gap:2px; }
 .street-tag { font-family:var(--font-mono); font-size:9px; color:#C9A94A; letter-spacing:4px; text-transform:uppercase; opacity:.8; }
 .pot-label { font-family:var(--font-mono); font-size:7px; color:#5A4C24; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
-.pot-amt { font-family:var(--font-numerals); font-size:33px; font-weight:400; color:#E8C24A; letter-spacing:.5px; text-shadow:0 0 26px rgba(212,175,55,.5), 0 2px 10px rgba(0,0,0,.65); line-height:1.05; }
+.pot-amt { font-family:var(--font-amount); font-size:24px; font-weight:700; color:#E8C24A; letter-spacing:.2px; text-shadow:0 0 20px rgba(212,175,55,.45), 0 2px 8px rgba(0,0,0,.6); line-height:1.05; }
 
 /* community placeholder (pre-flop) */
 .community { display:flex; gap:5px; align-items:center; perspective:600px; }
@@ -109,7 +109,7 @@
 .pos-badge { position:absolute; bottom:-4px; right:-5px; min-width:15px; height:15px; padding:0 3px; border-radius:5px; background:#EAE0C8; color:var(--ink-black); font-family:var(--font-mono); font-size:8px; font-weight:700; line-height:15px; text-align:center; white-space:nowrap; z-index:3; box-shadow:0 1px 3px rgba(0,0,0,.55); }
 
 /* stack — platinum, below avatar */
-.stack-chip { position:absolute; top:calc(100% + 5px); left:50%; transform:translateX(-50%); font-family:var(--font-mono); font-size:10px; color:#9FB0AC; text-shadow:0 1px 3px rgba(0,0,0,.85); white-space:nowrap; }
+.stack-chip { position:absolute; top:calc(100% + 5px); left:50%; transform:translateX(-50%); font-family:var(--font-amount); font-size:10px; color:#9FB0AC; text-shadow:0 1px 3px rgba(0,0,0,.85); white-space:nowrap; }
 
 /* fold / all-in labels */
 .fold-tag { position:absolute; top:calc(100% + 5px); left:50%; transform:translateX(-50%); font-family:var(--font-mono); font-size:9px; color:#4A5A4C; letter-spacing:1px; white-space:nowrap; }
@@ -137,12 +137,12 @@
 /* ── HERO INFO ────────────────────────────────────────────── */
 .hero-cards { display:flex; gap:10px; }
 .hero-name { font-family:var(--font-body); font-size:14px; color:var(--text-primary); text-align:center; }
-.hero-chips { font-family:var(--font-mono); font-size:12px; color:#D4AF37; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:13px; padding:3px 14px; display:inline-block; margin-top:3px; }
-.hero-bet { font-family:var(--font-mono); font-size:10px; color:#C9A94A; margin-top:3px; }
+.hero-chips { font-family:var(--font-amount); font-size:12px; color:#D4AF37; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:13px; padding:3px 14px; display:inline-block; margin-top:3px; }
+.hero-bet { font-family:var(--font-amount); font-size:10px; color:#C9A94A; margin-top:3px; }
 
 /* ── TOP BAR ──────────────────────────────────────────────── */
 .menu-btn { width:32px; height:32px; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.14); border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--text-secondary); }
-.bankroll { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:18px; padding:4px 12px; font-family:var(--font-mono); font-size:12px; color:#D4AF37; }
+.bankroll { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; color:#D4AF37; }
 
 /* ── KEY ANIMATION KEYFRAMES ──────────────────────────────── */
 @keyframes dealFly {
@@ -185,7 +185,7 @@
 .stepper-row { display:flex; gap:9px; align-items:center; }
 .stepper { display:flex; align-items:center; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.2); border-radius:22px; height:46px; overflow:hidden; flex:1; }
 .step-btn { width:38px; height:46px; display:flex; align-items:center; justify-content:center; font-size:22px; color:#D4AF37; cursor:pointer; }
-.step-val { flex:1; font-family:var(--font-mono); font-size:14px; color:var(--text-primary); text-align:center; }
+.step-val { flex:1; font-family:var(--font-amount); font-size:14px; color:var(--text-primary); text-align:center; }
 .raise-bottom { display:flex; gap:9px; }
 .waiting-text { font-family:var(--font-mono); font-size:9px; color:#203820; letter-spacing:2px; }
 
@@ -211,14 +211,14 @@
 .modal-title { font-family:var(--font-display); font-size:11px; color:#D4AF37; letter-spacing:4px; text-transform:uppercase; }
 .modal-winner-av { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--text-primary); border:2px solid #D4AF37; box-shadow:0 0 0 5px rgba(212,175,55,.2), 0 0 40px rgba(212,175,55,.7); }
 .modal-winner-name { font-family:var(--font-display); font-size:14px; color:var(--text-primary); }
-.modal-win-amt { font-family:var(--font-numerals); font-size:32px; font-weight:400; letter-spacing:.5px; color:#D4AF37; }
+.modal-win-amt { font-family:var(--font-amount); font-size:26px; font-weight:700; letter-spacing:.2px; color:#D4AF37; }
 .modal-hand { font-family:var(--font-body); font-size:13px; color:var(--text-secondary); margin-top:-4px; }
 .modal-divider { width:100%; height:1px; background:rgba(212,175,55,.1); }
 .settle-list { width:100%; display:flex; flex-direction:column; gap:6px; }
 .settle-row { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:rgba(212,175,55,.04); border-radius:8px; }
 .settle-row.hero { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.1); }
 .sr-name { font-family:var(--font-body); font-size:13px; color:#C8BC9E; }
-.sr-amt { font-family:var(--font-mono); font-size:12px; }
+.sr-amt { font-family:var(--font-amount); font-size:12px; }
 .sr-win { color:var(--state-safe); } .sr-lose { color:var(--state-danger); } .sr-neutral { color:#5A6E5C; }
 .modal-btn { width:100%; height:48px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:24px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:#050D06; letter-spacing:1px; cursor:pointer; box-shadow:0 4px 20px rgba(212,175,55,.25); margin-top:4px; }
 .modal-body { font-family:var(--font-body); font-size:14px; color:#8A8A7A; text-align:center; line-height:1.5; }
@@ -235,7 +235,7 @@
 .pl-row { display:flex; align-items:center; gap:11px; padding:9px 11px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:11px; }
 .pr-av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--text-primary); flex-shrink:0; }
 .pr-name { font-family:var(--font-body); font-size:14px; color:var(--text-primary); }
-.pr-chips { font-family:var(--font-mono); font-size:9px; color:#8A7850; }
+.pr-chips { font-family:var(--font-amount); font-size:9px; color:#8A7850; }
 .pr-badge { font-family:var(--font-mono); font-size:8px; background:rgba(212,175,55,.12); color:#D4AF37; border-radius:7px; padding:2px 7px; }
 .debt-badge { background:rgba(192,100,43,.15); color:#E08A4A; border:1px solid rgba(192,100,43,.3); }
 .lobby-btn { height:52px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:26px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:15px; font-weight:700; color:#050D06; letter-spacing:1px; box-shadow:0 4px 24px rgba(212,175,55,.28); cursor:pointer; }
