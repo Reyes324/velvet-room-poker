@@ -243,7 +243,7 @@
 .lobby-btn { height:52px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:26px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:15px; font-weight:700; color:#050D06; letter-spacing:1px; box-shadow:0 4px 24px rgba(212,175,55,.28); cursor:pointer; }
 
 /* ── GAME LAYOUT (preview's fixed 375×812 phone; centered on desktop) ─────── */
-.game-stage { position:relative; width:375px; height:812px; margin:0 auto; overflow:hidden; background:#08120A; }
+.game-stage { position:relative; width:var(--stage-w); height:var(--stage-h); margin:0 auto; overflow:hidden; background:#08120A; }
 .game-stage .top-bar { position:absolute; top:36px; left:14px; right:14px; height:40px; display:flex; justify-content:space-between; align-items:center; z-index:10; }
 .game-stage .table-oval { position:absolute; top:108px; left:28px; right:28px; height:368px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
 .game-stage .player-slot { position:absolute; transform:translate(-50%,-50%); z-index:5; }

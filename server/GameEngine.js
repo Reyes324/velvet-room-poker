@@ -246,7 +246,9 @@ class GameEngine {
     // all-in), there's no one left to bet against — no more meaningful
     // action is possible. Run the board out automatically instead of
     // prompting the lone remaining player for a pointless check/bet.
-    if (this.actionIndex === -1 || this._activePlayers().length <= 1) {
+    // (Zero active players is the actionIndex===-1 case; it's a subset of
+    // this condition, not a separate one — no need to check it twice.)
+    if (this._activePlayers().length <= 1) {
       return this._nextStreet();
     }
 

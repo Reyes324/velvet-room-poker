@@ -62,6 +62,14 @@
   --font-card: 'Oswald', sans-serif;            /* card ranks (tidy "10") */
   --font-amount: 'Inter', -apple-system, sans-serif; /* 所有金额数字统一用这个 */
 
+  /* Stage — single source of truth for the fixed-size phone stage.
+     useStageScale.js reads these via getComputedStyle instead of
+     hardcoding its own copy, so the JS scale math and the CSS layout
+     can never drift apart again (that drift — 712 vs the real 812 —
+     was a real bug once). */
+  --stage-w: 375px;
+  --stage-h: 812px;
+
   /* Spacing */
   --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px;
   --sp-4: 16px; --sp-5: 20px;  --sp-6: 24px;
