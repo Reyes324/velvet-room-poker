@@ -42,6 +42,7 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
           </div>
           <div className="raise-bottom">
             <button className="btn b-cancel b-h46" onClick={() => setOpen(false)}>← 返回</button>
+            <button className="btn b-allin b-h46" style={{ flex: 1 }} onClick={() => act('raise', maxRaise)}>全下 ALL IN</button>
             <button className="btn b-fold b-h46" style={{ flex: 1 }} onClick={() => act('fold')}>弃牌</button>
           </div>
         </div>

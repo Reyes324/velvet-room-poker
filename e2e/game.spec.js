@@ -367,9 +367,7 @@ test.describe('S3：筹码归零与借一底', () => {
     // 行动方一路点"+"把加注额顶到自己全部筹码（全下），对方跟注（也全下）
     const [actor, other] = await findActor(p1, p2);
     await actor.locator(S.raiseBtn).click();
-    const plusBtn = actor.locator('.step-btn').nth(1);
-    for (let i = 0; i < 60; i++) await plusBtn.click();
-    await actor.locator('.b-confirm-raise').click();
+    await actor.locator('.b-allin').click();
     await other.locator(S.callBtn).click();
 
     // 全下 → 自动摊牌
@@ -426,9 +424,7 @@ test.describe('S6：对手全下后自动摊牌', () => {
 
     const [actor, other] = await findActor(p1, p2);
     await actor.locator(S.raiseBtn).click();
-    const plusBtn = actor.locator('.step-btn').nth(1);
-    for (let i = 0; i < 60; i++) await plusBtn.click();
-    await actor.locator('.b-confirm-raise').click();
+    await actor.locator('.b-allin').click();
     await other.locator(S.callBtn).click();
 
     // 跟注后不应该再看到任何一方的行动栏（除非是全新的下一局，这里只看这一局内）

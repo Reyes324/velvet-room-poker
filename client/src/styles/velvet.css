@@ -180,6 +180,8 @@
 .b-raise-trigger { flex:1; background:rgba(212,175,55,.1); color:#D4AF37; border:1px solid rgba(212,175,55,.28); font-size:13px; }
 .b-confirm-raise { flex:2; background:linear-gradient(135deg,#9B7410,#D4AF37); color:#050D06; font-size:14px; font-weight:700; box-shadow:0 4px 18px rgba(212,175,55,.28); }
 .b-cancel { flex:1; background:transparent; color:#4A6E4C; border:1px solid rgba(50,80,52,.2); font-size:12px; }
+.b-allin { flex:1; background:linear-gradient(135deg,#8A2416,#C0392B); color:#F5E6A0; border:1px solid rgba(212,175,55,.5); font-size:13px; font-weight:700; }
+.b-allin:active { filter:brightness(1.15); }
 .ab-raise { display:none; flex-direction:column; gap:8px; }
 .ab-raise.open { display:flex; }
 .stepper-row { display:flex; gap:9px; align-items:center; }
