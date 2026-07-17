@@ -116,7 +116,14 @@
 .allin-tag { position:absolute; top:calc(100% + 5px); left:50%; transform:translateX(-50%); font-family:var(--font-mono); font-size:8px; font-weight:700; color:#E07A6E; letter-spacing:1px; white-space:nowrap; }
 
 /* bet chip — pill badge (speech-bubble style, visually prominent) */
-.bet-chip { display:inline-flex; align-items:center; justify-content:center; padding:3px 9px; background:rgba(8,18,10,.9); border:1px solid rgba(212,175,55,.65); border-radius:20px; font-family:var(--font-mono); font-size:11px; font-weight:700; color:#F5E6A0; white-space:nowrap; letter-spacing:.3px; box-shadow:0 2px 10px rgba(0,0,0,.7),0 0 8px rgba(212,175,55,.18); animation:chipPop .3s cubic-bezier(.34,1.56,.64,1) both; }
+.bet-chip { position:relative; display:inline-flex; align-items:center; justify-content:center; padding:3px 9px; background:rgba(8,18,10,.94); border:1px solid rgba(212,175,55,.65); border-radius:20px; font-family:var(--font-amount); font-size:11px; font-weight:700; color:#F5E6A0; white-space:nowrap; letter-spacing:.3px; box-shadow:0 2px 10px rgba(0,0,0,.7),0 0 8px rgba(212,175,55,.18); animation:chipPop .3s cubic-bezier(.34,1.56,.64,1) both; }
+.bet-chip::after {
+  content: '';
+  position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-top: 6px solid rgba(8,18,10,.94);
+}
 @keyframes chipPop { from{opacity:0;scale:.55;} to{opacity:1;scale:1;} }
 
 /* showdown reveal */
