@@ -21,17 +21,19 @@ function getOrderedPlayers(players, myId) {
   return [...players.slice(idx), ...players.slice(0, idx)];
 }
 
-// Opponent seat centers on the preview oval (center 187.5,292; rx 159.5, ry 180),
-// evenly across the top arc (150°→390°), hero stays at the bottom (not a rail seat).
-function oppPositions(n) {
+// Seat centers on the preview oval (center 187.5,292; rx 159.5, ry 180).
+// Hero sits at the bottom (90°); opponents fill the remaining arc evenly.
+function seatPositions(n) {
   const cx = 187.5, cy = 292, rx = 159.5, ry = 180;
-  const out = [];
+  const heroPos = { x: cx, y: cy + ry };
+  if (n === 0) return { hero: heroPos, opponents: [] };
+  const opponents = [];
   for (let i = 0; i < n; i++) {
     const deg = n === 1 ? 270 : 150 + i * (240 / (n - 1));
     const r = (deg * Math.PI) / 180;
-    out.push({ x: cx + rx * Math.cos(r), y: cy + ry * Math.sin(r) });
+    opponents.push({ x: cx + rx * Math.cos(r), y: cy + ry * Math.sin(r) });
   }
-  return out;
+  return { hero: heroPos, opponents };
 }
 
 export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit }) {
@@ -39,7 +41,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const ordered = getOrderedPlayers(gameState.players, myId);
   const me = ordered[0];
   const opponents = ordered.slice(1);
-  const pos = oppPositions(opponents.length);
+  const { hero: heroSeatPos, opponents: pos } = seatPositions(opponents.length);
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
   const myTurn = gameState.actionPlayerId === myId && !actionDisabled;
@@ -103,6 +105,20 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               : <div key={i} className="c-empty" />;
           })}
         </div>
+      </div>
+
+      <div
+        className="player-slot player-slot--hero"
+        style={{ left: `${heroSeatPos.x}px`, top: `${heroSeatPos.y}px` }}
+      >
+        <PlayerSeat
+          player={me}
+          isMe={true}
+          isAction={gameState.actionPlayerId === myId}
+          isWinner={winnerNames.has(me.name)}
+          gamePhase={gameState.phase}
+          color={colorForId(me.id)}
+        />
       </div>
 
       {opponents.map((p, i) => {
