@@ -25,7 +25,12 @@ function getOrderedPlayers(players, myId) {
 // Hero sits at the bottom (90°); opponents fill the remaining arc evenly.
 function seatPositions(n) {
   const cx = 187.5, cy = 292, rx = 159.5, ry = 180;
-  const heroPos = { x: cx, y: cy + ry };
+  // Nudge the hero marker up off the oval's exact bottom vertex (cy + ry) so its
+  // avatar + D/SB/BB position badge clear the .hero-section block anchored below.
+  // Measured via Playwright at cy + ry: badge bottom ~494px vs hero-section top
+  // ~489px → ~4.6px overlap (badge visibly clipped behind the hole cards).
+  // -20px yields ~15px of clearance instead.
+  const heroPos = { x: cx, y: cy + ry - 20 };
   if (n === 0) return { hero: heroPos, opponents: [] };
   const opponents = [];
   for (let i = 0; i < n; i++) {
