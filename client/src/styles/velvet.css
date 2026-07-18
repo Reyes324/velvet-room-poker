@@ -190,7 +190,7 @@
 .pot-burst { animation:potBurst .7s ease-out; }
 
 /* ── ACTION BAR ───────────────────────────────────────────── */
-.action-bar { position:absolute; bottom:0; left:0; right:0; padding:8px 14px 16px; background:linear-gradient(to top,#050D06 68%,transparent); z-index:40; animation:slideUp .42s cubic-bezier(.34,1.56,.64,1) both; }
+.action-bar { position:absolute; bottom:0; left:0; right:0; padding:8px 14px 12px; background:linear-gradient(to top,#050D06 68%,transparent); z-index:40; animation:slideUp .42s cubic-bezier(.34,1.56,.64,1) both; }
 .ab-main { display:flex; gap:9px; }
 .btn { border-radius:26px; font-family:var(--font-display); font-weight:600; display:flex; align-items:center; justify-content:center; letter-spacing:1px; cursor:pointer; transition:opacity .15s; }
 .btn:active { opacity:.75; }
@@ -203,15 +203,15 @@
 .b-cancel { flex:1; background:transparent; color:#4A6E4C; border:1px solid rgba(50,80,52,.2); font-size:12px; }
 .b-allin { flex:1; background:linear-gradient(135deg,#8A2416,#C0392B); color:#F5E6A0; border:1px solid rgba(212,175,55,.5); font-size:13px; font-weight:700; }
 .b-allin:active { filter:brightness(1.15); }
-.ab-raise { display:none; flex-direction:column; gap:8px; }
+.ab-raise { display:none; flex-direction:column; gap:6px; }
 .ab-raise.open { display:flex; }
 .preset-row { display:flex; gap:6px; }
-.preset-btn { flex:1; height:30px; border-radius:15px; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.18); color:#C8B888; font-family:var(--font-mono); font-size:10px; display:flex; align-items:center; justify-content:center; letter-spacing:.2px; cursor:pointer; white-space:nowrap; transition:background .15s,border-color .15s,color .15s; }
+.preset-btn { flex:1; height:26px; border-radius:13px; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.18); color:#C8B888; font-family:var(--font-mono); font-size:10px; display:flex; align-items:center; justify-content:center; letter-spacing:.2px; cursor:pointer; white-space:nowrap; transition:background .15s,border-color .15s,color .15s; }
 .preset-btn:active { opacity:.7; }
 .preset-btn.is-picked { background:rgba(212,175,55,.22); border-color:#D4AF37; color:#F5E6A0; }
 .stepper-row { display:flex; gap:9px; align-items:center; }
-.stepper { display:flex; align-items:center; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.2); border-radius:22px; height:46px; overflow:hidden; flex:1; }
-.step-btn { width:38px; height:46px; display:flex; align-items:center; justify-content:center; font-size:22px; color:#D4AF37; cursor:pointer; }
+.stepper { display:flex; align-items:center; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.2); border-radius:21px; height:42px; overflow:hidden; flex:1; }
+.step-btn { width:38px; height:42px; display:flex; align-items:center; justify-content:center; font-size:22px; color:#D4AF37; cursor:pointer; }
 .step-val { flex:1; font-family:var(--font-amount); font-size:14px; color:var(--text-primary); text-align:center; }
 .raise-bottom { display:flex; gap:9px; }
 .waiting-text { font-family:var(--font-mono); font-size:9px; color:#203820; letter-spacing:2px; }
@@ -277,7 +277,12 @@
 .player-slot--hero .stack-chip,
 .player-slot--hero .allin-tag,
 .player-slot--hero .fold-tag { display: none; } /* 筹码/状态已经在底部大卡显示，这里只需要头像+位置徽章+行动高亮，避免信息重复 */
-.game-stage .hero-section { position:absolute; bottom:178px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; }
+/* bottom:148px, not the 178px the open raise panel used to need — the raise panel
+   (preset-row/stepper/raise-bottom) was compacted alongside this so the worst case
+   (raise panel open) still clears the hero-info pill with ~6px to spare; measured via
+   Playwright, not eyeballed. The old 178px was sized for an even taller panel and left
+   a large empty gap below the cards the rest of the time (closed bar / waiting-bar). */
+.game-stage .hero-section { position:absolute; bottom:148px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; }
 .game-stage .action-bar { position:absolute; bottom:0; left:0; right:0; z-index:40; }
 .game-stage .waiting-bar { position:absolute; bottom:0; left:0; right:0; padding:10px 14px 16px; background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
 
