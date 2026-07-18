@@ -246,19 +246,23 @@ GameState {
 
 ### 移动端设计规范：Scale-to-Fit（统一适配方案）
 
-**选择**：以 375×812（iPhone X）为标准设计画布，通过 JS 计算 scale 系数（`Math.min(vw/375, vh/712)`）自适应所有设备。
+**选择**：以 375×812（iPhone X）为标准设计画布，通过 JS 计算 scale 系数（`Math.min(vw/375, vh/812)`）自适应所有设备，`vh` 取当前实际可见视口高度（`visualViewport.height`，回退 `innerHeight`）。
 
 **规则**：
 - 游戏画布固定 375×812，所有绝对坐标相对此画布
-- `vh/712` 而非 `vh/812`：允许顶部 100px（top-bar 区域）在小屏幕上被裁切，以换取更大 scale、更好宽度利用率
+- `vh/812`（完整高度，不裁切）：scale 必须让整个 375×812 画布完全落在当前可见视口内
+- `vh` 必须用「当前实际可见」的高度，不能用 `window.screen.height`（物理屏幕高度）——地址栏/浏览器 UI 出现时 `screen.height` 仍是满屏值，比真正可见区域（`innerHeight`/`visualViewport.height`）大，会算出偏大的 scale，把画布顶部推出可见视口之外（`.stage-wrap` 是底部锚定，超出部分从顶部溢出）。单挑（1v1）时唯一的对手座位正好在椭圆桌面正上方顶点，是第一个消失在屏幕外的元素
 - `transform-origin: bottom center` + `.stage-wrap { align-items: flex-end }`：游戏从底部锚定，确保操作栏（action bar）在任何设备上始终可见
-- 适配结果：iPhone SE（375×667）有约 17px 侧边空白（可接受），现代机型（390×844+）填满屏幕
+- 同时监听 `resize`、`orientationchange`、`visualViewport.resize`，地址栏出现/隐藏时重新计算 scale
+- 适配结果：iPhone SE（375×667）有约 17px 侧边空白（可接受），现代机型（390×844+）填满屏幕；地址栏可见时画布整体等比缩小而非被裁切
 
 **背景**：早期版本存在两个根本性布局问题：
 1. `RoomPage.css` 中的旧 `.lobby { min-height:100dvh }` 与 velvet.css 的绝对定位大厅打架，导致"开始游戏"按钮被推出屏幕
 2. 移动端没有统一的适配规范，不同屏幕表现不一致
 
 **移除 RoomPage.css**：发现 `RoomPage.css` 是旧设计系统遗留的冲突文件（`.lobby-code`、`.start-btn`、`.table-view` 等已废弃 class），全部移除，Toast 样式迁入 velvet.css，统一单源架构。
+
+**踩坑记录**：中途曾改用 `window.screen.height` 替代 `innerHeight`（意图是让地址栏出现/隐藏时 scale 不跳动、避免小屏出现黑边），并同时把裁切余量从 `vh/712` 收紧为 `vh/812`。这两个改动叠加后，只要浏览器地址栏可见（`screen.height > innerHeight` 的场景，移动端打开页面的常态），scale 就会算大，画布顶部（含单挑唯一对手座位）整段推出可见视口——即用户反馈的"单挑时对手内容飘出手机屏幕"。修复：`vh` 改回读实际可见视口（`visualViewport.height` 优先，`innerHeight` 兜底），让画布等比缩小以完整容纳，而不是用偏大的物理尺寸硬算再被裁切。
 
 ---
 

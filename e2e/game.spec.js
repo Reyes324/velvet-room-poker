@@ -438,3 +438,35 @@ test.describe('S6：对手全下后自动摊牌', () => {
     await ctx2.close();
   });
 });
+
+// ─── 用户反馈：单挑时对手座位飘出屏幕（移动端地址栏可见场景） ───────────────────────
+
+test.describe('移动端缩放：单挑对手座位不应飘出可见视口', () => {
+  test('浏览器地址栏可见（screen.height > innerHeight）时，对手座位仍完全在视口内', async ({ browser }) => {
+    // 模拟移动端地址栏占用空间的常见状态：innerHeight（当前可见区域）小于
+    // screen.height（物理屏幕高度）。useStageScale 曾用 screen.height 计算
+    // scale，导致画布顶部（单挑时唯一对手座位所在处）被推出可见视口之外。
+    const ctx1 = await browser.newContext({
+      viewport: { width: 390, height: 700 },
+      screen: { width: 390, height: 844 },
+    });
+    const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    const oppBox = await p1.evaluate(() => {
+      const el = document.querySelector('.player-slot:not(.player-slot--hero)');
+      const r = el.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+    });
+    expect(oppBox.top).toBeGreaterThanOrEqual(0);
+    expect(oppBox.bottom).toBeLessThanOrEqual(700);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});

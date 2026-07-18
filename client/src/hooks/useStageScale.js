@@ -15,11 +15,13 @@ function readStagePx(varName, fallback) {
 export function useStageScale() {
   useEffect(() => {
     function update() {
+      // visualViewport.height (falling back to innerHeight) is the actually
+      // visible area right now. window.screen.height was tried here before,
+      // but it's the physical screen size — larger than the visible area
+      // whenever the browser's address bar is on-screen, which overshoots
+      // the scale and pushes the (bottom-anchored) stage's top off-screen.
       const vw = window.innerWidth;
-      // screen.height is the physical device height (stable, unaffected by Safari
-      // address-bar visibility), so the scale never shrinks when the browser chrome
-      // appears — prevents narrow black side-bars on iPhone SE / small phones.
-      const vh = window.screen?.height ?? window.innerHeight;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
       const stageW = readStagePx('--stage-w', 375);
       const stageH = readStagePx('--stage-h', 812);
       const scale = Math.min(vw / stageW, vh / stageH);
@@ -28,9 +30,11 @@ export function useStageScale() {
     update();
     window.addEventListener('resize', update);
     window.addEventListener('orientationchange', update);
+    window.visualViewport?.addEventListener('resize', update);
     return () => {
       window.removeEventListener('resize', update);
       window.removeEventListener('orientationchange', update);
+      window.visualViewport?.removeEventListener('resize', update);
     };
   }, []);
 }

@@ -94,5 +94,6 @@
 - [x] 11.9 下注气泡加"指向头像"的视觉样式
 - [x] 11.10 金额统一 Inter 字体，底池数字缩小
 - [x] 11.11 加注区新增 All-In 快捷按钮
+- [x] 11.12 单挑（1v1）时对手座位飘出屏幕：`useStageScale.js` 的 `vh` 改用 `window.screen.height` 后（11.3 引入），只要浏览器地址栏可见（`screen.height > innerHeight`），算出的 scale 就偏大，画布顶部被推出可见视口——单挑时唯一的对手座位正好在桌面顶点，首当其冲。修复：`vh` 改回读 `visualViewport.height`（回退 `innerHeight`），并监听 `visualViewport.resize`。详见 design.md「移动端设计规范」踩坑记录
 
 **已知边界情况（记录不修）**：`GameEngine` 构造函数在两人筹码都低于盲注、开局即全下的极端场景下，`actionIndex` 会变成 -1 导致牌局卡死无法自动摊牌（`GameEngine.js:68-74`）。触发概率低（需要玩家被打到个位数筹码），完整修复需要改 `Room.startGame()`/`nextRound()` 让调用方感知"构造时即结束"，改动面较大，本轮不做，需要时单独立项。
