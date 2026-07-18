@@ -16,6 +16,18 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
   const maxRaise = me.chips + me.bet;
   const amt = Math.min(maxRaise, Math.max(minRaise, amount ?? minRaise));
 
+  // Pot-fraction quick sizing: raise TO (call + a fraction of the pot as it
+  // stands), clamped into the legal [minRaise, maxRaise] range.
+  const potPresets = [
+    { label: '1/3 池', frac: 1 / 3 },
+    { label: '2/3 池', frac: 2 / 3 },
+    { label: '满池', frac: 1 },
+    { label: '2倍超池', frac: 2 },
+  ].map(p => ({
+    ...p,
+    value: Math.min(maxRaise, Math.max(minRaise, me.bet + toCall + Math.round(gameState.pot * p.frac))),
+  }));
+
   function openRaise() { setAmount(minRaise); setOpen(true); }
   function adj(d) { setAmount(a => Math.min(maxRaise, Math.max(minRaise, (a ?? minRaise) + d))); }
   function act(action, val) { onAction(action, val); setOpen(false); setAmount(null); }
@@ -32,6 +44,17 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
         </div>
       ) : (
         <div className="ab-raise open">
+          <div className="preset-row">
+            {potPresets.map(p => (
+              <div
+                key={p.label}
+                className={`preset-btn${amt === p.value ? ' is-picked' : ''}`}
+                onClick={() => setAmount(p.value)}
+              >
+                {p.label}
+              </div>
+            ))}
+          </div>
           <div className="stepper-row">
             <div className="stepper">
               <div className="step-btn" onClick={() => adj(-step)}>−</div>

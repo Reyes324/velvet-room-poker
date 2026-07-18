@@ -23,20 +23,25 @@ function getOrderedPlayers(players, myId) {
 
 // Seat centers on the preview oval (center 187.5,292; rx 159.5, ry 180).
 // Hero sits at the bottom (90°); opponents fill the remaining arc evenly.
+// Opponents never sit higher than MIN_OPPONENT_Y (keeps the showdown card
+// reveal, which renders above the avatar, clear of the top-bar — hit
+// whenever a seat lands near the oval's exact top vertex: always true for
+// heads-up's lone opponent, and for one seat at a 9-player table too).
+const MIN_OPPONENT_Y = 145;
 function seatPositions(n) {
   const cx = 187.5, cy = 292, rx = 159.5, ry = 180;
   // Nudge the hero marker up off the oval's exact bottom vertex (cy + ry) so its
   // avatar + D/SB/BB position badge clear the .hero-section block anchored below.
-  // Measured via Playwright at cy + ry: badge bottom ~494px vs hero-section top
-  // ~489px → ~4.6px overlap (badge visibly clipped behind the hole cards).
-  // -20px yields ~15px of clearance instead.
-  const heroPos = { x: cx, y: cy + ry - 20 };
+  // Measured via Playwright: -20px left only ~15px of clearance, which the
+  // is-active glow (up to ~48px blur at its pulse peak) visually bled through,
+  // reading as the hole cards "blocking" the avatar. -45px gives ~40px instead.
+  const heroPos = { x: cx, y: cy + ry - 45 };
   if (n === 0) return { hero: heroPos, opponents: [] };
   const opponents = [];
   for (let i = 0; i < n; i++) {
     const deg = n === 1 ? 270 : 150 + i * (240 / (n - 1));
     const r = (deg * Math.PI) / 180;
-    opponents.push({ x: cx + rx * Math.cos(r), y: cy + ry * Math.sin(r) });
+    opponents.push({ x: cx + rx * Math.cos(r), y: Math.max(cy + ry * Math.sin(r), MIN_OPPONENT_Y) });
   }
   return { hero: heroPos, opponents };
 }
@@ -69,6 +74,43 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     prevCardCountRef.current = cardCount;
     prevShowdownRef.current = showdown;
   }, [gameState.phase, cardCount, showdown]);
+
+  // ── Action feedback bubbles ── whoever held actionPlayerId last render just
+  // acted; diff their bet/status against the previous snapshot to say what they
+  // did, and pop a fading bubble from their seat for a couple seconds.
+  const prevActionSnapshotRef = useRef(null);
+  const [actionBubbles, setActionBubbles] = useState({});
+
+  useEffect(() => {
+    const prevSnap = prevActionSnapshotRef.current;
+    if (prevSnap && prevSnap.actionPlayerId && prevSnap.actionPlayerId !== gameState.actionPlayerId) {
+      const actorId = prevSnap.actionPlayerId;
+      const prevP = prevSnap.players.find(p => p.id === actorId);
+      const currP = gameState.players.find(p => p.id === actorId);
+      if (prevP && currP) {
+        let text = null;
+        if (currP.status === 'folded' && prevP.status !== 'folded') text = '弃牌';
+        else if (currP.status === 'allin' && prevP.status !== 'allin') text = 'ALL IN';
+        else if (currP.bet > prevP.bet) {
+          text = currP.bet > prevSnap.currentBet
+            ? `加注 ¥${currP.bet.toLocaleString()}`
+            : `跟注 ¥${(currP.bet - prevP.bet).toLocaleString()}`;
+        } else {
+          text = '过牌';
+        }
+        const key = Date.now();
+        setActionBubbles(b => ({ ...b, [actorId]: { text, key } }));
+        setTimeout(() => {
+          setActionBubbles(b => (b[actorId]?.key === key ? { ...b, [actorId]: undefined } : b));
+        }, 1650);
+      }
+    }
+    prevActionSnapshotRef.current = {
+      actionPlayerId: gameState.actionPlayerId,
+      currentBet: gameState.currentBet,
+      players: gameState.players.map(p => ({ id: p.id, bet: p.bet, status: p.status })),
+    };
+  }, [gameState]);
 
   return (
     <div className={`game-stage${dense ? ' game-stage--dense' : ''}`}>
@@ -123,6 +165,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           isWinner={winnerNames.has(me.name)}
           gamePhase={gameState.phase}
           color={colorForId(me.id)}
+          bubble={actionBubbles[me.id]}
         />
       </div>
 
@@ -144,6 +187,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               isWinner={winnerNames.has(p.name)}
               gamePhase={gameState.phase}
               color={colorForId(p.id)}
+              bubble={actionBubbles[p.id]}
             />
             {p.bet > 0 && <div className="bet-chip" style={betStyle}>¥{p.bet.toLocaleString()}</div>}
           </div>

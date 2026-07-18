@@ -97,3 +97,12 @@
 - [x] 11.12 单挑（1v1）时对手座位飘出屏幕：`useStageScale.js` 的 `vh` 改用 `window.screen.height` 后（11.3 引入），只要浏览器地址栏可见（`screen.height > innerHeight`），算出的 scale 就偏大，画布顶部被推出可见视口——单挑时唯一的对手座位正好在桌面顶点，首当其冲。修复：`vh` 改回读 `visualViewport.height`（回退 `innerHeight`），并监听 `visualViewport.resize`。详见 design.md「移动端设计规范」踩坑记录
 
 **已知边界情况（记录不修）**：`GameEngine` 构造函数在两人筹码都低于盲注、开局即全下的极端场景下，`actionIndex` 会变成 -1 导致牌局卡死无法自动摊牌（`GameEngine.js:68-74`）。触发概率低（需要玩家被打到个位数筹码），完整修复需要改 `Room.startGame()`/`nextRound()` 让调用方感知"构造时即结束"，改动面较大，本轮不做，需要时单独立项。
+
+## 12. 用户实测反馈修复（第二轮，2026-07-18）
+
+- [x] 12.1 英雄手牌离自己头像太近，行动高亮发光动画视觉上"糊"到牌上：`GameTable.jsx` 座位上移量 `-20`→`-45`，间距 ~15px→~40px
+- [x] 12.2 对手座位新增 `MIN_OPPONENT_Y` 下限，避免摊牌揭牌区域跟顶部状态栏重叠（单挑时唯一对手座位、9 人桌顶点座位都受影响）
+- [x] 12.3 加注面板新增「1/3 池」「2/3 池」「满池」「2倍超池」快捷预设按钮（`ActionBar.jsx`）
+- [x] 12.4 行动方头像新增双圈雷达 ping 动画，叠加在原有脉冲发光之上（`.seat.is-active::before/::after`）
+- [x] 12.5 新增行动反馈气泡：对手行动后从头像上方弹出"过牌/跟注 ¥X/加注 ¥X/弃牌/ALL IN"提示，1.6s 后淡出（纯前端状态推断，无需服务端新增事件）
+- [x] 12.6 摊牌全员亮牌：确认服务端/客户端链路本来就通（`getStateForPlayer` 在 showdown 阶段下发全员 holeCards，`PlayerSeat` 已渲染 `.reveal`），此前"看不到"是 12.2 的座位重叠问题，随之修复，无需额外改动

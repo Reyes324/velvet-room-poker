@@ -3,7 +3,7 @@
 // Bet chip is rendered by RoomPage (owns toward-center offset). Opponent cards reveal only at showdown.
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0 }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -30,6 +30,8 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         : allin
           ? <div className="allin-tag">ALL IN</div>
           : <div className="stack-chip">¥{player.chips.toLocaleString()}</div>}
+
+      {bubble && <div key={bubble.key} className="action-bubble">{bubble.text}</div>}
 
       {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && (
         <div className="reveal" style={{ position: 'absolute', bottom: 'calc(100% + 4px)', left: '50%', transform: 'translateX(-50%)' }}>
