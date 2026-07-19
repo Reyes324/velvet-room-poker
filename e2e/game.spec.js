@@ -457,6 +457,7 @@ test.describe('移动端缩放：单挑对手座位不应飘出可见视口', ()
     const code = await createRoom(p1, 'Alice');
     await joinRoom(p2, 'Bob', code);
     await startGame(p1);
+    await p1.locator('.player-slot:not(.player-slot--hero)').waitFor({ state: 'attached' });
 
     const oppBox = await p1.evaluate(() => {
       const el = document.querySelector('.player-slot:not(.player-slot--hero)');

@@ -1,9 +1,11 @@
 // Rail seat: avatar + unified position badge + platinum stack (styled by shared velvet.css).
 // Emits the approved preview's classes (.seat/.avatar/.av-*/.pos-badge/.stack-chip/.reveal).
 // Bet chip is rendered by RoomPage (owns toward-center offset). Opponent cards reveal only at showdown.
+import Card from './Card';
+
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, dealing = false, dealDelays }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -32,6 +34,13 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           : <div className="stack-chip">¥{player.chips.toLocaleString()}</div>}
 
       {bubble && <div key={bubble.key} className="action-bubble">{bubble.text}</div>}
+
+      {dealing && !isMe && !folded && (
+        <div className="reveal" style={{ position: 'absolute', bottom: 'calc(100% + 4px)', left: '50%', transform: 'translateX(-50%)' }}>
+          <Card size="xs" faceDown animate="card-deal" delay={dealDelays?.[0] ?? 0} />
+          <Card size="xs" faceDown animate="card-deal" delay={dealDelays?.[1] ?? 0} />
+        </div>
+      )}
 
       {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && (
         <div className="reveal" style={{ position: 'absolute', bottom: 'calc(100% + 4px)', left: '50%', transform: 'translateX(-50%)' }}>

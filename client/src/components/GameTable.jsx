@@ -21,15 +21,30 @@ function getOrderedPlayers(players, myId) {
   return [...players.slice(idx), ...players.slice(0, idx)];
 }
 
-// Seat centers on the preview oval (center 187.5,292; rx 159.5, ry 180).
-// Hero sits at the bottom (90°); opponents fill the remaining arc evenly.
+// Real deal order: starts at the small blind, goes round the table once per
+// hole card (2 rounds for hold'em) — matches how an actual dealer deals.
+function sbFirstOrder(players) {
+  const sbIdx = players.findIndex(p => p.isSB);
+  const start = sbIdx === -1 ? 0 : sbIdx;
+  return [...players.slice(start), ...players.slice(0, start)];
+}
+
+const DEAL_STEP = 0.07; // seconds between each card landing
+const DEAL_CARD_DURATION = 0.35; // matches .card-deal's animation-duration
+
+// Seat centers sit exactly on the table-oval's rail (center 187.5,285; rx
+// 169.5, ry 195 — must match .table-oval's box in velvet.css exactly: top
+// 90/height 390/left+right 18 around the 375-wide stage). Hero sits at the
+// bottom (90°); opponents fill the remaining arc evenly around the same rail.
 // Opponents never sit higher than MIN_OPPONENT_Y (keeps the showdown card
 // reveal, which renders above the avatar, clear of the top-bar — hit
 // whenever a seat lands near the oval's exact top vertex: always true for
-// heads-up's lone opponent, and for one seat at a 9-player table too).
+// heads-up's lone opponent, and for one seat at a 9-player table too). This
+// is the one place seats DON'T land exactly on the rail — the top-bar leaves
+// no room for it there, no matter how the oval is sized.
 const MIN_OPPONENT_Y = 145;
 function seatPositions(n) {
-  const cx = 187.5, cy = 292, rx = 159.5, ry = 180;
+  const cx = 187.5, cy = 285, rx = 169.5, ry = 195;
   // Nudge the hero marker up off the oval's exact bottom vertex (cy + ry) so its
   // avatar + D/SB/BB position badge clear the .hero-section block anchored below.
   // Measured via Playwright: -20px left only ~15px of clearance, which the
@@ -58,14 +73,16 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const dense = opponents.length + 1 >= 7;
 
   // ── Animation refs (track prev state to compute what's newly visible) ──────
-  // prevPhaseRef starts null so justDealt fires exactly on first mount (game start)
+  // prevPhaseRef starts null so justDealt also fires on first mount; the "!== preflop"
+  // check (rather than "=== null") makes it fire on every hand, not just the first —
+  // any transition INTO preflop (from showdown, or from nothing) is a fresh deal.
   const prevPhaseRef = useRef(null);
   // prevCardCountRef starts at current length to skip flip-reveal on reconnect
   const prevCardCountRef = useRef(gameState.communityCards.length);
   const prevShowdownRef = useRef(null);
 
   const cardCount = gameState.communityCards.length;
-  const justDealt = prevPhaseRef.current === null && gameState.phase === 'preflop';
+  const justDealt = prevPhaseRef.current !== 'preflop' && gameState.phase === 'preflop';
   const newCardFrom = prevCardCountRef.current; // indices >= this are newly revealed
   const justShowdown = !prevShowdownRef.current && showdown && showdown.length > 0;
 
@@ -74,6 +91,34 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     prevCardCountRef.current = cardCount;
     prevShowdownRef.current = showdown;
   }, [gameState.phase, cardCount, showdown]);
+
+  // ── Hole-card deal sequence: SB-first round-robin stagger, hero flips
+  // face-up only once every player's two cards have finished landing. ──────
+  const dealOrder = sbFirstOrder(gameState.players);
+  const dealDelayFor = (playerId, cardIdx) => {
+    const idx = dealOrder.findIndex(p => p.id === playerId);
+    return (cardIdx * dealOrder.length + (idx === -1 ? 0 : idx)) * DEAL_STEP;
+  };
+  const totalDealTime = (dealOrder.length * 2 - 1) * DEAL_STEP + DEAL_CARD_DURATION;
+
+  const [heroRevealed, setHeroRevealed] = useState(true);
+  const prevHeroRevealedRef = useRef(true);
+  const justRevealed = !prevHeroRevealedRef.current && heroRevealed;
+  useEffect(() => { prevHeroRevealedRef.current = heroRevealed; }, [heroRevealed]);
+
+  useEffect(() => {
+    // Depend on gameState.phase itself (not justDealt): justDealt is a one-render
+    // pulse that reverts to false on the very next render (as soon as
+    // prevPhaseRef catches up), which would immediately cancel this effect's
+    // cleanup and clear the timeout before it ever fires. gameState.phase stays
+    // 'preflop' across every render of the whole preflop betting round, so this
+    // only re-runs on the actual transition into preflop, exactly once per hand.
+    if (gameState.phase !== 'preflop') return;
+    setHeroRevealed(false);
+    const t = setTimeout(() => setHeroRevealed(true), (totalDealTime + 0.15) * 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState.phase]);
 
   // ── Action feedback bubbles ── whoever held actionPlayerId last render just
   // acted; diff their bet/status against the previous snapshot to say what they
@@ -188,6 +233,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               gamePhase={gameState.phase}
               color={colorForId(p.id)}
               bubble={actionBubbles[p.id]}
+              dealing={!heroRevealed}
+              dealDelays={[dealDelayFor(p.id, 0), dealDelayFor(p.id, 1)]}
             />
             {p.bet > 0 && <div className="bet-chip" style={betStyle}>¥{p.bet.toLocaleString()}</div>}
           </div>
@@ -197,15 +244,25 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       <div className="hero-section">
         <div className="hero-cards">
           {me.holeCards?.length === 2
-            ? me.holeCards.map((c, i) => (
-                <Card
-                  key={i}
-                  card={c}
-                  size="md"
-                  animate={justDealt ? 'deal-in' : null}
-                  delay={justDealt ? opponents.length * 0.1 + 0.15 + i * 0.1 : 0}
-                />
-              ))
+            ? (heroRevealed
+                ? me.holeCards.map((c, i) => (
+                    <Card
+                      key={`face-${i}`}
+                      card={c}
+                      size="md"
+                      animate={justRevealed ? 'flip-reveal' : null}
+                      delay={justRevealed ? i * 0.1 : 0}
+                    />
+                  ))
+                : me.holeCards.map((_, i) => (
+                    <Card
+                      key={`back-${i}`}
+                      size="md"
+                      faceDown
+                      animate={justDealt ? 'card-deal' : null}
+                      delay={justDealt ? dealDelayFor(myId, i) : 0}
+                    />
+                  )))
             : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]}
         </div>
         <div className="hero-info">

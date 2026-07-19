@@ -184,9 +184,14 @@
   0%,100% { filter:brightness(1); }
   40%     { filter:brightness(1.6) drop-shadow(0 0 20px rgba(212,175,55,.9)); }
 }
+@keyframes cardDeal {
+  from { opacity:0; transform:scale(.4) translateY(-10px); }
+  to   { opacity:1; transform:scale(1) translateY(0); }
+}
 /* Utility classes — applied dynamically in GameTable/ActionBar */
 .deal-in { animation:dealFly .5s cubic-bezier(.2,1,.4,1) both; animation-delay:var(--d,0s); }
 .flip-reveal { animation:flipIn .52s cubic-bezier(.25,.46,.45,.94) both; animation-delay:var(--d,0s); }
+.card-deal { animation:cardDeal .35s cubic-bezier(.2,1,.4,1) both; animation-delay:var(--d,0s); }
 .pot-burst { animation:potBurst .7s ease-out; }
 
 /* ── ACTION BAR ───────────────────────────────────────────── */
@@ -270,7 +275,9 @@
 /* ── GAME LAYOUT (preview's fixed 375×812 phone; centered on desktop) ─────── */
 .game-stage { position:relative; width:var(--stage-w); height:var(--stage-h); margin:0 auto; overflow:hidden; background:#08120A; }
 .game-stage .top-bar { position:absolute; top:36px; left:14px; right:14px; height:40px; display:flex; justify-content:space-between; align-items:center; z-index:10; }
-.game-stage .table-oval { position:absolute; top:108px; left:28px; right:28px; height:368px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
+/* Must match GameTable.jsx's seatPositions() ellipse exactly (cx 187.5, cy 285,
+   rx 169.5, ry 195) so opponent avatars land precisely on this rail. */
+.game-stage .table-oval { position:absolute; top:90px; left:18px; right:18px; height:390px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
 .game-stage .player-slot { position:absolute; transform:translate(-50%,-50%); z-index:5; }
 .game-stage .player-slot .bet-chip { position:absolute; top:50%; left:50%; z-index:6; }
 .player-slot--hero { z-index: 4; }
