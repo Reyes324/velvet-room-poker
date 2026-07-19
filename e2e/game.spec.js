@@ -583,3 +583,55 @@ test.describe('发牌动画：公共牌先扣着发下来，到点再翻', () =>
     await ctx2.close();
   });
 });
+
+// ─── 座位布局：两栏贴边分布，取代椭圆弧形 ──────────────────────────────────────────
+
+test.describe('座位布局：两栏贴边', () => {
+  test('对手座位分两栏贴边分布，不再是椭圆弧形', async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const code = await createRoom(page, '房主');
+
+    // 3 synthetic opponents as raw sockets in the host's own page context —
+    // see the Step 1 note above for why not 3 more real Playwright pages.
+    await page.addScriptTag({ url: '/socket.io/socket.io.js' });
+    await page.evaluate(async (roomCode) => {
+      for (const name of ['p1', 'p2', 'p3']) {
+        const s = window.io();
+        await new Promise(resolve => s.on('connect', resolve));
+        s.emit('room:join', { code: roomCode, playerId: name, playerName: name });
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }, code);
+
+    await startGame(page);
+    // Deal-in animation staggers each opponent slot's mount; wait for the
+    // 3rd (last) one to attach before reading bounding boxes, or the $$eval
+    // below can race the render and see fewer than 3 slots.
+    await page.locator('.player-slot:not(.player-slot--hero)').nth(2).waitFor({ state: 'attached' });
+    // Each seat's .deal-in fly-in animation (dealFly, see velvet.css) starts
+    // from a small offset and settles at its true left/top over up to ~0.7s
+    // (0.2s stagger delay + 0.5s duration for the last opponent) — read the
+    // bounding box only after every seat has fully settled, or this flakes
+    // depending on how much real time elapsed before this point.
+    await page.waitForTimeout(900);
+
+    const seatBoxes = await page.$$eval('.player-slot:not(.player-slot--hero)', els =>
+      els.map(el => {
+        const r = el.getBoundingClientRect();
+        return { centerX: (r.left + r.right) / 2 };
+      })
+    );
+
+    expect(seatBoxes.length).toBe(3);
+    const viewportWidth = page.viewportSize().width;
+    // Column layout: every opponent seat's center must sit in the left third
+    // or right third of the viewport — nothing should land near the horizontal
+    // center (that band is reserved for pot/community cards).
+    for (const box of seatBoxes) {
+      const inLeftBand = box.centerX < viewportWidth * 0.35;
+      const inRightBand = box.centerX > viewportWidth * 0.65;
+      expect(inLeftBand || inRightBand).toBe(true);
+    }
+  });
+});

@@ -59,60 +59,55 @@ const DEAL_STEP = 0.07; // seconds between each card landing
 const DEAL_CARD_DURATION = 0.35; // matches .card-deal's animation-duration
 const COMMUNITY_COUNT = 5; // flop(3) + turn(1) + river(1), all dealt face-down up front
 
-// Seat centers sit exactly on the table-oval's rail (center 187.5,215; rx
-// 169.5, ry 195 — must match .table-canvas .table-oval's box in velvet.css
-// exactly: top 20/height 390/left+right 18 within the TABLE_REF_W-wide
-// canvas). Hero sits at the bottom (90°); opponents fill the remaining arc
-// evenly around the same rail, every one of them exactly on the boundary —
-// no exceptions, no inset.
-//
-// The showdown reveal / deal-in cards normally render ABOVE a seat, which
-// would get clipped by .table-zone's own top edge for any seat landing near
-// the oval's exact top vertex (always true for heads-up's lone opponent;
-// also true for one seat on a 9-max table) — there's no top-bar to protect
-// against anymore (it's outside the canvas entirely), just the canvas's own
-// bounds. Below this Y, PlayerSeat renders those cards to the SIDE instead —
-// the avatar itself still sits precisely on the rail.
-const CARDS_SIDE_BELOW_Y = 70;
+// Column layout constants — reference canvas is TABLE_REF_W×TABLE_REF_H
+// (375×610). Two vertical columns hug the left/right edges; the vertical
+// strip between them stays clear for the pot/community-card zone. Seats
+// fill alternating left/right by array order (opponents[0]→left row 0,
+// opponents[1]→right row 0, opponents[2]→left row 1, …) so turn order still
+// reads as a simple top-to-bottom zigzag instead of jumping across columns.
+const COL_LEFT_X = 40;
+const COL_RIGHT_X = 335;
+const COL_TOP_Y = 46;
+const COL_ROW_PITCH = 76;
+// A seat whose card would render its above-avatar reveal cards / action
+// bubble off the top of the canvas (row 0 of either column, closest to
+// COL_TOP_Y) renders them to its own outward side instead — same purpose as
+// the old CARDS_SIDE_BELOW_Y threshold under the oval, recomputed for the
+// new column geometry.
+const CARDS_SIDE_BELOW_Y = COL_TOP_Y + COL_ROW_PITCH / 2;
+
 function seatPositions(n) {
-  // ry is 180, not the box-matching 195, on purpose: at ry=195 the topmost
-  // opponent's seat center sits at cy-ry=20, exactly the table-oval's own
-  // top offset — which is *also* almost exactly the avatar's own radius, so
-  // its unscaled top edge lands within a hair of canvas y=0 with zero spare
-  // margin. Any rounding/border/badge pixel pushes it past table-zone's
-  // overflow:hidden edge and clips it. Trimming ry by 15 moves the vertex
-  // down to y=35, buying ~15px of real headroom above the avatar's own
-  // radius — table-oval's CSS box (top/height) is trimmed to match.
-  const cx = 187.5, cy = 215, rx = 169.5, ry = 180;
-  // Hero sits exactly on the oval's bottom vertex, same as every opponent seat
-  // sits exactly on the rail. This used to need a -45px nudge to clear
-  // .hero-section below it (smaller cards + a lower hero-section since then
-  // freed up enough room — measured ~74px of clearance at the old -45 nudge,
-  // i.e. ~29px left even fully undoing it — comfortably safe now).
-  const heroPos = { x: cx, y: cy + ry };
+  const heroPos = { x: 187.5, y: 585 };
   if (n === 0) return { hero: heroPos, opponents: [] };
   const opponents = [];
+  let leftRow = 0, rightRow = 0;
   for (let i = 0; i < n; i++) {
-    const deg = n === 1 ? 270 : 150 + i * (240 / (n - 1));
-    const r = (deg * Math.PI) / 180;
-    opponents.push({ x: cx + rx * Math.cos(r), y: cy + ry * Math.sin(r) });
+    if (i % 2 === 0) {
+      opponents.push({ x: COL_LEFT_X, y: COL_TOP_Y + leftRow * COL_ROW_PITCH, side: 'left' });
+      leftRow++;
+    } else {
+      opponents.push({ x: COL_RIGHT_X, y: COL_TOP_Y + rightRow * COL_ROW_PITCH, side: 'right' });
+      rightRow++;
+    }
   }
   return { hero: heroPos, opponents };
 }
 
-// Spectator variant: there's no hero seat to anchor from (a mid-game joiner
-// waiting for the next hand, or a busted player who's been excluded from
-// this one), so every player in gameState.players gets distributed evenly
-// around the FULL ellipse instead of hero-at-bottom + a 240° arc for the
-// rest. Same rail (cx/cy/rx/ry) as seatPositions(), just no reserved vertex.
+// Spectator variant: no hero seat to anchor from, so every player in
+// gameState.players fills the same two columns from the top — no reserved
+// bottom slot.
 function spectatorSeatPositions(n) {
-  const cx = 187.5, cy = 215, rx = 169.5, ry = 180;
   if (n === 0) return [];
   const seats = [];
+  let leftRow = 0, rightRow = 0;
   for (let i = 0; i < n; i++) {
-    const deg = -90 + i * (360 / n);
-    const r = (deg * Math.PI) / 180;
-    seats.push({ x: cx + rx * Math.cos(r), y: cy + ry * Math.sin(r) });
+    if (i % 2 === 0) {
+      seats.push({ x: COL_LEFT_X, y: COL_TOP_Y + leftRow * COL_ROW_PITCH, side: 'left' });
+      leftRow++;
+    } else {
+      seats.push({ x: COL_RIGHT_X, y: COL_TOP_Y + rightRow * COL_ROW_PITCH, side: 'right' });
+      rightRow++;
+    }
   }
   return seats;
 }
@@ -144,7 +139,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     : { hero: null, opponents: spectatorSeatPositions(opponents.length) };
   // Same "toward the pot center" bet-chip fly-in direction as the opponents.map loop
   // below, just for the hero's fixed bottom-vertex seat.
-  const heroBetStyle = heroSeatPos && betChipStyle(187.5 - heroSeatPos.x, 215 - heroSeatPos.y);
+  const heroBetStyle = heroSeatPos && betChipStyle(0, 187.5 - heroSeatPos.y); // straight up, toward the pot
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled;
@@ -342,13 +337,15 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
       {opponents.map((p, i) => {
         const s = pos[i];
-        // 187.5, 215: table-oval's true center (must match seatPositions' cx/cy) —
-        // this is the "toward the pot" direction for the bet-chip fly-in, not hero's seat.
-        const betStyle = betChipStyle(187.5 - s.x, 215 - s.y);
+        // Column layout: always fly straight toward the center strip (x=187.5),
+        // never vertically — the center strip is where the pot/community cards
+        // live, directly between the two columns at every row.
+        const betStyle = betChipStyle(187.5 - s.x, 0);
         const dealDelay = i * 0.1;
-        // Seats too close to the table-zone's own top edge render their cards to the side instead
-        // of above (toward whichever side has more room) — see CARDS_SIDE_BELOW_Y.
-        const cardsSide = s.y < CARDS_SIDE_BELOW_Y ? (s.x <= 187.5 ? 'right' : 'left') : null;
+        // Only the topmost row of each column pushes its reveal cards to the
+        // side (toward its own column's outward edge, away from the center
+        // strip) to avoid clipping the canvas's top edge.
+        const cardsSide = s.y < CARDS_SIDE_BELOW_Y ? (s.side === 'left' ? 'left' : 'right') : null;
         return (
           <div
             key={p.id}
