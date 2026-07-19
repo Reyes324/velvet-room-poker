@@ -20,6 +20,7 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
   // stands), clamped into the legal [minRaise, maxRaise] range.
   const potPresets = [
     { label: '1/3 池', frac: 1 / 3 },
+    { label: '半池', frac: 1 / 2 },
     { label: '2/3 池', frac: 2 / 3 },
     { label: '满池', frac: 1 },
     { label: '2倍超池', frac: 2 },

@@ -201,12 +201,12 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                 <Card
                   key={i}
                   card={c}
-                  size="lg"
+                  size="md"
                   animate={justDealt ? 'deal-in' : null}
                   delay={justDealt ? opponents.length * 0.1 + 0.15 + i * 0.1 : 0}
                 />
               ))
-            : [<Card key={0} size="lg" faceDown />, <Card key={1} size="lg" faceDown />]}
+            : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]}
         </div>
         <div className="hero-info">
           <div className="hero-name">{me.name}（我）</div>
