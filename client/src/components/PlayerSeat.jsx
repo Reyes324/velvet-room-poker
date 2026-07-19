@@ -3,6 +3,7 @@
 // Bet chip is rendered by RoomPage (owns toward-center offset). Opponents show two
 // face-down cards for the whole hand once dealt; their faces only reveal at showdown.
 import Card from './Card';
+import { useThinkSeconds } from '../hooks/useThinkSeconds';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
@@ -33,6 +34,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   const allin = player.status === 'allin';
   const badge = player.isDealer ? '庄家' : player.isSB ? '小盲' : player.isBB ? '大盲' : null;
   const avClass = isMe ? 'av-gold' : AV[color % AV.length];
+  const thinkSeconds = useThinkSeconds(isAction);
 
   const seatClass = [
     'seat',
@@ -49,6 +51,9 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         <div className="avatar-photo">
           {player.name[0].toUpperCase()}
           {badge && <span className="pos-badge">{badge}</span>}
+          {isAction && (
+            <div className="think-overlay">{thinkSeconds}s</div>
+          )}
         </div>
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
       </div>

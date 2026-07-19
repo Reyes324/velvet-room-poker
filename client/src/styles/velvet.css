@@ -121,6 +121,11 @@
   font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--text-primary);
   position:relative; border-radius:8px 8px 0 0;
 }
+.think-overlay {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(4,10,6,.55); color:#F5E6A0; font-family:var(--font-mono);
+  font-size:11px; font-weight:700; border-radius:8px 8px 0 0;
+}
 .av-green  .avatar-photo { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
 .av-purple .avatar-photo { background:radial-gradient(circle at 38% 35%, #4A228A, #1E0855); }
 .av-teal   .avatar-photo { background:radial-gradient(circle at 38% 35%, #0E6060, #042E2E); }
