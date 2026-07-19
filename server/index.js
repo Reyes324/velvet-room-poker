@@ -12,10 +12,6 @@ function createServer() {
   });
 
   const rooms = new RoomManager();
-  // Fallback-timer handles for rooms currently awaiting settlement acks,
-  // keyed by room code. Pure transport/timing plumbing — the actual
-  // ready-tracking data lives on the Room itself (room.settlementWait).
-  const settlementFallbacks = new Map();
   // Grace-period timers for lobby (pre-game) disconnects, keyed by playerId.
   // A disconnect while just sitting in the lobby is very often transient —
   // backgrounding the tab to paste the invite link into a messaging app,
@@ -47,14 +43,12 @@ function createServer() {
   }
 
   // Advances a room past its post-showdown settlement wait: clears the
-  // fallback timer, clears the room's ready-tracking state, and moves the
-  // game on. This is the single place that does so — every trigger (all
-  // acks in, a departing player unblocking the rest, or the 15s fallback)
-  // funnels through here, so the timer and the room's settlementWait state
-  // can never end up out of sync.
+  // room's ready-tracking state and moves the game on. This is the single
+  // place that does so — either trigger (all acks in, or a departing player
+  // unblocking everyone still left) funnels through here. No fallback timer
+  // — the room waits for every seated player to actually click "我知道了"
+  // before the next hand deals, full stop.
   function advanceRoom(room) {
-    clearTimeout(settlementFallbacks.get(room.code));
-    settlementFallbacks.delete(room.code);
     room.clearSettlementWait();
     const nr = room.nextRound();
     if (nr.ended) io.to(room.code).emit('game:ended', nr);
@@ -73,7 +67,6 @@ function createServer() {
       });
 
       room.beginSettlementWait();
-      settlementFallbacks.set(room.code, setTimeout(() => advanceRoom(room), 15000));
     }
   }
 
@@ -186,6 +179,7 @@ function createServer() {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room?.isAwaitingSettlementAck()) return;
       if (room.ackReady(playerId)) advanceRoom(room);
+      else io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
     });
 
     socket.on('disconnect', () => {
@@ -197,6 +191,7 @@ function createServer() {
       }
       if (room?.isAwaitingSettlementAck()) {
         if (room.dropFromSettlementWait(myPlayerId)) advanceRoom(room);
+        else io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
       }
 
       if (room && room.status === 'waiting') {

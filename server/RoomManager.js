@@ -138,6 +138,15 @@ class Room {
     this.settlementWait = null;
   }
 
+  // Real per-player ack progress for the settlement modal's "等待其他人确认
+  // (X/Y)" — was previously faked client-side as "am I ready: 1 or 0", which
+  // never reflected who else had actually acked.
+  getSettlementProgress() {
+    if (!this.settlementWait) return null;
+    const { eligiblePlayerIds, readyPlayerIds } = this.settlementWait;
+    return { readyCount: readyPlayerIds.size, totalCount: eligiblePlayerIds.size };
+  }
+
   _allSettlementAcksIn() {
     const { eligiblePlayerIds, readyPlayerIds } = this.settlementWait;
     return [...eligiblePlayerIds].every((id) => readyPlayerIds.has(id));

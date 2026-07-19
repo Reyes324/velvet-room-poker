@@ -15,6 +15,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [copied, setCopied] = useState(false);
   const [actionDisabled, setActionDisabled] = useState(false);
   const [iAmReady, setIAmReady] = useState(false);
+  const [settlementProgress, setSettlementProgress] = useState(null);
   const [showBustModal, setShowBustModal] = useState(false);
   const [showLedger, setShowLedger] = useState(false);
 
@@ -30,17 +31,23 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setShowdown(null);
       setSettlement(null);
       setIAmReady(false);
+      setSettlementProgress(null);
       setActionDisabled(false);
     },
     'game:showdown': ({ winners, pot, settle }) => {
       setShowdown(winners);
       setSettlement({ winners, pot, settle });
+      // Real per-player ack count arrives via game:settlement-progress; this is
+      // just a reasonable first paint before that first event lands.
+      setSettlementProgress({ readyCount: 0, totalCount: (roomState?.players ?? []).length });
     },
+    'game:settlement-progress': (progress) => setSettlementProgress(progress),
     'game:ended': ({ reason }) => {
       showToast(reason ?? '游戏结束', 'info');
       setGameState(null);
       setSettlement(null);
       setIAmReady(false);
+      setSettlementProgress(null);
     },
     'room:kicked': () => {
       showToast('你已被房主移出房间', 'danger');
@@ -176,8 +183,8 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           settle={(settlement.settle ?? []).map(s => ({ ...s }))}
           myId={playerId}
           iAmReady={iAmReady}
-          readyCount={iAmReady ? 1 : 0}
-          totalCount={(roomState?.players ?? []).length}
+          readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
+          totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
           onReady={handleReady}
         />
       )}

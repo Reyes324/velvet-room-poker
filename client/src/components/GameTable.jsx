@@ -24,6 +24,23 @@ function colorForId(id) {
   return h;
 }
 
+const BET_CHIP_OFFSET = 40; // px toward the pot, from the seat center — was 65, tightened so the tail visibly reaches back to the avatar
+
+// The bet-chip is offset from its seat toward the pot center by (dx,dy). Its
+// little speech-bubble tail must point the opposite way — back at the seat it
+// came from — for every seat around the oval, not just hero's (whose seat
+// happens to sit at the bottom, the one position where "tail points straight
+// down" was already correct by coincidence). --tail-deg rotates the tail
+// (drawn pointing down by default) to match; see .bet-chip::after in velvet.css.
+function betChipStyle(dx, dy) {
+  const len = Math.hypot(dx, dy) || 1;
+  const tailDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
+  return {
+    transform: `translate(calc(-50% + ${(dx / len) * BET_CHIP_OFFSET}px), calc(-50% + ${(dy / len) * BET_CHIP_OFFSET}px))`,
+    '--tail-deg': `${tailDeg}deg`,
+  };
+}
+
 function getOrderedPlayers(players, myId) {
   const idx = players.findIndex(p => p.id === myId);
   if (idx === -1) return players;
@@ -105,6 +122,15 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const [showMenu, setShowMenu] = useState(false);
   const tableZoneRef = useRef(null);
   const { scaleX: tableScaleX, scaleY: tableScaleY } = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
+  // Position (seat rail, oval shape) stretches non-uniformly with tableScaleX/Y so the
+  // table always fills the container's actual width/height. Content (cards, avatars,
+  // text) must NOT stretch with it — each content layer below counters the parent's
+  // non-uniform scale back down to this single uniform factor via its own
+  // scale(csx, csy), so a wide-but-short viewport spreads seats out further apart
+  // without ever squashing a card or number into an ellipse.
+  const tableScaleUniform = Math.min(tableScaleX, tableScaleY) || 1;
+  const csx = tableScaleX ? tableScaleUniform / tableScaleX : 1;
+  const csy = tableScaleY ? tableScaleUniform / tableScaleY : 1;
 
   // amPlaying=false means myId isn't in gameState.players at all (mid-game
   // joiner waiting for next hand, or a busted player excluded from this
@@ -116,30 +142,27 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const { hero: heroSeatPos, opponents: pos } = amPlaying
     ? seatPositions(opponents.length)
     : { hero: null, opponents: spectatorSeatPositions(opponents.length) };
+  // Same "toward the pot center" bet-chip fly-in direction as the opponents.map loop
+  // below, just for the hero's fixed bottom-vertex seat.
+  const heroBetStyle = heroSeatPos && betChipStyle(187.5 - heroSeatPos.x, 215 - heroSeatPos.y);
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
   // ── Animation refs (track prev state to compute what's newly visible) ──────
-  // prevPhaseRef starts null so justDealt also fires on first mount; the "!== preflop"
-  // check (rather than "=== null") makes it fire on every hand, not just the first —
-  // any transition INTO preflop (from showdown, or from nothing) is a fresh deal.
-  const prevPhaseRef = useRef(null);
   // prevCardCountRef starts at current length to skip flip-reveal on reconnect
   const prevCardCountRef = useRef(gameState.communityCards.length);
   const prevShowdownRef = useRef(null);
 
   const cardCount = gameState.communityCards.length;
-  const justDealt = prevPhaseRef.current !== 'preflop' && gameState.phase === 'preflop';
   const newCardFrom = prevCardCountRef.current; // indices >= this are newly revealed
   const justShowdown = !prevShowdownRef.current && showdown && showdown.length > 0;
 
   useEffect(() => {
-    prevPhaseRef.current = gameState.phase;
     prevCardCountRef.current = cardCount;
     prevShowdownRef.current = showdown;
-  }, [gameState.phase, cardCount, showdown]);
+  }, [cardCount, showdown]);
 
   // ── Hole-card deal sequence: SB-first round-robin stagger, hero flips
   // face-up only once every player's two cards — AND the 5 community cards
@@ -156,17 +179,22 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const totalDealTime = (holeDealSteps + COMMUNITY_COUNT - 1) * DEAL_STEP + DEAL_CARD_DURATION;
 
   const [heroRevealed, setHeroRevealed] = useState(true);
+  // The single source of truth for "the deal-in animation is currently playing" —
+  // stays true for the whole totalDealTime+0.15s window below, unlike the earlier
+  // justDealt (removed): that was a one-render pulse computed straight from a ref,
+  // which got reset to false by this very effect's OWN commit before the browser
+  // ever painted the in-between state — so anything gated on it (community cards,
+  // hero's own face-down cards, the opponent seat fly-in) silently never animated.
+  // Gating all of those on this persistent `dealing` state instead — exactly like
+  // the opponent reveal-card animation already correctly did — fixes that.
+  const dealing = !heroRevealed;
   const prevHeroRevealedRef = useRef(true);
   const justRevealed = !prevHeroRevealedRef.current && heroRevealed;
   useEffect(() => { prevHeroRevealedRef.current = heroRevealed; }, [heroRevealed]);
 
   useEffect(() => {
-    // Depend on gameState.phase itself (not justDealt): justDealt is a one-render
-    // pulse that reverts to false on the very next render (as soon as
-    // prevPhaseRef catches up), which would immediately cancel this effect's
-    // cleanup and clear the timeout before it ever fires. gameState.phase stays
-    // 'preflop' across every render of the whole preflop betting round, so this
-    // only re-runs on the actual transition into preflop, exactly once per hand.
+    // gameState.phase (not `dealing`, which this effect itself sets) only changes
+    // value on an actual transition into preflop, so this only fires once per hand.
     if (gameState.phase !== 'preflop') return;
     setHeroRevealed(false);
     const t = setTimeout(() => setHeroRevealed(true), (totalDealTime + 0.15) * 1000);
@@ -241,9 +269,14 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       <div className="table-zone" ref={tableZoneRef}>
       <div
         className="table-canvas"
-        style={{ width: `${TABLE_REF_W}px`, height: `${TABLE_REF_H}px`, transform: `translate(-50%, -50%) scale(${tableScaleX}, ${tableScaleY})` }}
+        style={{
+          width: `${TABLE_REF_W}px`, height: `${TABLE_REF_H}px`,
+          transform: `translate(-50%, -50%) scale(${tableScaleX}, ${tableScaleY})`,
+          '--csx': csx, '--csy': csy,
+        }}
       >
       <div className="table-oval">
+      <div className="table-oval-content">
         <Pot
           street={PHASE_LABEL[gameState.phase] ?? gameState.phase}
           amount={gameState.pot}
@@ -267,8 +300,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             // Before the hand's first deal, there's genuinely nothing on the
             // table yet — dashed placeholder. Once dealing has happened
             // (waiting left), an unrevealed slot already has a card sitting
-            // there face-down (dealt during justDealt below), waiting for
-            // its street — not an empty box.
+            // there face-down (dealt during the `dealing` window below),
+            // waiting for its street — not an empty box.
             if (gameState.phase === 'waiting') {
               return <div key={i} className="c-empty" />;
             }
@@ -277,12 +310,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                 key={i}
                 size="sm"
                 faceDown
-                animate={justDealt ? 'card-deal' : null}
-                delay={justDealt ? communityDealDelayFor(i) : 0}
+                animate={dealing ? 'card-deal' : null}
+                delay={dealing ? communityDealDelayFor(i) : 0}
               />
             );
           })}
         </div>
+      </div>
       </div>
 
       {amPlaying && (
@@ -299,6 +333,10 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             color={colorForId(me.id)}
             bubble={actionBubbles[me.id]}
           />
+          {/* Same persistent chip-bubble every opponent gets below — hero's own bet
+              used to only flash as fading action text, never sat on the felt like
+              everyone else's, which read as inconsistent from hero's own viewpoint. */}
+          {me.bet > 0 && <div className="bet-chip" style={heroBetStyle}>¥{me.bet.toLocaleString()}</div>}
         </div>
       )}
 
@@ -306,8 +344,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         const s = pos[i];
         // 187.5, 215: table-oval's true center (must match seatPositions' cx/cy) —
         // this is the "toward the pot" direction for the bet-chip fly-in, not hero's seat.
-        const dx = 187.5 - s.x, dy = 215 - s.y, len = Math.hypot(dx, dy) || 1;
-        const betStyle = { transform: `translate(calc(-50% + ${(dx / len) * 65}px), calc(-50% + ${(dy / len) * 65}px))` };
+        const betStyle = betChipStyle(187.5 - s.x, 215 - s.y);
         const dealDelay = i * 0.1;
         // Seats too close to the table-zone's own top edge render their cards to the side instead
         // of above (toward whichever side has more room) — see CARDS_SIDE_BELOW_Y.
@@ -315,7 +352,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         return (
           <div
             key={p.id}
-            className={`player-slot${justDealt ? ' deal-in' : ''}`}
+            className={`player-slot${dealing ? ' deal-in' : ''}`}
             style={{ left: `${s.x}px`, top: `${s.y}px`, '--d': `${dealDelay}s` }}
           >
             <PlayerSeat
@@ -326,7 +363,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               gamePhase={gameState.phase}
               color={colorForId(p.id)}
               bubble={actionBubbles[p.id]}
-              dealing={!heroRevealed}
+              dealing={dealing}
               dealDelays={[dealDelayFor(p.id, 0), dealDelayFor(p.id, 1)]}
               cardsSide={cardsSide}
             />
@@ -354,8 +391,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                         key={`back-${i}`}
                         size="md"
                         faceDown
-                        animate={justDealt ? 'card-deal' : null}
-                        delay={justDealt ? dealDelayFor(myId, i) : 0}
+                        animate={dealing ? 'card-deal' : null}
+                        delay={dealing ? dealDelayFor(myId, i) : 0}
                       />
                     )))
               : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]}
