@@ -35,28 +35,29 @@ const DEAL_CARD_DURATION = 0.35; // matches .card-deal's animation-duration
 // Seat centers sit exactly on the table-oval's rail (center 187.5,285; rx
 // 169.5, ry 195 — must match .table-oval's box in velvet.css exactly: top
 // 90/height 390/left+right 18 around the 375-wide stage). Hero sits at the
-// bottom (90°); opponents fill the remaining arc evenly around the same rail.
-// Opponents never sit higher than MIN_OPPONENT_Y (keeps the showdown card
-// reveal, which renders above the avatar, clear of the top-bar — hit
-// whenever a seat lands near the oval's exact top vertex: always true for
-// heads-up's lone opponent, and for one seat at a 9-player table too). This
-// is the one place seats DON'T land exactly on the rail — the top-bar leaves
-// no room for it there, no matter how the oval is sized.
-const MIN_OPPONENT_Y = 145;
+// bottom (90°); opponents fill the remaining arc evenly around the same rail,
+// every one of them exactly on the boundary — no exceptions, no inset.
+//
+// The showdown reveal / deal-in cards normally render ABOVE a seat, which
+// would push above the top-bar for any seat landing near the oval's exact
+// top vertex (always true for heads-up's lone opponent; also true for one
+// seat on a 9-max table). Below this Y, PlayerSeat renders those cards to
+// the SIDE instead — the avatar itself still sits precisely on the rail.
+const CARDS_SIDE_BELOW_Y = 148;
 function seatPositions(n) {
   const cx = 187.5, cy = 285, rx = 169.5, ry = 195;
-  // Nudge the hero marker up off the oval's exact bottom vertex (cy + ry) so its
-  // avatar + D/SB/BB position badge clear the .hero-section block anchored below.
-  // Measured via Playwright: -20px left only ~15px of clearance, which the
-  // is-active glow (up to ~48px blur at its pulse peak) visually bled through,
-  // reading as the hole cards "blocking" the avatar. -45px gives ~40px instead.
-  const heroPos = { x: cx, y: cy + ry - 45 };
+  // Hero sits exactly on the oval's bottom vertex, same as every opponent seat
+  // sits exactly on the rail. This used to need a -45px nudge to clear
+  // .hero-section below it (smaller cards + a lower hero-section since then
+  // freed up enough room — measured ~74px of clearance at the old -45 nudge,
+  // i.e. ~29px left even fully undoing it — comfortably safe now).
+  const heroPos = { x: cx, y: cy + ry };
   if (n === 0) return { hero: heroPos, opponents: [] };
   const opponents = [];
   for (let i = 0; i < n; i++) {
     const deg = n === 1 ? 270 : 150 + i * (240 / (n - 1));
     const r = (deg * Math.PI) / 180;
-    opponents.push({ x: cx + rx * Math.cos(r), y: Math.max(cy + ry * Math.sin(r), MIN_OPPONENT_Y) });
+    opponents.push({ x: cx + rx * Math.cos(r), y: cy + ry * Math.sin(r) });
   }
   return { hero: heroPos, opponents };
 }
@@ -216,9 +217,14 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
       {opponents.map((p, i) => {
         const s = pos[i];
-        const dx = 187.5 - s.x, dy = 292 - s.y, len = Math.hypot(dx, dy) || 1;
+        // 187.5, 285: table-oval's true center (must match seatPositions' cx/cy) —
+        // this is the "toward the pot" direction for the bet-chip fly-in, not hero's seat.
+        const dx = 187.5 - s.x, dy = 285 - s.y, len = Math.hypot(dx, dy) || 1;
         const betStyle = { transform: `translate(calc(-50% + ${(dx / len) * 65}px), calc(-50% + ${(dy / len) * 65}px))` };
         const dealDelay = i * 0.1;
+        // Seats too close to the top-bar render their cards to the side instead
+        // of above (toward whichever side has more room) — see CARDS_SIDE_BELOW_Y.
+        const cardsSide = s.y < CARDS_SIDE_BELOW_Y ? (s.x <= 187.5 ? 'right' : 'left') : null;
         return (
           <div
             key={p.id}
@@ -235,6 +241,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               bubble={actionBubbles[p.id]}
               dealing={!heroRevealed}
               dealDelays={[dealDelayFor(p.id, 0), dealDelayFor(p.id, 1)]}
+              cardsSide={cardsSide}
             />
             {p.bet > 0 && <div className="bet-chip" style={betStyle}>¥{p.bet.toLocaleString()}</div>}
           </div>
