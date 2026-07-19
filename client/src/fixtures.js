@@ -146,3 +146,24 @@ STATES.push({
     ],
   },
 });
+
+// 9-max dense table — verifies the column layout's two-per-row density and
+// card-shrink rules under the fullest supported room size.
+STATES.push({
+  name: '9人满桌·密集', myId: 'me', roomCode: '4827',
+  gameState: {
+    phase: 'flop', pot: 480, currentBet: 0, actionPlayerId: 'p3',
+    communityCards: [c('9', '♣'), c('4', '♦'), c('K', '♥'), null, null],
+    players: [
+      { id: 'me', name: 'Augustine', chips: 900, bet: 0, status: 'active', holeCards: [c('8', '♠'), c('J', '♥')] },
+      { id: 'p1', name: '王建国', chips: 800, bet: 0, status: 'active', holeCards: [null, null], isDealer: true },
+      { id: 'p2', name: '陈美玲', chips: 700, bet: 0, status: 'folded', holeCards: [null, null], isSB: true },
+      { id: 'p3', name: '张伟', chips: 600, bet: 0, status: 'active', holeCards: [null, null], isBB: true },
+      { id: 'p4', name: '李大明是个非常长的名字', chips: 500, bet: 0, status: 'active', holeCards: [null, null] },
+      { id: 'p5', name: '赵军', chips: 400, bet: 0, status: 'allin', holeCards: [null, null] },
+      { id: 'p6', name: '孙丽', chips: 300, bet: 0, status: 'folded', holeCards: [null, null] },
+      { id: 'p7', name: '周涛', chips: 200, bet: 0, status: 'active', holeCards: [null, null] },
+      { id: 'p8', name: '吴敏', chips: 100, bet: 0, status: 'active', holeCards: [null, null] },
+    ],
+  },
+});
