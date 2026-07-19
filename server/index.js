@@ -25,7 +25,7 @@ function createServer() {
   // immediately on disconnect turned "share the link" into a room-deleting
   // action a large fraction of the time on mobile. See GRACE_PERIOD_MS.
   const pendingRemovals = new Map();
-  const GRACE_PERIOD_MS = 30000;
+  const GRACE_PERIOD_MS = 120000;
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
@@ -150,7 +150,13 @@ function createServer() {
 
     socket.on('room:sync', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
-      if (!room) return;
+      if (!room) {
+        // Reconnected too late — the grace period already expired and the
+        // room (or this player's spot in it) is gone. Say so explicitly
+        // instead of leaving the client sitting on a stale lobby forever.
+        socket.emit('room:gone');
+        return;
+      }
       // Re-associate this (possibly new, post-reconnect) socket with the
       // room: without this, a reconnected client never gets back into the
       // socket.io room (misses future broadcasts) and this connection's own

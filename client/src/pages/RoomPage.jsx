@@ -42,6 +42,10 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       showToast('你已被房主移出房间', 'danger');
       setTimeout(onLeave, 2000);
     },
+    'room:gone': () => {
+      showToast('重新连接超时，房间已失效，请重新创建或加入', 'danger');
+      setTimeout(onLeave, 2500);
+    },
     'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
   });
 
