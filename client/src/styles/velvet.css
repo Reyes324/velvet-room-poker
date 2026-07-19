@@ -296,8 +296,9 @@
 .table-canvas { position:absolute; left:50%; top:50%; }
 
 /* Must match GameTable.jsx's seatPositions() ellipse exactly (cx 187.5, cy 215,
-   rx 169.5, ry 195) so opponent avatars land precisely on this rail. */
-.table-canvas .table-oval { position:absolute; top:20px; left:18px; right:18px; height:390px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
+   rx 169.5, ry 180 — ry deliberately trimmed from the box-matching 195, see
+   that function's comment) so opponent avatars land precisely on this rail. */
+.table-canvas .table-oval { position:absolute; top:35px; left:18px; right:18px; height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
 .table-canvas .player-slot { position:absolute; transform:translate(-50%,-50%); z-index:5; }
 .table-canvas .player-slot .bet-chip { position:absolute; top:50%; left:50%; z-index:6; }
 .player-slot--hero { z-index: 4; }

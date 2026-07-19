@@ -57,7 +57,15 @@ const DEAL_CARD_DURATION = 0.35; // matches .card-deal's animation-duration
 // the avatar itself still sits precisely on the rail.
 const CARDS_SIDE_BELOW_Y = 70;
 function seatPositions(n) {
-  const cx = 187.5, cy = 215, rx = 169.5, ry = 195;
+  // ry is 180, not the box-matching 195, on purpose: at ry=195 the topmost
+  // opponent's seat center sits at cy-ry=20, exactly the table-oval's own
+  // top offset — which is *also* almost exactly the avatar's own radius, so
+  // its unscaled top edge lands within a hair of canvas y=0 with zero spare
+  // margin. Any rounding/border/badge pixel pushes it past table-zone's
+  // overflow:hidden edge and clips it. Trimming ry by 15 moves the vertex
+  // down to y=35, buying ~15px of real headroom above the avatar's own
+  // radius — table-oval's CSS box (top/height) is trimmed to match.
+  const cx = 187.5, cy = 215, rx = 169.5, ry = 180;
   // Hero sits exactly on the oval's bottom vertex, same as every opponent seat
   // sits exactly on the rail. This used to need a -45px nudge to clear
   // .hero-section below it (smaller cards + a lower hero-section since then
@@ -77,7 +85,7 @@ function seatPositions(n) {
 export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const tableZoneRef = useRef(null);
-  const tableScale = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
+  const { scaleX: tableScaleX, scaleY: tableScaleY } = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
   const ordered = getOrderedPlayers(gameState.players, myId);
   const me = ordered[0];
   const opponents = ordered.slice(1);
@@ -194,7 +202,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       <div className="table-zone" ref={tableZoneRef}>
       <div
         className="table-canvas"
-        style={{ width: `${TABLE_REF_W}px`, height: `${TABLE_REF_H}px`, transform: `translate(-50%, -50%) scale(${tableScale})` }}
+        style={{ width: `${TABLE_REF_W}px`, height: `${TABLE_REF_H}px`, transform: `translate(-50%, -50%) scale(${tableScaleX}, ${tableScaleY})` }}
       >
       <div className="table-oval">
         <Pot
