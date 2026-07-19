@@ -44,16 +44,14 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
 
   return (
     <div className={seatClass}>
-      <div className={`avatar ${avClass}`}>
-        {player.name[0].toUpperCase()}
-        {badge && <span className="pos-badge">{badge}</span>}
+      <div className="seat-name">{player.name}</div>
+      <div className={`avatar-card ${avClass}`}>
+        <div className="avatar-photo">
+          {player.name[0].toUpperCase()}
+          {badge && <span className="pos-badge">{badge}</span>}
+        </div>
+        <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
       </div>
-
-      {folded
-        ? <div className="fold-tag">弃牌</div>
-        : allin
-          ? <div className="allin-tag">ALL IN</div>
-          : <div className="stack-chip">¥{player.chips.toLocaleString()}</div>}
 
       {bubble && <div key={bubble.key} className="action-bubble" style={bubbleStyle(cardsSide)}>{bubble.text}</div>}
 
