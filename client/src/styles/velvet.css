@@ -95,7 +95,7 @@
 /* ── POT (bare focal number) ──────────────────────────────── */
 .pot { display:flex; flex-direction:column; align-items:center; gap:2px; }
 .street-tag { font-family:var(--font-mono); font-size:9px; color:#C9A94A; letter-spacing:4px; text-transform:uppercase; opacity:.8; }
-.pot-label { font-family:var(--font-mono); font-size:7px; color:#9C8556; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
+.pot-label { font-family:var(--font-mono); font-size:7px; color:#AE986C; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
 .pot-amt { font-family:var(--font-amount); font-size:24px; font-weight:700; color:#E8C24A; letter-spacing:.2px; text-shadow:0 0 20px rgba(212,175,55,.45), 0 2px 8px rgba(0,0,0,.6); line-height:1.05; }
 
 /* community placeholder (pre-flop) */
