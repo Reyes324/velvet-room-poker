@@ -77,8 +77,16 @@
 .c-xs.c-back::after { font-size: 12px; }
 
 /* ── OVAL TABLE ────────────────────────────────────────────── */
+/* Felt texture: fine grayscale SVG grain (feTurbulence, baked-in low alpha)
+   layered with a faint 115deg hairline sheen to suggest a brushed fabric nap,
+   under the original radial gradient. Chosen autonomously from 3 candidates
+   generated via the frontend-design skill (plain fine grain / coarser mottled
+   grain + edge vignette / this one) — revisit if a different read is wanted. */
 .table-oval {
-  background: radial-gradient(ellipse at 50% 38%, #103016 0%, #0A2210 45%, #061408 72%, #030A04 100%);
+  background:
+    repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0px, rgba(255,255,255,.025) 1px, transparent 1px, transparent 3px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E") repeat,
+    radial-gradient(ellipse at 50% 38%, #103016 0%, #0A2210 45%, #061408 72%, #030A04 100%);
   border-radius: 50%;
   border: 2px solid rgba(212,175,55,.12);
   box-shadow: inset 0 6px 70px rgba(0,0,0,.82), inset 0 0 0 8px rgba(212,175,55,.025), 0 0 0 7px rgba(4,10,6,.6), 0 14px 60px rgba(0,0,0,.7);
@@ -87,7 +95,7 @@
 /* ── POT (bare focal number) ──────────────────────────────── */
 .pot { display:flex; flex-direction:column; align-items:center; gap:2px; }
 .street-tag { font-family:var(--font-mono); font-size:9px; color:#C9A94A; letter-spacing:4px; text-transform:uppercase; opacity:.8; }
-.pot-label { font-family:var(--font-mono); font-size:7px; color:#5A4C24; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
+.pot-label { font-family:var(--font-mono); font-size:7px; color:#9C8556; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
 .pot-amt { font-family:var(--font-amount); font-size:24px; font-weight:700; color:#E8C24A; letter-spacing:.2px; text-shadow:0 0 20px rgba(212,175,55,.45), 0 2px 8px rgba(0,0,0,.6); line-height:1.05; }
 
 /* community placeholder (pre-flop) */

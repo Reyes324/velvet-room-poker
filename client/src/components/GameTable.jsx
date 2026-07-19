@@ -389,7 +389,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                       <Card
                         key={`face-${i}`}
                         card={c}
-                        size="md"
+                        size="sm"
                         animate={justRevealed ? 'flip-reveal' : null}
                         delay={justRevealed ? i * 0.1 : 0}
                       />
@@ -397,13 +397,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                   : me.holeCards.map((_, i) => (
                       <Card
                         key={`back-${i}`}
-                        size="md"
+                        size="sm"
                         faceDown
                         animate={dealing ? 'card-deal' : null}
                         delay={dealing ? dealDelayFor(myId, i) : 0}
                       />
                     )))
-              : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]}
+              : [<Card key={0} size="sm" faceDown />, <Card key={1} size="sm" faceDown />]}
           </div>
           <div className="hero-info">
             <div className="hero-name">{me.name}（我）</div>
