@@ -244,7 +244,7 @@ GameState {
 
 ---
 
-### 移动端设计规范：Scale-to-Fit（统一适配方案）
+### 移动端设计规范：Scale-to-Fit（统一适配方案）—— ~~已被下方「顶部/底部贴边 + 仅中间牌桌缩放」取代~~，本节仅保留历史背景
 
 **选择**：以 375×812（iPhone X）为标准设计画布，通过 JS 计算 scale 系数（`Math.min(vw/375, vh/812)`）自适应所有设备，`vh` 取当前实际可见视口高度（`visualViewport.height`，回退 `innerHeight`）。
 
@@ -263,6 +263,26 @@ GameState {
 **移除 RoomPage.css**：发现 `RoomPage.css` 是旧设计系统遗留的冲突文件（`.lobby-code`、`.start-btn`、`.table-view` 等已废弃 class），全部移除，Toast 样式迁入 velvet.css，统一单源架构。
 
 **踩坑记录**：中途曾改用 `window.screen.height` 替代 `innerHeight`（意图是让地址栏出现/隐藏时 scale 不跳动、避免小屏出现黑边），并同时把裁切余量从 `vh/712` 收紧为 `vh/812`。这两个改动叠加后，只要浏览器地址栏可见（`screen.height > innerHeight` 的场景，移动端打开页面的常态），scale 就会算大，画布顶部（含单挑唯一对手座位）整段推出可见视口——即用户反馈的"单挑时对手内容飘出手机屏幕"。修复：`vh` 改回读实际可见视口（`visualViewport.height` 优先，`innerHeight` 兜底），让画布等比缩小以完整容纳，而不是用偏大的物理尺寸硬算再被裁切。
+
+---
+
+### 移动端布局重构：顶部/底部贴边 + 仅中间牌桌区域缩放（用户实测反馈第八轮，2026-07-19）
+
+**背景**：上面的 Scale-to-Fit 方案有个没意识到的副作用——用户反馈手机上牌桌两侧有明显留白，宽度没拉满。原因：`.game-stage` 是整个 375×812 画布作为一个整体用单一 `scale = Math.min(vw/375, vh/812)` 缩放。如果浏览器（尤其是某些 App 内置浏览器）上下 UI 常驻占用空间较多，可视区域的宽高比会比 375:812 更"矮胖"，`vh/812` 会小于 `vw/375`，缩放取小值时高度是瓶颈，宽度被迫跟着一起缩小——两侧因此留白，即使宽度本来有富余空间没用上。
+
+**选择**：不再对整个画布做单一等比缩放，改成"顶部状态栏、底部操作栏各自按自己的实际内容渲染、贴边显示，宽度永远等于视口宽度；只有中间的牌桌区域（椭圆桌+座位+英雄手牌）跟随剩余空间弹性缩放"。本质是从"整体 transform:scale"改成"顶固定高度 + 底固定高度 + 中间 flex:1 弹性区域"的标准 flex 布局。
+
+**实现**：
+1. `.game-stage` 从固定 375×812 尺寸 + `transform:scale()` 改成 `width:100%; height:100dvh; display:flex; flex-direction:column;`
+2. `.top-bar` 从绝对定位改成真实 flex 子元素（`flex:0 0 auto`），`padding-top` 用 `max(env(safe-area-inset-top,0px),14px)` 处理刘海屏安全区，永远贴顶、永远满宽
+3. 新增 `.table-zone`（`flex:1 1 auto; min-height:0; overflow:hidden;`）+ `.table-canvas`（固定 375×`TABLE_REF_H`(610) 的设计画布，通过内联 `transform:scale()` 缩放并居中）——牌桌椭圆、座位、英雄手牌全部挪进这个新画布，`GameTable.jsx` 新增 `useTableScale(ref, refW, refH)` hook，用 `ResizeObserver` 直接测量 `.table-zone` 的实际渲染尺寸算缩放系数，不再依赖 `window.innerWidth/innerHeight` 或 `visualViewport`——这一层的旧坑（`screen.height` vs `innerHeight`）从根上不存在了，因为缩放对象从"整个视口"变成了"一个真实测量到的 DOM 容器"
+4. `.action-bar`/`.waiting-bar` 同理改成 flex 子元素（`flex:0 0 auto`），永远贴底、永远满宽，`padding-bottom` 叠加 `env(safe-area-inset-bottom)`
+5. `.lobby`（大厅玩家列表）同样从绝对定位改成 `flex:1 1 auto`——本来就是纯文字列表，不含需要保持比例的几何绘制，不需要参与缩放，直接享受原生响应式布局
+6. `seatPositions()` 的椭圆参数（`cy`）、`table-oval` 顶部偏移、`hero-section` 的 `bottom` 值、`CARDS_SIDE_BELOW_Y` 阈值，都因为参考画布从 812 缩到 610（顶部状态栏不再占用画布内空间）做了等比重新推导
+
+**意外的架构收益**：`.action-bar` 现在是牌桌画布**外面**的独立 flex 兄弟节点，展开加注面板导致操作栏变高时，会自动挤压 `.table-zone` 的可用高度、让整个牌桌画布等比缩小，物理上不可能再出现"加注面板盖住英雄手牌信息条"——第二/三轮反馈里为了避免这个重叠专门做的像素级精调（`hero-section: bottom:178px→148px` 来回调整、压缩加注面板高度）现在不再需要手动兜底，是这次重构顺带解决的。
+
+**验证**：Playwright 4 种视口（含完全复现用户截图问题的"浏览器 UI 占用高度"430×777 场景，以及更极端的 430×650）下确认顶部/底部宽度精确等于视口宽度、零元素溢出可见区域；加注面板展开截图确认全宽显示且不再与手牌重叠。
 
 ---
 

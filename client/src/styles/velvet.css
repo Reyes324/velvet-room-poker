@@ -275,14 +275,31 @@
 .debt-badge { background:rgba(192,100,43,.15); color:#E08A4A; border:1px solid rgba(192,100,43,.3); }
 .lobby-btn { height:52px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:26px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:15px; font-weight:700; color:#050D06; letter-spacing:1px; box-shadow:0 4px 24px rgba(212,175,55,.28); cursor:pointer; }
 
-/* ── GAME LAYOUT (preview's fixed 375×812 phone; centered on desktop) ─────── */
-.game-stage { position:relative; width:var(--stage-w); height:var(--stage-h); margin:0 auto; overflow:hidden; background:#08120A; }
-.game-stage .top-bar { position:absolute; top:36px; left:14px; right:14px; height:40px; display:flex; justify-content:space-between; align-items:center; z-index:10; }
-/* Must match GameTable.jsx's seatPositions() ellipse exactly (cx 187.5, cy 285,
+/* ── GAME LAYOUT ──────────────────────────────────────────────────────────
+   Top bar and action bar are real, unscaled flex children pinned to their
+   edges — they always span the device's actual width. Only the middle
+   "table zone" (oval + seats + hero cards) scales, via .table-canvas being
+   sized to a fixed TABLE_REF_W×TABLE_REF_H design canvas (GameTable.jsx)
+   and transformed to fit whatever space the flex layout leaves it — see
+   useTableScale.js. This replaces the old whole-page uniform scale, which
+   forced width to shrink in lockstep with height whenever the browser's
+   chrome (address bar, in-app-browser toolbars, etc.) ate a lot of vertical
+   space, leaving large empty margins on the sides even though only the
+   height was actually constrained. */
+.game-stage { position:relative; width:100%; height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:#08120A; }
+.game-stage .top-bar { position:relative; flex:0 0 auto; padding:14px 14px 10px; padding-top:max(env(safe-area-inset-top,0px),14px); display:flex; justify-content:space-between; align-items:center; z-index:10; }
+
+.table-zone { position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
+/* Fixed design canvas for the table scene — width/height set inline from the
+   same TABLE_REF_W/TABLE_REF_H constants GameTable.jsx uses for seat math,
+   scaled+centered via inline transform computed by useTableScale. */
+.table-canvas { position:absolute; left:50%; top:50%; }
+
+/* Must match GameTable.jsx's seatPositions() ellipse exactly (cx 187.5, cy 215,
    rx 169.5, ry 195) so opponent avatars land precisely on this rail. */
-.game-stage .table-oval { position:absolute; top:90px; left:18px; right:18px; height:390px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
-.game-stage .player-slot { position:absolute; transform:translate(-50%,-50%); z-index:5; }
-.game-stage .player-slot .bet-chip { position:absolute; top:50%; left:50%; z-index:6; }
+.table-canvas .table-oval { position:absolute; top:20px; left:18px; right:18px; height:390px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
+.table-canvas .player-slot { position:absolute; transform:translate(-50%,-50%); z-index:5; }
+.table-canvas .player-slot .bet-chip { position:absolute; top:50%; left:50%; z-index:6; }
 .player-slot--hero { z-index: 4; }
 .player-slot--hero .stack-chip,
 .player-slot--hero .allin-tag,
@@ -292,14 +309,13 @@
    makes the D/SB/BB badge (and therefore the whole avatar+badge cluster) look shifted
    right of the hole cards centered beneath it. Center it here instead. */
 .player-slot--hero .pos-badge { right:auto; left:50%; transform:translateX(-50%); }
-/* bottom:148px, not the 178px the open raise panel used to need — the raise panel
-   (preset-row/stepper/raise-bottom) was compacted alongside this so the worst case
-   (raise panel open) still clears the hero-info pill with ~6px to spare; measured via
-   Playwright, not eyeballed. The old 178px was sized for an even taller panel and left
-   a large empty gap below the cards the rest of the time (closed bar / waiting-bar). */
-.game-stage .hero-section { position:absolute; bottom:148px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; }
-.game-stage .action-bar { position:absolute; bottom:0; left:0; right:0; z-index:40; }
-.game-stage .waiting-bar { position:absolute; bottom:0; left:0; right:0; padding:10px 14px 16px; background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
+/* bottom:28px within the table-canvas's own TABLE_REF_H (610) — the action bar is
+   now a separate flex sibling outside .table-canvas entirely, so opening the raise
+   panel shrinks .table-zone (and therefore the whole table-canvas scale) instead of
+   ever overlapping the hero-info pill; no more manual pixel budgeting needed here. */
+.table-canvas .hero-section { position:absolute; bottom:28px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; }
+.game-stage .action-bar { position:relative; flex:0 0 auto; padding-bottom:calc(12px + env(safe-area-inset-bottom,0px)); z-index:40; }
+.game-stage .waiting-bar { position:relative; flex:0 0 auto; padding:10px 14px calc(16px + env(safe-area-inset-bottom,0px)); background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
 
 /* ── DENSE TABLE (7–9 players): shrink seat + avatar to 38px ─ */
 .game-stage--dense .seat { width:38px; height:38px; }
@@ -308,7 +324,7 @@
 .game-stage--dense .pos-badge { font-size:7px; height:13px; line-height:13px; min-width:13px; }
 
 /* ── LOBBY layout (in game-stage) ─────────────────────────── */
-.game-stage .lobby { position:absolute; top:86px; bottom:0; left:0; right:0; display:flex; flex-direction:column; padding:14px; z-index:5; }
+.game-stage .lobby { position:relative; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:14px; padding-bottom:calc(14px + env(safe-area-inset-bottom,0px)); z-index:5; }
 .lobby-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
 .pr-info { flex:1; min-width:0; }
 .lobby-scroll { flex:1; overflow-y:auto; min-height:0; }
@@ -329,6 +345,7 @@
 .toast--danger { background:linear-gradient(135deg,rgba(40,18,18,.95),rgba(56,22,22,.95)); border:1px solid rgba(192,57,43,.3); color:#E08080; }
 .toast--info { background:linear-gradient(135deg,rgba(60,40,8,.95),rgba(90,60,10,.95)); border:1px solid rgba(212,175,55,.25); color:var(--gold-200); }
 
-/* ── STAGE SCALE-TO-FIT (mobile universal wrapper) ─────────── */
-.stage-wrap { position:fixed; inset:0; display:flex; align-items:flex-end; justify-content:center; background:#030A04; overflow:hidden; padding-bottom:env(safe-area-inset-bottom,0px); }
-.game-stage { transform:scale(var(--stage-scale,1)); transform-origin:bottom center; }
+/* ── STAGE WRAPPER — fills the real viewport; .game-stage itself is a flex
+   column that fills this 1:1 (see the GAME LAYOUT block above). No more
+   uniform whole-page scale-to-fit: only .table-canvas scales now. ─ */
+.stage-wrap { position:fixed; inset:0; background:#030A04; overflow:hidden; }

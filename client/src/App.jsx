@@ -3,10 +3,8 @@ import './styles/global.css';
 import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
 import StatesGallery from './StatesGallery';
-import { useStageScale } from './hooks/useStageScale';
 
 export default function App() {
-  useStageScale();
   const [room, setRoom] = useState(null); // { code, playerId, playerName } | { autoJoinCode }
 
   useEffect(() => {

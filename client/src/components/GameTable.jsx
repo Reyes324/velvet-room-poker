@@ -3,6 +3,15 @@ import PlayerSeat from './PlayerSeat';
 import ActionBar from './ActionBar';
 import Card from './Card';
 import Pot from './Pot';
+import { useTableScale } from '../hooks/useTableScale';
+
+// Fixed design canvas for just the table scene (oval + seats + hero cards) —
+// the single source of truth for both .table-canvas's inline size and
+// useTableScale's fit calculation. Top bar and action bar live outside this
+// canvas entirely now (real flex siblings, always full device width); this
+// only has to describe the table itself.
+const TABLE_REF_W = 375;
+const TABLE_REF_H = 610;
 
 const PHASE_LABEL = {
   waiting: '等待开始', preflop: '翻牌前', flop: '翻牌圈',
@@ -32,20 +41,23 @@ function sbFirstOrder(players) {
 const DEAL_STEP = 0.07; // seconds between each card landing
 const DEAL_CARD_DURATION = 0.35; // matches .card-deal's animation-duration
 
-// Seat centers sit exactly on the table-oval's rail (center 187.5,285; rx
-// 169.5, ry 195 — must match .table-oval's box in velvet.css exactly: top
-// 90/height 390/left+right 18 around the 375-wide stage). Hero sits at the
-// bottom (90°); opponents fill the remaining arc evenly around the same rail,
-// every one of them exactly on the boundary — no exceptions, no inset.
+// Seat centers sit exactly on the table-oval's rail (center 187.5,215; rx
+// 169.5, ry 195 — must match .table-canvas .table-oval's box in velvet.css
+// exactly: top 20/height 390/left+right 18 within the TABLE_REF_W-wide
+// canvas). Hero sits at the bottom (90°); opponents fill the remaining arc
+// evenly around the same rail, every one of them exactly on the boundary —
+// no exceptions, no inset.
 //
 // The showdown reveal / deal-in cards normally render ABOVE a seat, which
-// would push above the top-bar for any seat landing near the oval's exact
-// top vertex (always true for heads-up's lone opponent; also true for one
-// seat on a 9-max table). Below this Y, PlayerSeat renders those cards to
-// the SIDE instead — the avatar itself still sits precisely on the rail.
-const CARDS_SIDE_BELOW_Y = 148;
+// would get clipped by .table-zone's own top edge for any seat landing near
+// the oval's exact top vertex (always true for heads-up's lone opponent;
+// also true for one seat on a 9-max table) — there's no top-bar to protect
+// against anymore (it's outside the canvas entirely), just the canvas's own
+// bounds. Below this Y, PlayerSeat renders those cards to the SIDE instead —
+// the avatar itself still sits precisely on the rail.
+const CARDS_SIDE_BELOW_Y = 70;
 function seatPositions(n) {
-  const cx = 187.5, cy = 285, rx = 169.5, ry = 195;
+  const cx = 187.5, cy = 215, rx = 169.5, ry = 195;
   // Hero sits exactly on the oval's bottom vertex, same as every opponent seat
   // sits exactly on the rail. This used to need a -45px nudge to clear
   // .hero-section below it (smaller cards + a lower hero-section since then
@@ -64,6 +76,8 @@ function seatPositions(n) {
 
 export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit }) {
   const [showExitModal, setShowExitModal] = useState(false);
+  const tableZoneRef = useRef(null);
+  const tableScale = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
   const ordered = getOrderedPlayers(gameState.players, myId);
   const me = ordered[0];
   const opponents = ordered.slice(1);
@@ -177,6 +191,11 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         </div>
       )}
 
+      <div className="table-zone" ref={tableZoneRef}>
+      <div
+        className="table-canvas"
+        style={{ width: `${TABLE_REF_W}px`, height: `${TABLE_REF_H}px`, transform: `translate(-50%, -50%) scale(${tableScale})` }}
+      >
       <div className="table-oval">
         <Pot
           street={PHASE_LABEL[gameState.phase] ?? gameState.phase}
@@ -217,12 +236,12 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
       {opponents.map((p, i) => {
         const s = pos[i];
-        // 187.5, 285: table-oval's true center (must match seatPositions' cx/cy) —
+        // 187.5, 215: table-oval's true center (must match seatPositions' cx/cy) —
         // this is the "toward the pot" direction for the bet-chip fly-in, not hero's seat.
-        const dx = 187.5 - s.x, dy = 285 - s.y, len = Math.hypot(dx, dy) || 1;
+        const dx = 187.5 - s.x, dy = 215 - s.y, len = Math.hypot(dx, dy) || 1;
         const betStyle = { transform: `translate(calc(-50% + ${(dx / len) * 65}px), calc(-50% + ${(dy / len) * 65}px))` };
         const dealDelay = i * 0.1;
-        // Seats too close to the top-bar render their cards to the side instead
+        // Seats too close to the table-zone's own top edge render their cards to the side instead
         // of above (toward whichever side has more room) — see CARDS_SIDE_BELOW_Y.
         const cardsSide = s.y < CARDS_SIDE_BELOW_Y ? (s.x <= 187.5 ? 'right' : 'left') : null;
         return (
@@ -276,6 +295,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           <div className="hero-name">{me.name}（我）</div>
           <div className="hero-chips">¥{me.chips.toLocaleString()}</div>
         </div>
+      </div>
+
+      </div>
       </div>
 
       {myTurn
