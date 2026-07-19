@@ -16,6 +16,16 @@ function createServer() {
   // keyed by room code. Pure transport/timing plumbing — the actual
   // ready-tracking data lives on the Room itself (room.settlementWait).
   const settlementFallbacks = new Map();
+  // Grace-period timers for lobby (pre-game) disconnects, keyed by playerId.
+  // A disconnect while just sitting in the lobby is very often transient —
+  // backgrounding the tab to paste the invite link into a messaging app,
+  // a brief network blip — not "this player is gone". Removing them (and
+  // deleting the room, if they were its only player, which is exactly the
+  // case right after a host creates a room and before anyone's joined)
+  // immediately on disconnect turned "share the link" into a room-deleting
+  // action a large fraction of the time on mobile. See GRACE_PERIOD_MS.
+  const pendingRemovals = new Map();
+  const GRACE_PERIOD_MS = 30000;
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
@@ -72,8 +82,20 @@ function createServer() {
   io.on('connection', (socket) => {
     let myPlayerId = null;
 
+    // Read-only lookup for the "XXX invited you" banner on the join screen —
+    // no side effects (doesn't touch players/sockets), safe to call before
+    // the visitor has entered their name or committed to joining.
+    socket.on('room:peek', ({ code }, callback) => {
+      const room = rooms.getRoom(code);
+      if (!room) return callback?.({ error: '房间不存在' });
+      const host = room.players.find(p => p.id === room.hostId);
+      callback?.({ hostName: host?.name ?? null, playerCount: room.players.length });
+    });
+
     socket.on('room:create', ({ playerId, playerName }) => {
       myPlayerId = playerId;
+      clearTimeout(pendingRemovals.get(playerId));
+      pendingRemovals.delete(playerId);
       const room = rooms.create(playerId, playerName);
       room.updateSocket(playerId, socket.id);
       socket.join(room.code);
@@ -83,6 +105,8 @@ function createServer() {
 
     socket.on('room:join', ({ code, playerId, playerName }) => {
       myPlayerId = playerId;
+      clearTimeout(pendingRemovals.get(playerId));
+      pendingRemovals.delete(playerId);
       const result = rooms.join(code, playerId, playerName, socket.id);
       if (result.error) return socket.emit('game:error', result.error);
       result.room.updateSocket(playerId, socket.id);
@@ -127,6 +151,15 @@ function createServer() {
     socket.on('room:sync', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return;
+      // Re-associate this (possibly new, post-reconnect) socket with the
+      // room: without this, a reconnected client never gets back into the
+      // socket.io room (misses future broadcasts) and this connection's own
+      // future 'disconnect' wouldn't know which player it was for.
+      myPlayerId = playerId;
+      room.updateSocket(playerId, socket.id);
+      socket.join(room.code);
+      clearTimeout(pendingRemovals.get(playerId));
+      pendingRemovals.delete(playerId);
       socket.emit('room:state', room.getLobbyState());
       const state = room.getStateForPlayer(playerId);
       if (state) socket.emit('game:state', state);
@@ -156,12 +189,37 @@ function createServer() {
         const result = room.playerAction(myPlayerId, 'fold');
         handleActionResult(room, result);
       }
-      rooms.leave(myPlayerId);
       if (room?.isAwaitingSettlementAck()) {
         if (room.dropFromSettlementWait(myPlayerId)) advanceRoom(room);
       }
-      if (room && room.players.length > 0) {
-        io.to(room.code).emit('room:state', room.getLobbyState());
+
+      if (room && room.status === 'waiting') {
+        // Lobby disconnect: give them a grace period to reconnect (e.g. they
+        // just backgrounded the tab to paste the invite link somewhere)
+        // instead of yanking them — and possibly deleting the whole room,
+        // if they were its only player — immediately.
+        const pid = myPlayerId;
+        const deadSocketId = socket.id;
+        const timer = setTimeout(() => {
+          pendingRemovals.delete(pid);
+          const stillRoom = rooms.getRoomByPlayer(pid);
+          const player = stillRoom?.players.find(p => p.id === pid);
+          // Only actually remove them if nothing re-associated this player
+          // with a live socket in the meantime (room:sync on reconnect
+          // updates socketId away from this dead one).
+          if (stillRoom && player && player.socketId === deadSocketId) {
+            rooms.leave(pid);
+            if (stillRoom.players.length > 0) {
+              io.to(stillRoom.code).emit('room:state', stillRoom.getLobbyState());
+            }
+          }
+        }, GRACE_PERIOD_MS);
+        pendingRemovals.set(pid, timer);
+      } else {
+        rooms.leave(myPlayerId);
+        if (room && room.players.length > 0) {
+          io.to(room.code).emit('room:state', room.getLobbyState());
+        }
       }
     });
   });

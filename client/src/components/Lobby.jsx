@@ -44,7 +44,12 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
           <div className="room-code" onClick={onCopy} title="点击复制邀请链接">{roomState?.code ?? ''}</div>
         </div>
 
-        <div className="lobby-sec">玩家 {players.length} / {maxSeats}{copied ? ' · 链接已复制 ✓' : ''}</div>
+        <div className="share-invite-btn" onClick={onCopy}>
+          <span className="share-icon">🔗</span>
+          <span>{copied ? '链接已复制 ✓' : '复制邀请链接，分享给好友'}</span>
+        </div>
+
+        <div className="lobby-sec">玩家 {players.length} / {maxSeats}</div>
 
         <div className="lobby-scroll">
           {players.map(p => (

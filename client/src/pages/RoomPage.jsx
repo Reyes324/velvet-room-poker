@@ -19,7 +19,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const { emit } = useSocket({
+  const { emit, socket } = useSocket({
     'room:state':  (state) => setRoomState(state),
     'game:state': (state) => {
       setGameState(state);
@@ -46,7 +46,15 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   });
 
   useEffect(() => {
-    emit('room:sync', { playerId });
+    // Re-sync on every (re)connect, not just mount — a backgrounded mobile
+    // tab or a brief network blip disconnects the socket without unmounting
+    // this component, so mount-only sync would leave the server never
+    // finding out this client came back (see server/index.js's grace period
+    // for lobby disconnects).
+    function sync() { emit('room:sync', { playerId }); }
+    sync();
+    socket.on('connect', sync);
+    return () => socket.off('connect', sync);
   }, []);
 
   function handleAction(action, amount) {

@@ -6,6 +6,9 @@ let _socket = null;
 function getSocket() {
   if (!_socket) {
     _socket = io({ autoConnect: false });
+    // Debug hook only — lets tests (and manual devtools debugging) force a
+    // disconnect/reconnect to exercise the grace-period reconnection path.
+    if (typeof window !== 'undefined') window.__vrSocket = _socket;
   }
   return _socket;
 }
