@@ -335,3 +335,42 @@ describe('Room — 结算等待期（settlementWait）', () => {
     expect(room.settlementWait).toBeNull();
   });
 });
+
+describe('RoomManager — 拍一拍', () => {
+  it('成功拍一拍返回 ok', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    const result = room.poke('p1', 'p2');
+    expect(result.ok).toBe(true);
+  });
+
+  it('不能拍自己', () => {
+    const room = rooms.create('p1', 'Alice');
+    const result = room.poke('p1', 'p1');
+    expect(result.error).toBe('不能拍自己');
+  });
+
+  it('2 秒冷却内重复拍同一人 → 拒绝', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    expect(room.poke('p1', 'p2').ok).toBe(true);
+    const second = room.poke('p1', 'p2');
+    expect(second.error).toBe('拍得太快了');
+  });
+
+  it('冷却只按 fromId→targetId 这一对生效，不影响拍别人', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    expect(room.poke('p1', 'p2').ok).toBe(true);
+    expect(room.poke('p1', 'p3').ok).toBe(true);
+  });
+
+  it('冷却过期后可以再次拍同一人', async () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    expect(room.poke('p1', 'p2').ok).toBe(true);
+    room.pokeCooldowns.set('p1→p2', Date.now() - 3000); // simulate 3s elapsed
+    expect(room.poke('p1', 'p2').ok).toBe(true);
+  });
+});
