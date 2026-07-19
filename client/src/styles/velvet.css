@@ -143,6 +143,16 @@
 .is-winner .avatar-card { border:2.5px solid #D4AF37 !important; box-shadow:0 0 0 5px rgba(212,175,55,.32), 0 0 50px rgba(212,175,55,.95) !important; animation:winGlow 1.2s ease-in-out infinite; }
 @keyframes winGlow { 0%,100%{box-shadow:0 0 0 5px rgba(212,175,55,.32),0 0 40px rgba(212,175,55,.8);}50%{box-shadow:0 0 0 7px rgba(212,175,55,.44),0 0 72px rgba(212,175,55,1);} }
 
+/* poke/pat — shake the target's card briefly when someone pokes them */
+.is-poked .avatar-card { animation:pokeShake .5s ease-in-out; }
+@keyframes pokeShake {
+  0%, 100% { transform:rotate(0deg); }
+  20%      { transform:rotate(-8deg); }
+  40%      { transform:rotate(7deg); }
+  60%      { transform:rotate(-5deg); }
+  80%      { transform:rotate(3deg); }
+}
+
 /* position badge — unchanged visually, still bottom-right of the card */
 .pos-badge { position:absolute; bottom:-4px; right:-7px; min-width:24px; height:15px; padding:0 4px; border-radius:5px; background:#EAE0C8; color:var(--ink-black); font-family:var(--font-mono); font-size:8px; font-weight:700; line-height:15px; text-align:center; white-space:nowrap; z-index:3; box-shadow:0 1px 3px rgba(0,0,0,.55); }
 
@@ -181,6 +191,12 @@
   60%  { opacity:1; transform:translate(-50%, 0) scale(1.06); }
   100% { opacity:1; transform:translate(-50%, 0) scale(1); }
 }
+
+/* poke bubble — unlike the now-persistent .action-bubble, this instance must
+   still fade itself out visually, since `poked` clears abruptly via a
+   setTimeout in RoomPage.jsx rather than being replaced by a new bubble. */
+.poke-bubble { animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both, actionBubbleOut .3s ease-in .4s forwards; }
+@keyframes actionBubbleOut { to { opacity:0; transform:translate(-50%, -8px) scale(.9); } }
 
 /* showdown reveal */
 .reveal { display:flex; gap:3px; }

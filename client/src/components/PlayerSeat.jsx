@@ -27,7 +27,7 @@ function bubbleStyle(cardsSide) {
   return { bottom: 'calc(100% + 50px)' }; // clears the 40px-tall xs reveal card + its own 4px gap + margin
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, dealing = false, dealDelays, cardsSide = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, dealing = false, dealDelays, cardsSide = null, onPoke, poked = false }) {
   const isShowdown = gamePhase === 'showdown';
   const hasCards = gamePhase !== 'waiting';
   const folded = player.status === 'folded';
@@ -42,12 +42,13 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
     isAction && !isWinner && 'is-active',
     folded && 'is-folded',
     allin && 'is-allin',
+    poked && 'is-poked',
   ].filter(Boolean).join(' ');
 
   return (
     <div className={seatClass}>
       <div className="seat-name">{player.name}</div>
-      <div className={`avatar-card ${avClass}`}>
+      <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>
         <div className="avatar-photo">
           {player.name[0].toUpperCase()}
           {badge && <span className="pos-badge">{badge}</span>}
@@ -59,6 +60,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
       </div>
 
       {bubble && <div key={bubble.key} className="action-bubble" style={bubbleStyle(cardsSide)}>{bubble.text}</div>}
+      {poked && <div className="action-bubble poke-bubble" style={bubbleStyle(cardsSide)}>戳了戳</div>}
 
       {hasCards && !isMe && !folded && !isShowdown && (
         <div className="reveal" style={sideStyle(cardsSide)}>

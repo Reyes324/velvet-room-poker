@@ -112,7 +112,7 @@ function spectatorSeatPositions(n) {
   return seats;
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onPoke, pokedSeat }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const tableZoneRef = useRef(null);
@@ -335,6 +335,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             gamePhase={gameState.phase}
             color={colorForId(me.id)}
             bubble={actionBubbles[me.id]}
+            poked={pokedSeat?.targetId === me.id}
           />
           {/* Same persistent chip-bubble every opponent gets below — hero's own bet
               used to only flash as fading action text, never sat on the felt like
@@ -371,6 +372,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               dealing={dealing}
               dealDelays={[dealDelayFor(p.id, 0), dealDelayFor(p.id, 1)]}
               cardsSide={cardsSide}
+              onPoke={() => onPoke?.(p.id)}
+              poked={pokedSeat?.targetId === p.id}
             />
             {p.bet > 0 && <div className="bet-chip" style={betStyle}>¥{p.bet.toLocaleString()}</div>}
           </div>
