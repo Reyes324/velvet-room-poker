@@ -220,11 +220,12 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         } else {
           text = '过牌';
         }
+        // Persistent now — no self-clearing timeout. The bubble stays until
+        // this same player's status/bet changes again (this effect re-fires
+        // and overwrites their entry) or a new street/hand clears everyone
+        // (see the phase-watching effect below).
         const key = Date.now();
         setActionBubbles(b => ({ ...b, [actorId]: { text, key } }));
-        setTimeout(() => {
-          setActionBubbles(b => (b[actorId]?.key === key ? { ...b, [actorId]: undefined } : b));
-        }, 1650);
       }
     }
     prevActionSnapshotRef.current = {
@@ -233,6 +234,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       players: gameState.players.map(p => ({ id: p.id, bet: p.bet, status: p.status })),
     };
   }, [gameState]);
+
+  // Persistent action bubbles represent "what happened this street" — clear
+  // them all when the street (or the whole hand) advances, otherwise a
+  // "跟注 ¥20" from preflop would still be sitting there during the flop.
+  useEffect(() => {
+    setActionBubbles({});
+  }, [gameState.phase]);
 
   return (
     <div className={`game-stage${dense ? ' game-stage--dense' : ''}`}>
