@@ -244,35 +244,102 @@ test.describe('Bug 回归', () => {
   });
 });
 
-// ─── S4：游戏中途加人拒绝 ─────────────────────────────────────────────────────
+// ─── S4：游戏中途加人（第十轮起：允许加入，旁观至下一手）────────────────────────
+//
+// 这个场景本来需要 3 个真实浏览器身份（已开局的 2 人 + 中途加入的第 3 人），但这个
+// 沙盒环境存在一个跟本次改动无关的硬限制：同一个测试进程里第 3 个 page 几乎总是
+// 卡在 page.goto 上（用完全不含任何游戏逻辑的 3 个空白页做过同样的复现，结果一致），
+// 旧版 S4 测试本身在这次改动之前就已经是本 session 记录在案的已知偶发失败之一。
+// 用 socket.io 服务端自带的 /socket.io/socket.io.js 客户端脚本在已有的 page 里
+// 开一条"裸" socket 连接来模拟第 3 个玩家，规避多开一个浏览器 page/context 的限制，
+// 同时仍然是对真实服务端（index.js 的 room:join handler）的端到端验证，而不只是
+// 单测 RoomManager.addPlayer 本身。客户端旁观渲染路径（不会把座位错标成"我"、
+// footer 三态）另有 fixture 驱动的测试覆盖，见下方「旁观渲染」小节。
 
-test.describe('S4：游戏进行中拒绝新玩家', () => {
-  test('游戏进行中第三人加入收到错误提示', async ({ browser }) => {
+test.describe('S4：游戏进行中加入新玩家', () => {
+  test('游戏进行中第三人加入成功，1000筹码，出现在房间玩家列表但不在当前这一手里', async ({ browser }) => {
     const ctx1 = await browser.newContext();
     const ctx2 = await browser.newContext();
-    const ctx3 = await browser.newContext();
     const p1 = await ctx1.newPage();
     const p2 = await ctx2.newPage();
-    const p3 = await ctx3.newPage();
 
     const code = await createRoom(p1, 'Alice');
     await joinRoom(p2, 'Bob', code);
     await startGame(p1);
 
-    // 游戏进行中，第三人尝试加入
-    await p3.goto(`/room/${code}`);
-    await expect(p3.locator(S.nameInput)).toBeVisible({ timeout: 5000 });
-    await p3.fill(S.nameInput, 'Charlie');
-    await p3.click(S.joinSubmit);
+    const result = await p1.evaluate(async (roomCode) => {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = '/socket.io/socket.io.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      return new Promise((resolve) => {
+        const sock = window.io();
+        const playerId = 'e2e-p3-' + Date.now();
+        let roomState = null;
+        sock.on('room:state', (s) => { roomState = s; });
+        sock.on('game:error', (msg) => resolve({ error: msg }));
+        sock.on('room:joined', () => {
+          setTimeout(() => resolve({ ok: true, roomState, playerId }), 300);
+        });
+        sock.on('connect', () => {
+          sock.emit('room:join', { code: roomCode, playerId, playerName: 'Charlie' });
+        });
+        setTimeout(() => resolve({ timeout: true, roomState }), 5000);
+      });
+    }, code);
 
-    // 应该收到错误提示（toast 或停在首页）
-    const errorVisible = await p3.locator('.toast--danger').isVisible({ timeout: 5000 }).catch(() => false);
-    const stillOnHome = await p3.locator(S.nameInput).isVisible({ timeout: 1000 }).catch(() => false);
-    expect(errorVisible || stillOnHome).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.timeout).toBeUndefined();
+    expect(result.ok).toBe(true);
+    const charlie = result.roomState.players.find(p => p.name === 'Charlie');
+    expect(charlie).toBeDefined();
+    expect(charlie.chips).toBe(1000);
+    expect(charlie.debt).toBe(0);
+    // 房间状态仍是 playing，其他两人的牌局不受影响
+    expect(result.roomState.status).toBe('playing');
 
     await ctx1.close();
     await ctx2.close();
-    await ctx3.close();
+  });
+});
+
+// ─── 旁观渲染（fixture 驱动，单 page，规避上面记录的多 page 限制）──────────────────
+
+test.describe('旁观视图渲染（?states= 开发自检画廊）', () => {
+  test('中途加入等待下一手：不渲染英雄座位，不会把某个真实对手错标成"我"', async ({ page }) => {
+    await page.goto('/?states=5');
+    await page.waitForTimeout(300);
+    expect(await page.locator('.player-slot--hero').count()).toBe(0);
+    await expect(page.locator('.waiting-text')).toContainText('旁观');
+  });
+
+  test('筹码归零后选择旁观留下：footer 常驻"+借一底"入口，不会被卡死出不来', async ({ page }) => {
+    await page.goto('/?states=6');
+    await page.waitForTimeout(300);
+    const rebuyBtn = page.locator('.spectate-rebuy-btn');
+    await expect(rebuyBtn).toBeVisible();
+    await expect(rebuyBtn).toContainText('借一底');
+  });
+
+  test('筹码归零决策弹窗：三个选项都存在', async ({ page }) => {
+    await page.goto('/?states=8');
+    await page.waitForTimeout(300);
+    await expect(page.locator('.modal-title:has-text("筹码已用完")')).toBeVisible();
+    await expect(page.locator('.modal-btn:has-text("借一底")')).toBeVisible();
+    await expect(page.locator('.modal-btn-cancel:has-text("旁观留下")')).toBeVisible();
+    await expect(page.locator('.modal-btn-danger:has-text("离开")')).toBeVisible();
+  });
+
+  test('账本弹窗：四列数字与 fixture 数据一致', async ({ page }) => {
+    await page.goto('/?states=9');
+    await page.waitForTimeout(300);
+    const rows = await page.locator('.ledger-row').count();
+    expect(rows).toBe(4);
+    await expect(page.locator('.ledger-row', { hasText: '王建国' })).toContainText('¥2,000');
+    await expect(page.locator('.ledger-row', { hasText: '王建国' })).toContainText('¥0');
   });
 });
 
@@ -433,6 +500,84 @@ test.describe('S6：对手全下后自动摊牌', () => {
 
     await expect(p1.locator(S.settlement)).toBeVisible({ timeout: 10000 });
     await expect(p2.locator(S.settlement)).toBeVisible({ timeout: 10000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});
+
+// ─── 用户反馈：单挑时对手座位飘出屏幕（移动端地址栏可见场景） ───────────────────────
+
+test.describe('移动端缩放：单挑对手座位不应飘出可见视口', () => {
+  test('浏览器地址栏可见（screen.height > innerHeight）时，对手座位仍完全在视口内', async ({ browser }) => {
+    // 模拟移动端地址栏占用空间的常见状态：innerHeight（当前可见区域）小于
+    // screen.height（物理屏幕高度）。useStageScale 曾用 screen.height 计算
+    // scale，导致画布顶部（单挑时唯一对手座位所在处）被推出可见视口之外。
+    const ctx1 = await browser.newContext({
+      viewport: { width: 390, height: 700 },
+      screen: { width: 390, height: 844 },
+    });
+    const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+    await p1.locator('.player-slot:not(.player-slot--hero)').waitFor({ state: 'attached' });
+
+    const oppBox = await p1.evaluate(() => {
+      const el = document.querySelector('.player-slot:not(.player-slot--hero)');
+      const r = el.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+    });
+    expect(oppBox.top).toBeGreaterThanOrEqual(0);
+    expect(oppBox.bottom).toBeLessThanOrEqual(700);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});
+
+// ─── 用户反馈：公共牌应该先扣着发下来，到点了再翻开 ───────────────────────────────
+
+test.describe('发牌动画：公共牌先扣着发下来，到点再翻', () => {
+  test('手牌发完后公共牌立即以背面落地，翻牌/转牌逐街揭晓', async ({ browser }) => {
+    test.setTimeout(60000);
+    const ctx1 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    // 等发牌动画播完（手牌 + 公共牌背面 + 英雄翻面）
+    await p1.waitForTimeout(1200);
+    expect(await p1.locator('.community .c-back').count()).toBe(5);
+    expect(await p1.locator('.community .c-empty').count()).toBe(0);
+    expect(await p1.locator('.community .c-face').count()).toBe(0);
+
+    // 翻牌圈：双方都过牌
+    for (let i = 0; i < 2; i++) {
+      const [actor] = await findActor(p1, p2);
+      await checkOrCall(actor);
+      await actor.waitForTimeout(400);
+    }
+    await p1.waitForTimeout(400);
+    expect(await p1.locator('.community .c-face').count()).toBe(3);
+    expect(await p1.locator('.community .c-back').count()).toBe(2);
+
+    // 转牌圈
+    for (let i = 0; i < 2; i++) {
+      const [actor] = await findActor(p1, p2);
+      await checkOrCall(actor);
+      await actor.waitForTimeout(400);
+    }
+    await p1.waitForTimeout(400);
+    expect(await p1.locator('.community .c-face').count()).toBe(4);
+    expect(await p1.locator('.community .c-back').count()).toBe(1);
 
     await ctx1.close();
     await ctx2.close();

@@ -15,23 +15,30 @@ class Room {
     this.hostId = hostId;
     this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null, debt: 0 }];
     this.game = null;       // GameEngine instance when in progress
-    this.dealerIndex = 0;
+    // Tracked by player id (not array index) so the button reliably lands on
+    // "whoever sits after the previous dealer" even when the roster's size or
+    // order changes between hands (mid-game joins, busted players dropping
+    // out) — a raw index recomputed against a freshly-filtered array would
+    // otherwise jump non-adjacently whenever the active set changes shape.
+    this.dealerId = hostId;
     this.status = 'waiting'; // waiting | playing
     this.settlementWait = null; // { eligiblePlayerIds, readyPlayerIds } while waiting for post-showdown acks
   }
 
   addPlayer(id, name, socketId) {
     if (this.players.length >= 9) return { error: '房间已满，无法加入' };
-    if (this.status !== 'waiting') return { error: '游戏已开始，无法加入' };
     if (this.players.find(p => p.id === id)) return { error: '已在房间内' };
     this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0 });
     return { ok: true };
   }
 
+  // Only a busted (chips === 0) player can rebuy — independent of room
+  // status, so someone who busts mid-game in a 3+ player table isn't stuck
+  // waiting for the whole room to end before they can buy back in.
   rebuy(playerId) {
     const p = this.players.find(p => p.id === playerId);
     if (!p) return { error: '玩家不存在' };
-    if (this.status !== 'waiting') return { error: '只能在等待阶段借入筹码' };
+    if (p.chips !== 0) return { error: '筹码充足，无需借入' };
     p.chips += STARTING_CHIPS;
     p.debt = (p.debt || 0) + STARTING_CHIPS;
     return { ok: true };
@@ -53,7 +60,10 @@ class Room {
     if (this.players.length < 2) return { error: '至少需要2名玩家' };
     if (this.status !== 'waiting') return { error: '游戏已在进行中' };
     this.status = 'playing';
-    this.game = new GameEngine(this.players, this.dealerIndex, BIG_BLIND);
+    const idx = this.players.findIndex(p => p.id === this.dealerId);
+    const dealerIndex = idx === -1 ? 0 : idx;
+    this.dealerId = this.players[dealerIndex].id;
+    this.game = new GameEngine(this.players, dealerIndex, BIG_BLIND);
     return { ok: true };
   }
 
@@ -63,15 +73,23 @@ class Room {
       const gp = this.game?.players.find(p => p.id === rp.id);
       if (gp) rp.chips = gp.chips;
     }
-    // Only active (chips > 0) players enter the next hand
+    // Only active (chips > 0) players enter the next hand — this already
+    // naturally picks up anyone who joined mid-game or just rebought, since
+    // it's filtered fresh from the full room roster every time, not carried
+    // over from the previous hand's player list.
     const active = this.players.filter(p => p.chips > 0);
     if (active.length < 2) {
       this.status = 'waiting';
       this.game = null;
       return { ended: true, reason: '筹码不足，等待玩家买入后重新开始' };
     }
-    this.dealerIndex = (this.dealerIndex + 1) % active.length;
-    this.game = new GameEngine(active, this.dealerIndex, BIG_BLIND);
+    // Move the button to the seat after the previous dealer, found by id in
+    // the freshly-filtered array. If that player busted out (or otherwise
+    // isn't active this hand), fall back to seat 0 rather than guessing.
+    const prevIdx = active.findIndex(p => p.id === this.dealerId);
+    const dealerIndex = prevIdx === -1 ? 0 : (prevIdx + 1) % active.length;
+    this.dealerId = active[dealerIndex].id;
+    this.game = new GameEngine(active, dealerIndex, BIG_BLIND);
     return { ok: true };
   }
 
@@ -79,11 +97,11 @@ class Room {
     for (const p of this.players) p.chips = STARTING_CHIPS;
     this.status = 'waiting';
     this.game = null;
-    this.dealerIndex = 0;
+    this.dealerId = this.players[0]?.id ?? null;
   }
 
   // ─── post-showdown "wait for everyone to ack" state ───────────────────────
-  // Owned here (like `game`/`status`/`dealerIndex`) rather than as an ad-hoc
+  // Owned here (like `game`/`status`/`dealerId`) rather than as an ad-hoc
   // property set from outside — index.js only decides *when* to advance
   // (the fallback timer) and broadcasts the result; the ready-tracking data
   // itself belongs to the room.
@@ -120,6 +138,15 @@ class Room {
     this.settlementWait = null;
   }
 
+  // Real per-player ack progress for the settlement modal's "等待其他人确认
+  // (X/Y)" — was previously faked client-side as "am I ready: 1 or 0", which
+  // never reflected who else had actually acked.
+  getSettlementProgress() {
+    if (!this.settlementWait) return null;
+    const { eligiblePlayerIds, readyPlayerIds } = this.settlementWait;
+    return { readyCount: readyPlayerIds.size, totalCount: eligiblePlayerIds.size };
+  }
+
   _allSettlementAcksIn() {
     const { eligiblePlayerIds, readyPlayerIds } = this.settlementWait;
     return [...eligiblePlayerIds].every((id) => readyPlayerIds.has(id));
@@ -147,6 +174,7 @@ class Room {
       code: this.code,
       hostId: this.hostId,
       status: this.status,
+      startingChips: STARTING_CHIPS,
       players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0 })),
     };
   }

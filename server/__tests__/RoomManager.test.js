@@ -47,12 +47,28 @@ describe('RoomManager — 加入房间', () => {
     expect(result.error).toBe('已在房间内');
   });
 
-  it('游戏已开始时加入 → 返回错误', () => {
+  it('游戏已开始时加入 → 允许加入，1000筹码，但不进入当前这一手', () => {
     const room = rooms.create('p1', 'Alice');
     rooms.join(room.code, 'p2', 'Bob', 'socket2');
     room.startGame();
     const result = rooms.join(room.code, 'p3', 'Charlie', 'socket3');
-    expect(result.error).toBeDefined();
+    expect(result.error).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(room.players.find(p => p.id === 'p3')).toMatchObject({ chips: 1000, debt: 0 });
+    // 不在当前正在进行的这一手里
+    expect(room.game.players.find(p => p.id === 'p3')).toBeUndefined();
+  });
+
+  it('中途加入的玩家从下一手开始自动生效', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.startGame();
+    rooms.join(room.code, 'p3', 'Charlie', 'socket3');
+    room.game.players.forEach(p => { p.chips = 1000; });
+
+    room.nextRound();
+
+    expect(room.game.players.map(p => p.id).sort()).toEqual(['p1', 'p2', 'p3']);
   });
 
   it('房间码不区分大小写', () => {
@@ -103,21 +119,35 @@ describe('Room — 借一底 (rebuy)', () => {
     expect(room.players[0].debt).toBe(1000);
   });
 
-  it('多次借入累计欠款', () => {
+  it('多次归零、多次借入，欠款累计', () => {
     const room = rooms.create('p1', 'Alice');
     room.players[0].chips = 0;
     room.rebuy('p1');
+    room.players[0].chips = 0; // 模拟借回来的这一底又输光了
     room.rebuy('p1');
-    expect(room.players[0].chips).toBe(2000);
+    expect(room.players[0].chips).toBe(1000);
     expect(room.players[0].debt).toBe(2000);
   });
 
-  it('游戏进行中不能借入', () => {
+  it('筹码充足时不能借入（无论房间处于什么状态）', () => {
+    const room = rooms.create('p1', 'Alice');
+    const result = room.rebuy('p1');
+    expect(result.error).toBeDefined();
+    expect(room.players[0].chips).toBe(1000);
+  });
+
+  it('游戏进行中，本人筹码归零时可以借入，不影响其他人', () => {
     const room = rooms.create('p1', 'Alice');
     rooms.join(room.code, 'p2', 'Bob', 's2');
     room.startGame();
+    room.players.find(p => p.id === 'p1').chips = 0;
+
     const result = room.rebuy('p1');
-    expect(result.error).toBeDefined();
+
+    expect(result.ok).toBe(true);
+    expect(room.players.find(p => p.id === 'p1').chips).toBe(1000);
+    expect(room.players.find(p => p.id === 'p1').debt).toBe(1000);
+    expect(room.status).toBe('playing'); // 其他人不受影响，房间没有掉回 waiting
   });
 
   it('不存在的玩家借入 → 返回错误', () => {
@@ -179,6 +209,57 @@ describe('Room — nextRound 筹码归零处理', () => {
     const startResult = room.startGame();
     expect(startResult.error).toBeUndefined();
     expect(room.game.players).toHaveLength(2);
+  });
+});
+
+describe('Room — 庄位轮转（dealerId）', () => {
+  it('庄家仍在场时，庄位顺延到下一个座位', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    rooms.join(room.code, 'p3', 'Charlie', 's3');
+    room.startGame(); // dealerId = p1 (players[0])
+    room.game.players.forEach(p => { p.chips = 1000; });
+
+    room.nextRound();
+
+    expect(room.dealerId).toBe('p2');
+    expect(room.game.players[room.game.dealerIndex].id).toBe('p2');
+  });
+
+  it('上一手庄家归零离场后，庄位退回座位0，而不是崩溃或跳到无关位置', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    rooms.join(room.code, 'p3', 'Charlie', 's3');
+    room.startGame(); // dealerId = p1
+    room.game.players.find(p => p.id === 'p1').chips = 0; // 庄家本手输光
+    room.game.players.find(p => p.id === 'p2').chips = 1500;
+    room.game.players.find(p => p.id === 'p3').chips = 1500;
+
+    room.nextRound();
+
+    expect(room.game.players.map(p => p.id).sort()).toEqual(['p2', 'p3']);
+    expect(room.dealerId).toBe(room.game.players[room.game.dealerIndex].id);
+    expect(['p2', 'p3']).toContain(room.dealerId);
+  });
+
+  it('中途加入的玩家不会打乱已在场玩家的庄位顺延', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    room.startGame(); // dealerId = p1
+    rooms.join(room.code, 'p3', 'Charlie', 's3'); // 中途加入
+    room.game.players.forEach(p => { p.chips = 1000; });
+
+    room.nextRound();
+
+    // 庄位仍然是"p1之后的下一个"，不受新加入的p3影响
+    expect(room.dealerId).toBe('p2');
+  });
+});
+
+describe('Room — getLobbyState', () => {
+  it('返回 startingChips 常量供客户端账本视图使用', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(room.getLobbyState().startingChips).toBe(1000);
   });
 });
 

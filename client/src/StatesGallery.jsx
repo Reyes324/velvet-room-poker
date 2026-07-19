@@ -1,6 +1,8 @@
 import GameTable from './components/GameTable';
 import SettlementModal from './components/SettlementModal';
 import Lobby from './components/Lobby';
+import BustDecisionModal from './components/BustDecisionModal';
+import LedgerModal from './components/LedgerModal';
 import { STATES } from './fixtures';
 
 const badge = (index, name) => (
@@ -34,6 +36,10 @@ export default function StatesGallery({ index = 0 }) {
         showdown={s.showdown}
         onAction={() => {}}
         actionDisabled={false}
+        amPlaying={s.amPlaying ?? true}
+        myChips={s.myChips ?? 0}
+        onRebuy={() => {}}
+        onOpenLedger={() => {}}
       />
       {s.settlement && (
         <SettlementModal
@@ -41,6 +47,15 @@ export default function StatesGallery({ index = 0 }) {
           results={s.settlement.results}
           onClose={() => {}}
           seconds={99}
+        />
+      )}
+      {s.bustPreview && <BustDecisionModal onRebuy={() => {}} onSpectate={() => {}} onLeave={() => {}} />}
+      {s.ledgerPreview && (
+        <LedgerModal
+          players={s.ledgerPreview.players}
+          startingChips={s.ledgerPreview.startingChips}
+          myId={s.myId}
+          onClose={() => {}}
         />
       )}
       {badge(index, s.name)}

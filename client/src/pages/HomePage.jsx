@@ -11,6 +11,7 @@ export default function HomePage({ onJoined, initialCode }) {
   const [code, setCode] = useState(initialCode ?? '');
   const [mode, setMode] = useState(initialCode ? 'join' : null);
   const [error, setError] = useState('');
+  const [inviterName, setInviterName] = useState(null);
 
   useEffect(() => {
     if (initialCode) {
@@ -19,7 +20,7 @@ export default function HomePage({ onJoined, initialCode }) {
     }
   }, [initialCode]);
 
-  const { emit } = useSocket({
+  const { emit, socket } = useSocket({
     'room:joined': ({ code: roomCode, playerId }) => {
       localStorage.setItem('vr_playerId', playerId);
       localStorage.setItem('vr_roomCode', roomCode);
@@ -27,6 +28,17 @@ export default function HomePage({ onJoined, initialCode }) {
     },
     'game:error': (msg) => setError(msg),
   });
+
+  // Deep-link arrival ("XXX invited you") — read-only peek, doesn't join.
+  useEffect(() => {
+    if (!initialCode) return;
+    function peek() {
+      socket.emit('room:peek', { code: initialCode }, (res) => {
+        if (res && !res.error) setInviterName(res.hostName);
+      });
+    }
+    if (socket.connected) peek(); else socket.once('connect', peek);
+  }, [initialCode]);
 
   function getPlayerId() {
     let id = localStorage.getItem('vr_playerId');
@@ -51,6 +63,12 @@ export default function HomePage({ onJoined, initialCode }) {
       <div className="home-card">
         <div className="home-logo">翡翠厅</div>
         <p className="home-tagline">Texas Hold'em · No Limit</p>
+
+        {mode === 'join' && initialCode && (
+          <p className="home-invite">
+            {inviterName ? <>「<strong>{inviterName}</strong>」邀请你加入战局</> : '受邀加入战局'}
+          </p>
+        )}
 
         <div className="home-form">
           <input
