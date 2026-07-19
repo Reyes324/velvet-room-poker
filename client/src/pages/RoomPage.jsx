@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
+import BustDecisionModal from '../components/BustDecisionModal';
+import LedgerModal from '../components/LedgerModal';
 
 export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [roomState, setRoomState] = useState(null);
@@ -13,6 +15,8 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [copied, setCopied] = useState(false);
   const [actionDisabled, setActionDisabled] = useState(false);
   const [iAmReady, setIAmReady] = useState(false);
+  const [showBustModal, setShowBustModal] = useState(false);
+  const [showLedger, setShowLedger] = useState(false);
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ msg, type });
@@ -61,6 +65,26 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     return () => socket.off('connect', sync);
   }, []);
 
+  // roomState.players (not gameState.players) is the source of truth for my
+  // own chip count once I've busted — gameState.players no longer has a row
+  // for me at all once I'm excluded from the current hand.
+  const myRoomChips = roomState?.players?.find(p => p.id === playerId)?.chips ?? 0;
+  const amPlaying = gameState?.players?.some(p => p.id === playerId) ?? false;
+
+  // Detect the >0 → 0 transition (just busted) to pop the decision modal
+  // once, the same pattern GameTable.jsx uses for justDealt/justRevealed.
+  // Re-crossing 0 → >0 (rebuy landed) auto-dismisses it.
+  const prevChipsRef = useRef(myRoomChips);
+  useEffect(() => {
+    if (prevChipsRef.current > 0 && myRoomChips === 0) setShowBustModal(true);
+    else if (myRoomChips > 0) setShowBustModal(false);
+    prevChipsRef.current = myRoomChips;
+  }, [myRoomChips]);
+
+  function rebuy() {
+    emit('player:rebuy', { playerId });
+  }
+
   function handleAction(action, amount) {
     setActionDisabled(true);
     emit('game:action', { playerId, action, amount });
@@ -97,10 +121,19 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           onKick={kick}
           onStart={() => emit('room:start', { playerId })}
           onRestart={() => emit('room:restart', { playerId })}
-          onRebuy={() => emit('player:rebuy', { playerId })}
+          onRebuy={rebuy}
           onExit={onLeave}
+          onOpenLedger={() => setShowLedger(true)}
           copied={copied}
         />
+        {showLedger && (
+          <LedgerModal
+            players={roomState?.players ?? []}
+            startingChips={roomState?.startingChips ?? 1000}
+            myId={playerId}
+            onClose={() => setShowLedger(false)}
+          />
+        )}
         {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
       </>
     );
@@ -117,7 +150,26 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         onAction={handleAction}
         actionDisabled={actionDisabled}
         onExit={onLeave}
+        amPlaying={amPlaying}
+        myChips={myRoomChips}
+        onRebuy={rebuy}
+        onOpenLedger={() => setShowLedger(true)}
       />
+      {showBustModal && !amPlaying && myRoomChips === 0 && (
+        <BustDecisionModal
+          onRebuy={rebuy}
+          onSpectate={() => setShowBustModal(false)}
+          onLeave={onLeave}
+        />
+      )}
+      {showLedger && (
+        <LedgerModal
+          players={roomState?.players ?? []}
+          startingChips={roomState?.startingChips ?? 1000}
+          myId={playerId}
+          onClose={() => setShowLedger(false)}
+        />
+      )}
       {settlement && settlement.winners?.length > 0 && (
         <SettlementModal
           winners={settlement.winners}

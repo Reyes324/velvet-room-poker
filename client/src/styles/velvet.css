@@ -259,6 +259,24 @@
 .modal-btn-danger { flex:1; height:46px; border-radius:23px; background:linear-gradient(135deg,#7A1E1E,#C0392B); font-family:var(--font-display); font-size:13px; font-weight:700; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 16px rgba(192,57,43,.3); }
 .cd { display:inline-block; width:18px; text-align:center; }
 
+/* ── ≡ TOP-BAR MENU POPOVER (账本 / 退出) ─────────────────── */
+.menu-popover { width:220px; padding:10px; gap:2px; }
+.menu-row { width:100%; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:13px; color:var(--text-primary); cursor:pointer; }
+.menu-row:active { background:rgba(212,175,55,.1); }
+.menu-row--danger { color:#E08080; }
+
+/* ── LEDGER MODAL（初始筹码/已借入/当前筹码） ─────────────── */
+.ledger-modal { width:334px; }
+.ledger-table { width:100%; display:flex; flex-direction:column; gap:6px; }
+.ledger-head-row, .ledger-row { display:grid; grid-template-columns:1.3fr 1fr 1fr 1fr; gap:4px; align-items:center; }
+.ledger-head-row { font-family:var(--font-mono); font-size:7px; color:#5A6E5C; letter-spacing:1px; padding:0 8px; }
+.ledger-row { padding:8px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:9px; }
+.ledger-row.hero { background:rgba(212,175,55,.08); border-color:rgba(212,175,55,.16); }
+.ledger-name { font-family:var(--font-body); font-size:12px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ledger-cell { font-family:var(--font-amount); font-size:11px; color:#C8BC9E; text-align:right; }
+.ledger-cell--debt { color:#E08A4A; }
+.ledger-note { font-family:var(--font-body); font-size:10px; color:#5A6E5C; text-align:center; line-height:1.5; }
+
 /* ── LOBBY ────────────────────────────────────────────────── */
 .lobby-room-name { font-family:var(--font-display); font-size:19px; color:var(--text-primary); }
 .lobby-blind { font-family:var(--font-mono); font-size:9px; color:#2A4A2C; margin-top:3px; letter-spacing:1px; }
@@ -317,6 +335,11 @@
 .table-canvas .hero-section { position:absolute; bottom:28px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; }
 .game-stage .action-bar { position:relative; flex:0 0 auto; padding-bottom:calc(12px + env(safe-area-inset-bottom,0px)); z-index:40; }
 .game-stage .waiting-bar { position:relative; flex:0 0 auto; padding:10px 14px calc(16px + env(safe-area-inset-bottom,0px)); background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
+/* Persistent rebuy escape hatch for a busted spectator who picked "旁观留下" —
+   without this the modal choice would be a one-way door with no way back in
+   until the room happens to end. */
+.waiting-bar--spectate .spectate-rebuy-btn { height:40px; padding:0 22px; border-radius:20px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.3); color:#E8C24A; font-family:var(--font-display); font-size:13px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.waiting-bar--spectate .spectate-rebuy-btn:active { background:rgba(212,175,55,.22); }
 
 /* ── DENSE TABLE (7–9 players): shrink seat + avatar to 38px ─ */
 .game-stage--dense .seat { width:38px; height:38px; }

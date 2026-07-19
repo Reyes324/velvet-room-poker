@@ -80,6 +80,34 @@ STATES.push({
   },
 });
 
+// Spectator view: mid-game joiner waiting for the next hand (myId isn't in
+// gameState.players at all — amPlaying=false is passed explicitly so
+// GameTable can't fall back to ordered[0] and mislabel a real opponent as "me").
+STATES.push({
+  name: '旁观·中途加入等待下一手', myId: 'newguy', roomCode: '4827', amPlaying: false, myChips: 1000,
+  gameState: {
+    phase: 'flop', pot: 730, currentBet: 0, actionPlayerId: 'chen',
+    communityCards: [c('Q', '♠'), c('3', '♥'), c('Q', '♦'), null, null],
+    players: P({
+      wang: { chips: 650 }, chen: { chips: 15639 },
+      zhang: { status: 'folded' }, li: { status: 'folded' }, zhao: { status: 'folded' },
+    }).filter(p => p.id !== 'me'),
+  },
+});
+
+// Spectator view: busted, chose "旁观留下" — persistent rebuy affordance in footer.
+STATES.push({
+  name: '旁观·归零留下', myId: 'newguy', roomCode: '4827', amPlaying: false, myChips: 0,
+  gameState: {
+    phase: 'flop', pot: 730, currentBet: 0, actionPlayerId: 'chen',
+    communityCards: [c('Q', '♠'), c('3', '♥'), c('Q', '♦'), null, null],
+    players: P({
+      wang: { chips: 650 }, chen: { chips: 15639 },
+      zhang: { status: 'folded' }, li: { status: 'folded' }, zhao: { status: 'folded' },
+    }).filter(p => p.id !== 'me'),
+  },
+});
+
 // Settlement modal over the (dimmed) showdown table
 STATES.push({
   name: '结算弹窗', myId: 'me', roomCode: '4827',
@@ -91,6 +119,30 @@ STATES.push({
       { name: '王建国', delta: -500 },
       { name: 'Augustine（我）', delta: -650, isMe: true },
       { name: '张伟 / 李大明 / 赵军', delta: null },
+    ],
+  },
+});
+
+// 筹码归零决策弹窗 — over a live (still amPlaying) table just so there's
+// something visible behind the overlay; the modal itself only appears once
+// RoomPage detects the >0→0 chip transition, independent of amPlaying here.
+STATES.push({
+  name: '筹码归零决策弹窗', myId: 'me', roomCode: '4827',
+  gameState: STATES[1].gameState,
+  bustPreview: true,
+});
+
+// 账本弹窗
+STATES.push({
+  name: '账本弹窗', myId: 'me', roomCode: '4827',
+  gameState: STATES[1].gameState,
+  ledgerPreview: {
+    startingChips: 1000,
+    players: [
+      { id: 'me', name: 'Augustine', chips: 12549, debt: 0 },
+      { id: 'wang', name: '王建国', chips: 0, debt: 2000 },
+      { id: 'chen', name: '陈美玲', chips: 15889, debt: 0 },
+      { id: 'zhang', name: '张伟', chips: 1000, debt: 1000 },
     ],
   },
 });

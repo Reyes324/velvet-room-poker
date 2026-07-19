@@ -244,35 +244,102 @@ test.describe('Bug 回归', () => {
   });
 });
 
-// ─── S4：游戏中途加人拒绝 ─────────────────────────────────────────────────────
+// ─── S4：游戏中途加人（第十轮起：允许加入，旁观至下一手）────────────────────────
+//
+// 这个场景本来需要 3 个真实浏览器身份（已开局的 2 人 + 中途加入的第 3 人），但这个
+// 沙盒环境存在一个跟本次改动无关的硬限制：同一个测试进程里第 3 个 page 几乎总是
+// 卡在 page.goto 上（用完全不含任何游戏逻辑的 3 个空白页做过同样的复现，结果一致），
+// 旧版 S4 测试本身在这次改动之前就已经是本 session 记录在案的已知偶发失败之一。
+// 用 socket.io 服务端自带的 /socket.io/socket.io.js 客户端脚本在已有的 page 里
+// 开一条"裸" socket 连接来模拟第 3 个玩家，规避多开一个浏览器 page/context 的限制，
+// 同时仍然是对真实服务端（index.js 的 room:join handler）的端到端验证，而不只是
+// 单测 RoomManager.addPlayer 本身。客户端旁观渲染路径（不会把座位错标成"我"、
+// footer 三态）另有 fixture 驱动的测试覆盖，见下方「旁观渲染」小节。
 
-test.describe('S4：游戏进行中拒绝新玩家', () => {
-  test('游戏进行中第三人加入收到错误提示', async ({ browser }) => {
+test.describe('S4：游戏进行中加入新玩家', () => {
+  test('游戏进行中第三人加入成功，1000筹码，出现在房间玩家列表但不在当前这一手里', async ({ browser }) => {
     const ctx1 = await browser.newContext();
     const ctx2 = await browser.newContext();
-    const ctx3 = await browser.newContext();
     const p1 = await ctx1.newPage();
     const p2 = await ctx2.newPage();
-    const p3 = await ctx3.newPage();
 
     const code = await createRoom(p1, 'Alice');
     await joinRoom(p2, 'Bob', code);
     await startGame(p1);
 
-    // 游戏进行中，第三人尝试加入
-    await p3.goto(`/room/${code}`);
-    await expect(p3.locator(S.nameInput)).toBeVisible({ timeout: 5000 });
-    await p3.fill(S.nameInput, 'Charlie');
-    await p3.click(S.joinSubmit);
+    const result = await p1.evaluate(async (roomCode) => {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = '/socket.io/socket.io.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      return new Promise((resolve) => {
+        const sock = window.io();
+        const playerId = 'e2e-p3-' + Date.now();
+        let roomState = null;
+        sock.on('room:state', (s) => { roomState = s; });
+        sock.on('game:error', (msg) => resolve({ error: msg }));
+        sock.on('room:joined', () => {
+          setTimeout(() => resolve({ ok: true, roomState, playerId }), 300);
+        });
+        sock.on('connect', () => {
+          sock.emit('room:join', { code: roomCode, playerId, playerName: 'Charlie' });
+        });
+        setTimeout(() => resolve({ timeout: true, roomState }), 5000);
+      });
+    }, code);
 
-    // 应该收到错误提示（toast 或停在首页）
-    const errorVisible = await p3.locator('.toast--danger').isVisible({ timeout: 5000 }).catch(() => false);
-    const stillOnHome = await p3.locator(S.nameInput).isVisible({ timeout: 1000 }).catch(() => false);
-    expect(errorVisible || stillOnHome).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.timeout).toBeUndefined();
+    expect(result.ok).toBe(true);
+    const charlie = result.roomState.players.find(p => p.name === 'Charlie');
+    expect(charlie).toBeDefined();
+    expect(charlie.chips).toBe(1000);
+    expect(charlie.debt).toBe(0);
+    // 房间状态仍是 playing，其他两人的牌局不受影响
+    expect(result.roomState.status).toBe('playing');
 
     await ctx1.close();
     await ctx2.close();
-    await ctx3.close();
+  });
+});
+
+// ─── 旁观渲染（fixture 驱动，单 page，规避上面记录的多 page 限制）──────────────────
+
+test.describe('旁观视图渲染（?states= 开发自检画廊）', () => {
+  test('中途加入等待下一手：不渲染英雄座位，不会把某个真实对手错标成"我"', async ({ page }) => {
+    await page.goto('/?states=5');
+    await page.waitForTimeout(300);
+    expect(await page.locator('.player-slot--hero').count()).toBe(0);
+    await expect(page.locator('.waiting-text')).toContainText('旁观');
+  });
+
+  test('筹码归零后选择旁观留下：footer 常驻"+借一底"入口，不会被卡死出不来', async ({ page }) => {
+    await page.goto('/?states=6');
+    await page.waitForTimeout(300);
+    const rebuyBtn = page.locator('.spectate-rebuy-btn');
+    await expect(rebuyBtn).toBeVisible();
+    await expect(rebuyBtn).toContainText('借一底');
+  });
+
+  test('筹码归零决策弹窗：三个选项都存在', async ({ page }) => {
+    await page.goto('/?states=8');
+    await page.waitForTimeout(300);
+    await expect(page.locator('.modal-title:has-text("筹码已用完")')).toBeVisible();
+    await expect(page.locator('.modal-btn:has-text("借一底")')).toBeVisible();
+    await expect(page.locator('.modal-btn-cancel:has-text("旁观留下")')).toBeVisible();
+    await expect(page.locator('.modal-btn-danger:has-text("离开")')).toBeVisible();
+  });
+
+  test('账本弹窗：四列数字与 fixture 数据一致', async ({ page }) => {
+    await page.goto('/?states=9');
+    await page.waitForTimeout(300);
+    const rows = await page.locator('.ledger-row').count();
+    expect(rows).toBe(4);
+    await expect(page.locator('.ledger-row', { hasText: '王建国' })).toContainText('¥2,000');
+    await expect(page.locator('.ledger-row', { hasText: '王建国' })).toContainText('¥0');
   });
 });
 

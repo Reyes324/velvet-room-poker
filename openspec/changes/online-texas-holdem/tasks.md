@@ -159,3 +159,18 @@
 - [x] 18.2 `seatPositions()` 的 `ry` 从 195 收紧到 180（`table-oval` CSS `top`/`height` 同步从 20/390 改成 35/360），给最顶座位腾出约 15px 真实缓冲；`rx`/`cy` 不变
 - [x] 18.3 `useTableScale.js` 从返回单一 `scale = min(w/refW, h/refH)` 改成返回独立的 `{scaleX, scaleY}`（分别等于容器实际宽/高 ÷ 参考宽/高），`GameTable.jsx` 改用 `scale(scaleX, scaleY)` 非等比缩放——牌桌区域横向永远贴满容器宽度，不再因为高度是瓶颈而两侧留白；代价是极端视口下头像轻微椭圆化（用户已认可此取舍）
 - [x] 18.4 回归验证（Playwright，4 种视口 × 双方视角量头像包围盒 + 牌桌椭圆左右留白）：修复前 3/4 视口下顶部头像裁切 ~1px，修复后归零；牌桌椭圆左右留白始终等于设计稿 18px 按 scaleX 换算后的对称固定值，不再随高度瓶颈变化
+
+## 19. 游戏中途加入 + 筹码归零个人决策 + 账本视图（第十轮，2026-07-19）
+
+- [x] 19.1 两轮 Explore + 一轮 Plan 子代理逐行核实源码，确认 `GameEngine.js`/`server/index.js` 不需要改动（`GameEngine.players` 每手从 `Room.players` 重新过滤构建，插入点天然在两手之间）；确认并记录一个已存在的潜伏 bug：`GameTable.jsx` 的 `const me = ordered[0]` 在"我不在当前这一手玩家列表里"时会把某个真实对手的座位错误渲染成"我"，而不是报错或掉回大厅
+- [x] 19.2 `Room.addPlayer`（`RoomManager.js`）去掉 `status!=='waiting'` 拒绝，只保留 9 人满座 + 重复 id 检查，中途加入的人从下一次 `nextRound()` 自动生效
+- [x] 19.3 `Room.rebuy`（`RoomManager.js`）门禁从"仅 waiting 状态"改成"仅本人 chips===0"，与房间状态无关
+- [x] 19.4 `Room.nextRound()` 庄位轮转从 `dealerIndex` 改成 `dealerId`（记玩家 id，下一手在新数组里找该 id 位置、顺延到下一个座位；找不到则退回座位 0）——顺带修复的潜伏 bug，不是用户原始请求，因为这两个新功能会让牌桌人数变动频率大幅提高
+- [x] 19.5 `Room.getLobbyState()` 新增 `startingChips` 字段（server 单测 32/32 通过，全量 server 测试 75/75 通过）
+- [x] 19.6 `RoomPage.jsx` 新增 `amPlaying`/`myRoomChips` 派生状态，`prevChipsRef` 检测本人筹码 `>0→0` 跳变触发决策弹窗；挂载新的 `BustDecisionModal`/`LedgerModal`
+- [x] 19.7 `GameTable.jsx` 新增旁观渲染路径（不再回退到 `ordered[0]`）：座位几何新增"无英雄锚点、全员均匀分布在完整椭圆"的变体（`spectatorSeatPositions()`）；`dense` 判断、顶部筹码显示改用新 `myChips` prop；footer 扩成三态（正常参与 / 旁观等待下一手 / 旁观且归零时常驻"+借一底"入口）
+- [x] 19.8 顶部 ≡ 菜单从"直接弹退出确认框"改成两行小弹层（账本 / 退出游戏），`GameTable.jsx`+`Lobby.jsx` 两处入口一致
+- [x] 19.9 新增 `BustDecisionModal.jsx`（借一底/旁观留下/离开，借一底带防抖）、`LedgerModal.jsx`（玩家/初始筹码/已借入/当前筹码四列）；`Lobby.jsx` 现成的"+借一底"徽章顺手补上同样的防抖
+- [x] 19.10 更新现有测试断言（不只是新增）：`RoomManager.test.js` "游戏进行中不能借入" 拆成"筹码充足时不能借入"+"归零时游戏进行中可以借入"两条；`e2e/game.spec.js` 的 S4"游戏进行中拒绝新玩家"改成"游戏进行中加入新玩家"（断言加入成功、1000 筹码、不在当前这一手里）
+- [x] 19.11 踩坑记录：这个沙盒环境存在一个跟本次改动无关的硬限制——单个测试进程里第 3 个浏览器 page（不论是否属于同一个 context）几乎总是卡死在 `page.goto`，用完全不含任何游戏逻辑的 3 个空白页复现过同样的结果，确认是环境资源上限（很可能是代理层的并发连接数限制），不是应用代码问题；旧版 S4 测试（3 个 context）本来就是本 session 记录在案的已知偶发失败之一。应对方式：① 服务端集成验证改用 socket.io 服务端自带的 `/socket.io/socket.io.js` 客户端脚本，在已有的 page 里开一条裸 socket 连接模拟"第三个玩家"，只用 2 个真实 page 就验证了 `room:join` 在游戏进行中真的会被服务端接受、返回 1000 筹码且不在当前这一手里；② 客户端旁观渲染路径（不会错标座位、footer 三态、两个新弹窗）改用项目已有的 `?states=N` 开发自检画廊（`fixtures.js`/`StatesGallery.jsx`），单 page 直接给 `GameTable`/新组件喂真实 props，规避了多开 page 的限制，覆盖力度不打折扣；③ 服务端的"归零玩家单独借入、其他人不受影响"由 `RoomManager.test.js` 的专门单测覆盖（更精确，且不受这个环境限制影响）
+- [x] 19.12 回归验证：服务端单测 75/75 通过；全量 e2e（`game.spec.js`+`lobby.spec.js`）对比已知的环境级偶发失败基线（"完整一局"/S2，S4 已改造为新场景），确认无新增失败

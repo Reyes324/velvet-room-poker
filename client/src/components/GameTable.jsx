@@ -82,18 +82,43 @@ function seatPositions(n) {
   return { hero: heroPos, opponents };
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit }) {
+// Spectator variant: there's no hero seat to anchor from (a mid-game joiner
+// waiting for the next hand, or a busted player who's been excluded from
+// this one), so every player in gameState.players gets distributed evenly
+// around the FULL ellipse instead of hero-at-bottom + a 240° arc for the
+// rest. Same rail (cx/cy/rx/ry) as seatPositions(), just no reserved vertex.
+function spectatorSeatPositions(n) {
+  const cx = 187.5, cy = 215, rx = 169.5, ry = 180;
+  if (n === 0) return [];
+  const seats = [];
+  for (let i = 0; i < n; i++) {
+    const deg = -90 + i * (360 / n);
+    const r = (deg * Math.PI) / 180;
+    seats.push({ x: cx + rx * Math.cos(r), y: cy + ry * Math.sin(r) });
+  }
+  return seats;
+}
+
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger }) {
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const tableZoneRef = useRef(null);
   const { scaleX: tableScaleX, scaleY: tableScaleY } = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
-  const ordered = getOrderedPlayers(gameState.players, myId);
-  const me = ordered[0];
-  const opponents = ordered.slice(1);
-  const { hero: heroSeatPos, opponents: pos } = seatPositions(opponents.length);
+
+  // amPlaying=false means myId isn't in gameState.players at all (mid-game
+  // joiner waiting for next hand, or a busted player excluded from this
+  // one) — there is no "me" to anchor the layout on, so every seat renders
+  // via the opponent-style PlayerSeat, laid out on the full-ellipse variant.
+  const ordered = amPlaying ? getOrderedPlayers(gameState.players, myId) : gameState.players;
+  const me = amPlaying ? ordered[0] : null;
+  const opponents = amPlaying ? ordered.slice(1) : ordered;
+  const { hero: heroSeatPos, opponents: pos } = amPlaying
+    ? seatPositions(opponents.length)
+    : { hero: null, opponents: spectatorSeatPositions(opponents.length) };
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
-  const myTurn = gameState.actionPlayerId === myId && !actionDisabled;
-  const dense = opponents.length + 1 >= 7;
+  const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled;
+  const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
   // ── Animation refs (track prev state to compute what's newly visible) ──────
   // prevPhaseRef starts null so justDealt also fires on first mount; the "!== preflop"
@@ -183,14 +208,22 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   return (
     <div className={`game-stage${dense ? ' game-stage--dense' : ''}`}>
       <div className="top-bar">
-        <div className="menu-btn" onClick={() => setShowExitModal(true)}>≡</div>
-        <div className="bankroll">¥{me.chips.toLocaleString()}</div>
+        <div className="menu-btn" onClick={() => setShowMenu(true)}>≡</div>
+        <div className="bankroll">¥{(amPlaying ? me.chips : myChips).toLocaleString()}</div>
       </div>
+      {showMenu && (
+        <div className="modal-overlay" onClick={() => setShowMenu(false)}>
+          <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
+            <div className="menu-row" onClick={() => { setShowMenu(false); onOpenLedger?.(); }}>账本</div>
+            <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowExitModal(true); }}>退出游戏</div>
+          </div>
+        </div>
+      )}
       {showExitModal && (
         <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">退出游戏</div>
-            <div className="modal-body">游戏进行中，退出将自动弃牌。确定退出吗？</div>
+            <div className="modal-body">{amPlaying ? '游戏进行中，退出将自动弃牌。确定退出吗？' : '确定退出房间吗？'}</div>
             <div className="modal-btns">
               <div className="modal-btn-cancel" onClick={() => setShowExitModal(false)}>取消</div>
               <div className="modal-btn-danger" onClick={onExit}>退出</div>
@@ -227,20 +260,22 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         </div>
       </div>
 
-      <div
-        className="player-slot player-slot--hero"
-        style={{ left: `${heroSeatPos.x}px`, top: `${heroSeatPos.y}px` }}
-      >
-        <PlayerSeat
-          player={me}
-          isMe={true}
-          isAction={gameState.actionPlayerId === myId}
-          isWinner={winnerNames.has(me.name)}
-          gamePhase={gameState.phase}
-          color={colorForId(me.id)}
-          bubble={actionBubbles[me.id]}
-        />
-      </div>
+      {amPlaying && (
+        <div
+          className="player-slot player-slot--hero"
+          style={{ left: `${heroSeatPos.x}px`, top: `${heroSeatPos.y}px` }}
+        >
+          <PlayerSeat
+            player={me}
+            isMe={true}
+            isAction={gameState.actionPlayerId === myId}
+            isWinner={winnerNames.has(me.name)}
+            gamePhase={gameState.phase}
+            color={colorForId(me.id)}
+            bubble={actionBubbles[me.id]}
+          />
+        </div>
+      )}
 
       {opponents.map((p, i) => {
         const s = pos[i];
@@ -275,42 +310,51 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         );
       })}
 
-      <div className="hero-section">
-        <div className="hero-cards">
-          {me.holeCards?.length === 2
-            ? (heroRevealed
-                ? me.holeCards.map((c, i) => (
-                    <Card
-                      key={`face-${i}`}
-                      card={c}
-                      size="md"
-                      animate={justRevealed ? 'flip-reveal' : null}
-                      delay={justRevealed ? i * 0.1 : 0}
-                    />
-                  ))
-                : me.holeCards.map((_, i) => (
-                    <Card
-                      key={`back-${i}`}
-                      size="md"
-                      faceDown
-                      animate={justDealt ? 'card-deal' : null}
-                      delay={justDealt ? dealDelayFor(myId, i) : 0}
-                    />
-                  )))
-            : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]}
+      {amPlaying && (
+        <div className="hero-section">
+          <div className="hero-cards">
+            {me.holeCards?.length === 2
+              ? (heroRevealed
+                  ? me.holeCards.map((c, i) => (
+                      <Card
+                        key={`face-${i}`}
+                        card={c}
+                        size="md"
+                        animate={justRevealed ? 'flip-reveal' : null}
+                        delay={justRevealed ? i * 0.1 : 0}
+                      />
+                    ))
+                  : me.holeCards.map((_, i) => (
+                      <Card
+                        key={`back-${i}`}
+                        size="md"
+                        faceDown
+                        animate={justDealt ? 'card-deal' : null}
+                        delay={justDealt ? dealDelayFor(myId, i) : 0}
+                      />
+                    )))
+              : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]}
+          </div>
+          <div className="hero-info">
+            <div className="hero-name">{me.name}（我）</div>
+            <div className="hero-chips">¥{me.chips.toLocaleString()}</div>
+          </div>
         </div>
-        <div className="hero-info">
-          <div className="hero-name">{me.name}（我）</div>
-          <div className="hero-chips">¥{me.chips.toLocaleString()}</div>
-        </div>
-      </div>
+      )}
 
       </div>
       </div>
 
-      {myTurn
-        ? <ActionBar gameState={gameState} myId={myId} onAction={onAction} disabled={actionDisabled} />
-        : <div className="waiting-bar"><div className="waiting-text">{isShowdown ? '正在比牌…' : '等待其他玩家行动…'}</div></div>}
+      {amPlaying
+        ? (myTurn
+            ? <ActionBar gameState={gameState} myId={myId} onAction={onAction} disabled={actionDisabled} />
+            : <div className="waiting-bar"><div className="waiting-text">{isShowdown ? '正在比牌…' : '等待其他玩家行动…'}</div></div>)
+        : (myChips > 0
+            ? <div className="waiting-bar"><div className="waiting-text">旁观中，下一手自动入座</div></div>
+            : <div className="waiting-bar waiting-bar--spectate">
+                <div className="waiting-text">旁观中</div>
+                <div className="spectate-rebuy-btn" onClick={onRebuy}>+借一底</div>
+              </div>)}
     </div>
   );
 }

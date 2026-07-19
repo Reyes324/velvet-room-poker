@@ -8,20 +8,37 @@ function colorForId(id) {
 }
 
 // Lobby / waiting room — styled by shared velvet.css (.lobby/.room-code/.pl-row/...)
-export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, onRebuy, onExit, copied, maxSeats = 9 }) {
+export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, onRebuy, onExit, onOpenLedger, copied, maxSeats = 9 }) {
   const [showExit, setShowExit] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [rebuying, setRebuying] = useState(false);
   const players = roomState?.players ?? [];
   const isHost = roomState?.hostId === playerId;
   const me = players.find(p => p.id === playerId);
   const canStart = players.filter(p => p.chips > 0).length >= 2;
   const empty = Math.max(0, Math.min(maxSeats, 6) - players.length);
 
+  function handleRebuy() {
+    if (rebuying) return;
+    setRebuying(true);
+    onRebuy();
+    setTimeout(() => setRebuying(false), 3000); // safety-net reset if room:state never arrives
+  }
+
   return (
     <div className="game-stage">
       <div className="top-bar">
-        <div className="menu-btn" onClick={() => setShowExit(true)}>≡</div>
+        <div className="menu-btn" onClick={() => setShowMenu(true)}>≡</div>
         <div className="bankroll">¥{(me?.chips ?? 0).toLocaleString()}</div>
       </div>
+      {showMenu && (
+        <div className="modal-overlay" onClick={() => setShowMenu(false)}>
+          <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
+            <div className="menu-row" onClick={() => { setShowMenu(false); onOpenLedger?.(); }}>账本</div>
+            <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowExit(true); }}>退出房间</div>
+          </div>
+        </div>
+      )}
       {showExit && (
         <div className="modal-overlay" onClick={() => setShowExit(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -66,8 +83,12 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
               {p.id === playerId && p.chips === 0 && onRebuy && (
                 <span
                   className="pr-badge"
-                  style={{ cursor: 'pointer', color: '#E8C24A', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)' }}
-                  onClick={onRebuy}
+                  style={{
+                    cursor: rebuying ? 'default' : 'pointer',
+                    opacity: rebuying ? .5 : 1,
+                    color: '#E8C24A', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)',
+                  }}
+                  onClick={handleRebuy}
                 >
                   +借一底
                 </span>
