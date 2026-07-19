@@ -40,6 +40,7 @@ function sbFirstOrder(players) {
 
 const DEAL_STEP = 0.07; // seconds between each card landing
 const DEAL_CARD_DURATION = 0.35; // matches .card-deal's animation-duration
+const COMMUNITY_COUNT = 5; // flop(3) + turn(1) + river(1), all dealt face-down up front
 
 // Seat centers sit exactly on the table-oval's rail (center 187.5,215; rx
 // 169.5, ry 195 — must match .table-canvas .table-oval's box in velvet.css
@@ -141,13 +142,18 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   }, [gameState.phase, cardCount, showdown]);
 
   // ── Hole-card deal sequence: SB-first round-robin stagger, hero flips
-  // face-up only once every player's two cards have finished landing. ──────
+  // face-up only once every player's two cards — AND the 5 community cards
+  // dealt face-down right after them (below) — have finished landing. ──────
   const dealOrder = sbFirstOrder(gameState.players);
   const dealDelayFor = (playerId, cardIdx) => {
     const idx = dealOrder.findIndex(p => p.id === playerId);
     return (cardIdx * dealOrder.length + (idx === -1 ? 0 : idx)) * DEAL_STEP;
   };
-  const totalDealTime = (dealOrder.length * 2 - 1) * DEAL_STEP + DEAL_CARD_DURATION;
+  // Community cards are dealt face-down as one continuous extension of the
+  // same round-robin sequence, landing right after the last hole card.
+  const holeDealSteps = dealOrder.length * 2;
+  const communityDealDelayFor = (i) => (holeDealSteps + i) * DEAL_STEP;
+  const totalDealTime = (holeDealSteps + COMMUNITY_COUNT - 1) * DEAL_STEP + DEAL_CARD_DURATION;
 
   const [heroRevealed, setHeroRevealed] = useState(true);
   const prevHeroRevealedRef = useRef(true);
@@ -244,18 +250,37 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           burst={justShowdown}
         />
         <div className="community">
-          {Array.from({ length: 5 }).map((_, i) => {
+          {Array.from({ length: COMMUNITY_COUNT }).map((_, i) => {
             const card = gameState.communityCards[i];
             const isNew = card && i >= newCardFrom;
-            return card
-              ? <Card
+            if (card) {
+              return (
+                <Card
                   key={i}
                   card={card}
                   size="sm"
                   animate={isNew ? 'flip-reveal' : null}
                   delay={isNew ? (i - newCardFrom) * 0.1 : 0}
                 />
-              : <div key={i} className="c-empty" />;
+              );
+            }
+            // Before the hand's first deal, there's genuinely nothing on the
+            // table yet — dashed placeholder. Once dealing has happened
+            // (waiting left), an unrevealed slot already has a card sitting
+            // there face-down (dealt during justDealt below), waiting for
+            // its street — not an empty box.
+            if (gameState.phase === 'waiting') {
+              return <div key={i} className="c-empty" />;
+            }
+            return (
+              <Card
+                key={i}
+                size="sm"
+                faceDown
+                animate={justDealt ? 'card-deal' : null}
+                delay={justDealt ? communityDealDelayFor(i) : 0}
+              />
+            );
           })}
         </div>
       </div>

@@ -538,3 +538,48 @@ test.describe('移动端缩放：单挑对手座位不应飘出可见视口', ()
     await ctx2.close();
   });
 });
+
+// ─── 用户反馈：公共牌应该先扣着发下来，到点了再翻开 ───────────────────────────────
+
+test.describe('发牌动画：公共牌先扣着发下来，到点再翻', () => {
+  test('手牌发完后公共牌立即以背面落地，翻牌/转牌逐街揭晓', async ({ browser }) => {
+    test.setTimeout(60000);
+    const ctx1 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    // 等发牌动画播完（手牌 + 公共牌背面 + 英雄翻面）
+    await p1.waitForTimeout(1200);
+    expect(await p1.locator('.community .c-back').count()).toBe(5);
+    expect(await p1.locator('.community .c-empty').count()).toBe(0);
+    expect(await p1.locator('.community .c-face').count()).toBe(0);
+
+    // 翻牌圈：双方都过牌
+    for (let i = 0; i < 2; i++) {
+      const [actor] = await findActor(p1, p2);
+      await checkOrCall(actor);
+      await actor.waitForTimeout(400);
+    }
+    await p1.waitForTimeout(400);
+    expect(await p1.locator('.community .c-face').count()).toBe(3);
+    expect(await p1.locator('.community .c-back').count()).toBe(2);
+
+    // 转牌圈
+    for (let i = 0; i < 2; i++) {
+      const [actor] = await findActor(p1, p2);
+      await checkOrCall(actor);
+      await actor.waitForTimeout(400);
+    }
+    await p1.waitForTimeout(400);
+    expect(await p1.locator('.community .c-face').count()).toBe(4);
+    expect(await p1.locator('.community .c-back').count()).toBe(1);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});
