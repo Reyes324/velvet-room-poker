@@ -133,6 +133,14 @@ function createServer() {
       io.to(room.code).emit('room:state', room.getLobbyState());
     });
 
+    socket.on('player:poke', ({ fromId, targetId }) => {
+      const room = rooms.getRoomByPlayer(fromId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.poke(fromId, targetId);
+      if (result.error) return socket.emit('game:error', result.error);
+      io.to(room.code).emit('player:poked', { fromId, targetId });
+    });
+
     socket.on('room:restart', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return socket.emit('game:error', '未找到房间');
