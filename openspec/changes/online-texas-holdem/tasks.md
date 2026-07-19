@@ -236,3 +236,11 @@
 
 - [x] 26.1 用户反馈 24.1 的双层三角形尖角"好奇怪"，要求用设计 skill 重新看——`.bet-chip::before/::after` 的两层纯直边三角形叠加改成单个 SVG data-URI 背景图（`path` 画一条微弯的弧形尾巴，深色填充+细金色描边，跟气泡本体同材质），尾巴根部叠在气泡圆角矩形下方（`z-index:-1`）隐藏衔接处，只露出弧形尖端，比直挺挺的三角形更像手绘漫画对话气泡
 - [x] 26.2 回归验证：裁图放大核对陈（左侧，尾巴指左下）、李（右侧，尾巴指右上）、hero（正下方，尾巴指上）三个不同角度，弧形尾巴方向都正确且视觉自然
+
+## 27. 修复冷启动（整页重载）场景下的会话恢复缺失（第十九轮，2026-07-20）
+
+- [x] 27.1 **根因确认**：第七轮修的是"socket 断线又重连、页面不重载"这一种路径（`RoomPage.jsx` 挂载/`connect` 事件发 `room:sync`）。移动端切 App 被系统回收标签页对应的是另一种路径——整页冷启动，`App.jsx` 从不读 `localStorage` 里的 `vr_playerId`/`vr_roomCode` 做会话恢复判断，无差别渲染 `HomePage` 走人工加入表单，最终发的是 `room:join` 而不是 `room:sync`，导致宽限期内报"已在房间内"、宽限期外被当全新玩家塞入（房主身份/筹码全部丢失）。详见 design.md「房主切 App 再切回来，重连后变成"全新受邀者"」
+- [x] 27.2 `App.jsx`：挂载时检查 `localStorage.vr_playerId` + `vr_roomCode`，且当前 URL 未指定房间号或与 `vr_roomCode` 一致时，直接以 `{code, playerId}` 挂载 `RoomPage`（复用其已有的 `room:sync` 挂载逻辑），不新增单独的恢复态/新 socket 事件
+- [x] 27.3 `App.jsx` 的 `handleLeave`：`room:gone`/`room:kicked`/主动退出这三条最终都会走到这里，一并清掉 `localStorage.vr_roomCode`（`vr_playerId` 保留作为跨房间的匿名设备身份），避免退出/失效后下次冷启动又尝试恢复同一个死会话
+- [x] 27.4 Playwright 回归（`e2e/lobby.spec.js`「冷启动会话恢复」describe 块，4 条用例）：房主 `page.reload()` 后直接看到大厅、`hostId` 不变、看得到"开始游戏/重新开始"；非房主 reload 后仍在房间且不重复加入；被踢出后本地会话被清除、reload 不再尝试恢复（跟"宽限期耗尽"共用同一条 `handleLeave` 清理路径，用被踢这个确定性事件触发，而不是真的等 120 秒宽限期超时——行为等价，但没有单独跑一条真实等待 120 秒的用例）；持有另一房间旧会话时点新邀请链接不会被误判为恢复。过程中还修了一个纯测试层面的竞态 bug（用 p1 的广播确认 p2 已加入，不能保证 p2 自己的 `room:joined`/localStorage 写入已完成，导致偶发 flake），跟本次功能修复无关
+- [x] 27.5 服务端本次无改动（问题根因和修复都在客户端）；`npm test`（server，75/75）与 `npm run test:e2e`（29/29，含既有回归）全绿
