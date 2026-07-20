@@ -193,29 +193,37 @@ function createServer() {
     socket.on('disconnect', () => {
       if (!myPlayerId) return;
       const room = rooms.getRoomByPlayer(myPlayerId);
-      if (room?.game && !room.isAwaitingSettlementAck()) {
-        const result = room.playerAction(myPlayerId, 'fold');
-        handleActionResult(room, result);
-      }
-      if (room?.isAwaitingSettlementAck()) {
+      if (!room) return;
+
+      room.setConnected(myPlayerId, false);
+
+      if (room.isAwaitingSettlementAck()) {
+        // Unchanged: settlement-ack disconnects still drop the player from
+        // the "must ack" set immediately rather than pausing — this is a
+        // lower-stakes confirmation click, not an in-hand decision, and is
+        // explicitly out of scope for the pause-and-wait behavior below.
         if (room.dropFromSettlementWait(myPlayerId)) advanceRoom(room);
         else io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
+      } else if (room.game) {
+        // Mid-hand disconnect: no auto-fold, no removal. broadcastRoom lets
+        // everyone see the "connected:false" flag immediately, and (once
+        // Task 7 lands) arms the safety-timeout if it's this player's turn.
+        broadcastRoom(room);
+      } else {
+        io.to(room.code).emit('room:state', room.getLobbyState());
       }
 
-      if (room && room.status === 'waiting') {
+      if (room.status === 'waiting') {
         // Lobby disconnect: give them a grace period to reconnect (e.g. they
         // just backgrounded the tab to paste the invite link somewhere)
         // instead of yanking them — and possibly deleting the whole room,
-        // if they were its only player — immediately.
+        // if they were its only player — immediately. Unchanged from before.
         const pid = myPlayerId;
         const deadSocketId = socket.id;
         const timer = setTimeout(() => {
           pendingRemovals.delete(pid);
           const stillRoom = rooms.getRoomByPlayer(pid);
           const player = stillRoom?.players.find(p => p.id === pid);
-          // Only actually remove them if nothing re-associated this player
-          // with a live socket in the meantime (room:sync on reconnect
-          // updates socketId away from this dead one).
           if (stillRoom && player && player.socketId === deadSocketId) {
             rooms.leave(pid);
             if (stillRoom.players.length > 0) {
@@ -224,12 +232,11 @@ function createServer() {
           }
         }, GRACE_PERIOD_MS);
         pendingRemovals.set(pid, timer);
-      } else {
-        rooms.leave(myPlayerId);
-        if (room && room.players.length > 0) {
-          io.to(room.code).emit('room:state', room.getLobbyState());
-        }
       }
+      // Mid-game (room.status !== 'waiting'): deliberately no removal timer
+      // at all. The only ways a mid-game player loses their seat are an
+      // explicit host kick (room:kick, unchanged) or busting out of chips
+      // (existing nextRound() elimination, unchanged) — see design.md.
     });
   });
 
