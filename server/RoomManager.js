@@ -2,6 +2,7 @@ const { GameEngine } = require('./GameEngine');
 
 const STARTING_CHIPS = 1000;
 const BIG_BLIND = 20;
+const POKE_COOLDOWN_MS = 2000;
 
 function randomCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -23,6 +24,7 @@ class Room {
     this.dealerId = hostId;
     this.status = 'waiting'; // waiting | playing
     this.settlementWait = null; // { eligiblePlayerIds, readyPlayerIds } while waiting for post-showdown acks
+    this.pokeCooldowns = new Map(); // `${fromId}→${targetId}` -> last-poke timestamp (ms)
   }
 
   addPlayer(id, name, socketId) {
@@ -49,6 +51,18 @@ class Room {
     if (this.hostId === id && this.players.length > 0) {
       this.hostId = this.players[0].id;
     }
+  }
+
+  // Purely social — no game-state effect. Cooldown is keyed by the ordered
+  // pair so A repeatedly poking B doesn't also throttle A poking C, or B
+  // poking A back.
+  poke(fromId, targetId) {
+    if (fromId === targetId) return { error: '不能拍自己' };
+    const key = `${fromId}→${targetId}`;
+    const last = this.pokeCooldowns.get(key);
+    if (last && Date.now() - last < POKE_COOLDOWN_MS) return { error: '拍得太快了' };
+    this.pokeCooldowns.set(key, Date.now());
+    return { ok: true };
   }
 
   updateSocket(playerId, socketId) {

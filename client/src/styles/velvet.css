@@ -77,8 +77,16 @@
 .c-xs.c-back::after { font-size: 12px; }
 
 /* ── OVAL TABLE ────────────────────────────────────────────── */
+/* Felt texture: fine grayscale SVG grain (feTurbulence, baked-in low alpha)
+   layered with a faint 115deg hairline sheen to suggest a brushed fabric nap,
+   under the original radial gradient. Chosen autonomously from 3 candidates
+   generated via the frontend-design skill (plain fine grain / coarser mottled
+   grain + edge vignette / this one) — revisit if a different read is wanted. */
 .table-oval {
-  background: radial-gradient(ellipse at 50% 38%, #103016 0%, #0A2210 45%, #061408 72%, #030A04 100%);
+  background:
+    repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0px, rgba(255,255,255,.025) 1px, transparent 1px, transparent 3px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E") repeat,
+    radial-gradient(ellipse at 50% 38%, #103016 0%, #0A2210 45%, #061408 72%, #030A04 100%);
   border-radius: 50%;
   border: 2px solid rgba(212,175,55,.12);
   box-shadow: inset 0 6px 70px rgba(0,0,0,.82), inset 0 0 0 8px rgba(212,175,55,.025), 0 0 0 7px rgba(4,10,6,.6), 0 14px 60px rgba(0,0,0,.7);
@@ -86,8 +94,8 @@
 
 /* ── POT (bare focal number) ──────────────────────────────── */
 .pot { display:flex; flex-direction:column; align-items:center; gap:2px; }
-.street-tag { font-family:var(--font-mono); font-size:9px; color:#C9A94A; letter-spacing:4px; text-transform:uppercase; opacity:.8; }
-.pot-label { font-family:var(--font-mono); font-size:7px; color:#5A4C24; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
+.street-tag { font-family:var(--font-mono); font-size:9px; color:#C9A94A; letter-spacing:4px; text-transform:uppercase; opacity:.9; }
+.pot-label { font-family:var(--font-mono); font-size:7px; color:#AE986C; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
 .pot-amt { font-family:var(--font-amount); font-size:24px; font-weight:700; color:#E8C24A; letter-spacing:.2px; text-shadow:0 0 20px rgba(212,175,55,.45), 0 2px 8px rgba(0,0,0,.6); line-height:1.05; }
 
 /* community placeholder (pre-flop) */
@@ -95,43 +103,74 @@
 .c-empty { width:36px; height:50px; border-radius:6px; border:1px dashed rgba(212,175,55,.1); background:transparent; }
 
 /* ── SEAT + AVATAR + STATES ───────────────────────────────── */
-/* seat = avatar slot; positioned on the rail by the layout context (gallery/RoomPage) */
-.seat { position:relative; width:36px; height:36px; }
-.avatar {
-  width:36px; height:36px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--text-primary);
-  border:2px solid rgba(212,175,55,.18); position:relative; background:#0A1A0E;
+/* seat = the whole rounded-rect card (photo zone + chip footer), positioned
+   on the layout grid by the context (gallery/RoomPage). Replaces the old
+   circular-avatar-plus-floating-text treatment — the chip count now lives
+   INSIDE the card's own footer strip, sharing one outer border with the
+   photo zone above it, matching the reference layout's card construction. */
+.seat { position:relative; width:42px; }
+.seat-name {
+  font-family:var(--font-body); font-size:10px; color:var(--text-secondary);
+  text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:56px; margin:0 auto 3px; margin-left:-7px; margin-right:-7px;
 }
-.av-green  { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
-.av-purple { background:radial-gradient(circle at 38% 35%, #4A228A, #1E0855); }
-.av-teal   { background:radial-gradient(circle at 38% 35%, #0E6060, #042E2E); }
-.av-rust   { background:radial-gradient(circle at 38% 35%, #7A3018, #3A1008); }
-.av-olive  { background:radial-gradient(circle at 38% 35%, #4A6020, #1E2A0A); }
-.av-blue   { background:radial-gradient(circle at 38% 35%, #2A5A8A, #0A2238); }
-.av-magenta{ background:radial-gradient(circle at 38% 35%, #8A2A5A, #380A22); }
-.av-gold   { background:radial-gradient(circle at 38% 35%, #8B6914, #3D2800); border-color:rgba(212,175,55,.45); }
+.avatar-card {
+  width:42px; border-radius:10px; position:relative;
+  border:2px solid rgba(212,175,55,.18); background:#0A1A0E;
+  display:flex; flex-direction:column;
+}
+/* Rounding lives on the photo/footer themselves (not overflow:hidden on
+   .avatar-card) so .pos-badge — nested inside .avatar-photo and deliberately
+   protruding past the card's bottom-right corner via negative bottom/right —
+   isn't clipped. Confirmed via a real rendered screenshot: overflow:hidden
+   here silently cut the badge's right edge off ("庄家" read as "庄" + a sliver). */
+.avatar-photo {
+  width:100%; height:42px; display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--text-primary);
+  position:relative; border-radius:8px 8px 0 0;
+}
+.think-overlay {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(4,10,6,.55); color:#F5E6A0; font-family:var(--font-mono);
+  font-size:11px; font-weight:700; border-radius:8px 8px 0 0;
+}
+.av-green  .avatar-photo { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
+.av-purple .avatar-photo { background:radial-gradient(circle at 38% 35%, #4A228A, #1E0855); }
+.av-teal   .avatar-photo { background:radial-gradient(circle at 38% 35%, #0E6060, #042E2E); }
+.av-rust   .avatar-photo { background:radial-gradient(circle at 38% 35%, #7A3018, #3A1008); }
+.av-olive  .avatar-photo { background:radial-gradient(circle at 38% 35%, #4A6020, #1E2A0A); }
+.av-blue   .avatar-photo { background:radial-gradient(circle at 38% 35%, #2A5A8A, #0A2238); }
+.av-magenta .avatar-photo { background:radial-gradient(circle at 38% 35%, #8A2A5A, #380A22); }
+.av-gold   .avatar-photo { background:radial-gradient(circle at 38% 35%, #8B6914, #3D2800); }
+.av-gold.avatar-card { border-color:rgba(212,175,55,.45); }
 
-.is-active .avatar { border:3px solid #D4AF37 !important; box-shadow:0 0 0 4px rgba(212,175,55,.3), 0 0 32px rgba(212,175,55,.8) !important; animation:activePulse 1.1s ease-in-out infinite; }
-@keyframes activePulse {
-  0%,100% { box-shadow:0 0 0 4px rgba(212,175,55,.28),0 0 16px rgba(212,175,55,.5); transform:scale(1); }
-  50%     { box-shadow:0 0 0 7px rgba(212,175,55,.42),0 0 48px rgba(212,175,55,1),0 0 80px rgba(212,175,55,.3); transform:scale(1.06); }
-}
-.is-folded .avatar { filter:grayscale(.75) brightness(.42); border-color:rgba(150,145,130,.22) !important; box-shadow:none !important; }
+.is-active .avatar-card { border:3px solid #D4AF37 !important; box-shadow:0 0 0 4px rgba(212,175,55,.3), 0 0 32px rgba(212,175,55,.6) !important; }
+.is-folded .avatar-card { filter:grayscale(.75) brightness(.42); border-color:rgba(150,145,130,.22) !important; box-shadow:none !important; }
 .is-folded .pos-badge { opacity:.5; }
-.is-allin .avatar { border:2px solid var(--state-danger) !important; box-shadow:0 0 18px rgba(192,57,43,.65) !important; }
-.is-winner .avatar { border:2.5px solid #D4AF37 !important; box-shadow:0 0 0 5px rgba(212,175,55,.32), 0 0 50px rgba(212,175,55,.95) !important; animation:winGlow 1.2s ease-in-out infinite; }
+.is-allin .avatar-card { border:2px solid var(--state-danger) !important; box-shadow:0 0 18px rgba(192,57,43,.65) !important; }
+.is-winner .avatar-card { border:2.5px solid #D4AF37 !important; box-shadow:0 0 0 5px rgba(212,175,55,.32), 0 0 50px rgba(212,175,55,.95) !important; animation:winGlow 1.2s ease-in-out infinite; }
 @keyframes winGlow { 0%,100%{box-shadow:0 0 0 5px rgba(212,175,55,.32),0 0 40px rgba(212,175,55,.8);}50%{box-shadow:0 0 0 7px rgba(212,175,55,.44),0 0 72px rgba(212,175,55,1);} }
 
-/* position badge — unified ivory 庄家/小盲/大盲 (Chinese labels, not the SB/BB/D shorthand) */
+/* poke/pat — shake the target's card briefly when someone pokes them */
+.is-poked .avatar-card { animation:pokeShake .5s ease-in-out; }
+@keyframes pokeShake {
+  0%, 100% { transform:rotate(0deg); }
+  20%      { transform:rotate(-8deg); }
+  40%      { transform:rotate(7deg); }
+  60%      { transform:rotate(-5deg); }
+  80%      { transform:rotate(3deg); }
+}
+
+/* position badge — unchanged visually, still bottom-right of the card */
 .pos-badge { position:absolute; bottom:-4px; right:-7px; min-width:24px; height:15px; padding:0 4px; border-radius:5px; background:#EAE0C8; color:var(--ink-black); font-family:var(--font-mono); font-size:8px; font-weight:700; line-height:15px; text-align:center; white-space:nowrap; z-index:3; box-shadow:0 1px 3px rgba(0,0,0,.55); }
 
-/* stack — platinum, below avatar */
-.stack-chip { position:absolute; top:calc(100% + 5px); left:50%; transform:translateX(-50%); font-family:var(--font-amount); font-size:10px; color:#9FB0AC; text-shadow:0 1px 3px rgba(0,0,0,.85); white-space:nowrap; }
-
-/* fold / all-in labels */
-.fold-tag { position:absolute; top:calc(100% + 5px); left:50%; transform:translateX(-50%); font-family:var(--font-mono); font-size:9px; color:#4A5A4C; letter-spacing:1px; white-space:nowrap; }
-.allin-tag { position:absolute; top:calc(100% + 5px); left:50%; transform:translateX(-50%); font-family:var(--font-mono); font-size:8px; font-weight:700; color:#E07A6E; letter-spacing:1px; white-space:nowrap; }
+/* chip footer — inside the same card border as the photo, not floating text below it */
+.stack-chip-footer {
+  width:100%; padding:3px 0; text-align:center;
+  background:rgba(4,10,6,.75); border-top:1px solid rgba(212,175,55,.14);
+  font-family:var(--font-amount); font-size:11px; font-weight:700; color:#C9D6D0;
+  border-radius:0 0 8px 8px;
+}
 
 /* bet chip — pill badge (speech-bubble style, visually prominent). Offset from
    its seat toward the pot by GameTable.jsx's betChipStyle(); the tail below
@@ -154,14 +193,18 @@
 @keyframes chipPop { from{opacity:0;scale:.55;} to{opacity:1;scale:1;} }
 
 /* action feedback bubble — pops from the avatar when a player acts (check/call/raise/fold/all-in) */
-.action-bubble { position:absolute; bottom:calc(100% + 6px); left:50%; padding:4px 10px; background:rgba(8,18,10,.95); border:1px solid rgba(212,175,55,.5); border-radius:14px; font-family:var(--font-amount); font-size:11px; font-weight:600; color:#F5E6A0; white-space:nowrap; box-shadow:0 2px 10px rgba(0,0,0,.6); z-index:8; animation:actionBubble 1.6s ease-out forwards; pointer-events:none; }
-@keyframes actionBubble {
+.action-bubble { position:absolute; bottom:calc(100% + 6px); left:50%; padding:4px 10px; background:rgba(8,18,10,.95); border:1px solid rgba(212,175,55,.5); border-radius:14px; font-family:var(--font-amount); font-size:11px; font-weight:600; color:#F5E6A0; white-space:nowrap; box-shadow:0 2px 10px rgba(0,0,0,.6); z-index:8; animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both; pointer-events:none; }
+@keyframes actionBubbleIn {
   0%   { opacity:0; transform:translate(-50%, 6px) scale(.75); }
-  15%  { opacity:1; transform:translate(-50%, 0) scale(1.06); }
-  25%  { opacity:1; transform:translate(-50%, 0) scale(1); }
-  78%  { opacity:1; transform:translate(-50%, -3px) scale(1); }
-  100% { opacity:0; transform:translate(-50%, -14px) scale(.92); }
+  60%  { opacity:1; transform:translate(-50%, 0) scale(1.06); }
+  100% { opacity:1; transform:translate(-50%, 0) scale(1); }
 }
+
+/* poke bubble — unlike the now-persistent .action-bubble, this instance must
+   still fade itself out visually, since `poked` clears abruptly via a
+   setTimeout in RoomPage.jsx rather than being replaced by a new bubble. */
+.poke-bubble { animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both, actionBubbleOut .3s ease-in .4s forwards; }
+@keyframes actionBubbleOut { to { opacity:0; transform:translate(-50%, -8px) scale(.9); } }
 
 /* showdown reveal */
 .reveal { display:flex; gap:3px; }
@@ -354,9 +397,12 @@
 .table-canvas .player-slot { position:absolute; transform:translate(-50%,-50%) scale(var(--csx,1), var(--csy,1)); z-index:5; }
 .table-canvas .player-slot .bet-chip { position:absolute; top:50%; left:50%; z-index:6; }
 .player-slot--hero { z-index: 4; }
-.player-slot--hero .stack-chip,
-.player-slot--hero .allin-tag,
-.player-slot--hero .fold-tag { display: none; } /* 筹码/状态已经在底部大卡显示，这里只需要头像+位置徽章+行动高亮，避免信息重复 */
+.player-slot--hero .stack-chip-footer { display: none; } /* 筹码已经在底部大卡显示，这里只需要头像+位置徽章+行动高亮，避免信息重复 */
+/* hero's rail seat sits right at the top edge of .hero-section (y:585 of a 610-tall
+   canvas) — the persistent .seat-name nickname would render right on top of
+   .hero-name/.hero-chips below it. Name is already shown there ("Augustine（我）"),
+   confirmed overlapping via real rendered screenshot, not just computed from the CSS. */
+.player-slot--hero .seat-name { display: none; }
 /* .pos-badge defaults to bottom-right so it clears the centered .stack-chip below it
    on opponent seats — but the hero's stack-chip is hidden above, so that offset just
    makes the D/SB/BB badge (and therefore the whole avatar+badge cluster) look shifted
@@ -379,9 +425,10 @@
    persistent reveal cards too — at 9-max, adjacent seats sit close enough
    along the rail that the normal-size reveal pair from one seat can run
    into its neighbor's. */
-.game-stage--dense .seat { width:31px; height:31px; }
-.game-stage--dense .avatar { width:31px; height:31px; font-size:12px; }
-.game-stage--dense .stack-chip { font-size:9px; }
+.game-stage--dense .seat { width:34px; }
+.game-stage--dense .seat-name { font-size:8px; max-width:44px; }
+.game-stage--dense .avatar-photo { height:34px; font-size:13px; }
+.game-stage--dense .stack-chip-footer { font-size:9px; padding:2px 0; }
 .game-stage--dense .pos-badge { font-size:7px; height:13px; line-height:13px; min-width:19px; padding:0 3px; }
 .game-stage--dense .reveal { gap:2px; }
 .game-stage--dense .reveal .c-xs { width:19px; height:27px; border-radius:4px; }

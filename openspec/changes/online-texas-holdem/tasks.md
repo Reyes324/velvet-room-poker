@@ -237,10 +237,23 @@
 - [x] 26.1 用户反馈 24.1 的双层三角形尖角"好奇怪"，要求用设计 skill 重新看——`.bet-chip::before/::after` 的两层纯直边三角形叠加改成单个 SVG data-URI 背景图（`path` 画一条微弯的弧形尾巴，深色填充+细金色描边，跟气泡本体同材质），尾巴根部叠在气泡圆角矩形下方（`z-index:-1`）隐藏衔接处，只露出弧形尖端，比直挺挺的三角形更像手绘漫画对话气泡
 - [x] 26.2 回归验证：裁图放大核对陈（左侧，尾巴指左下）、李（右侧，尾巴指右上）、hero（正下方，尾巴指上）三个不同角度，弧形尾巴方向都正确且视觉自然
 
-## 27. 修复冷启动（整页重载）场景下的会话恢复缺失（第十九轮，2026-07-20）
+## 27. 牌桌骨架从椭圆改为贴边双栏 + 座位卡片/气泡/读秒/拍一拍全面重做（第十九轮，2026-07-20）
 
-- [x] 27.1 **根因确认**：第七轮修的是"socket 断线又重连、页面不重载"这一种路径（`RoomPage.jsx` 挂载/`connect` 事件发 `room:sync`）。移动端切 App 被系统回收标签页对应的是另一种路径——整页冷启动，`App.jsx` 从不读 `localStorage` 里的 `vr_playerId`/`vr_roomCode` 做会话恢复判断，无差别渲染 `HomePage` 走人工加入表单，最终发的是 `room:join` 而不是 `room:sync`，导致宽限期内报"已在房间内"、宽限期外被当全新玩家塞入（房主身份/筹码全部丢失）。详见 design.md「房主切 App 再切回来，重连后变成"全新受邀者"」
-- [x] 27.2 `App.jsx`：挂载时检查 `localStorage.vr_playerId` + `vr_roomCode`，且当前 URL 未指定房间号或与 `vr_roomCode` 一致时，直接以 `{code, playerId}` 挂载 `RoomPage`（复用其已有的 `room:sync` 挂载逻辑），不新增单独的恢复态/新 socket 事件
-- [x] 27.3 `App.jsx` 的 `handleLeave`：`room:gone`/`room:kicked`/主动退出这三条最终都会走到这里，一并清掉 `localStorage.vr_roomCode`（`vr_playerId` 保留作为跨房间的匿名设备身份），避免退出/失效后下次冷启动又尝试恢复同一个死会话
-- [x] 27.4 Playwright 回归（`e2e/lobby.spec.js`「冷启动会话恢复」describe 块，4 条用例）：房主 `page.reload()` 后直接看到大厅、`hostId` 不变、看得到"开始游戏/重新开始"；非房主 reload 后仍在房间且不重复加入；被踢出后本地会话被清除、reload 不再尝试恢复（跟"宽限期耗尽"共用同一条 `handleLeave` 清理路径，用被踢这个确定性事件触发，而不是真的等 120 秒宽限期超时——行为等价，但没有单独跑一条真实等待 120 秒的用例）；持有另一房间旧会话时点新邀请链接不会被误判为恢复。过程中还修了一个纯测试层面的竞态 bug（用 p1 的广播确认 p2 已加入，不能保证 p2 自己的 `room:joined`/localStorage 写入已完成，导致偶发 flake），跟本次功能修复无关
-- [x] 27.5 服务端本次无改动（问题根因和修复都在客户端）；`npm test`（server，75/75）与 `npm run test:e2e`（29/29，含既有回归）全绿
+- [ ] 27.1 **骨架重写**：废弃 `seatPositions()`/`spectatorSeatPositions()` 的椭圆参数方程，改为贴边双栏分配算法（英雄固定底部；对手按人数尽量均分左右两栏，从上往下固定行距堆叠；中间留竖直通道给底池/公共牌）。`betChipStyle` 简化为水平朝中间通道方向。`.table-canvas` 的 scaleX/scaleY 独立缩放 + csx/csy 内容反向抵消机制沿用，只是坐标来源换成双栏算法
+- [ ] 27.2 具体行距/栏宽/头像尺寸随人数（2-9）的缩放规则，先搭进 `states-preview.html` 出图，用户确认后再回填 tokens/组件（项目既有"预览即状态画廊"工作流，见「样式架构」决策）
+- [ ] 27.3 发牌/摊牌相关动画（`dealDelayFor`、`cardsSide` 判断、`reveal` 定位）从"椭圆角度"改用"栏位序号"重新推导，Playwright 实测确认无遮挡/裁切（含 9 人密集桌）
+- [ ] 27.4 **座位卡片改造**：`PlayerSeat.jsx` 从圆形头像+外部飘字，改成竖圆角矩形卡片（上区头像照片 + 下区筹码 footer，同一外边框）；`.avatar`/`.stack-chip`/`.pos-badge` 对应改版
+- [ ] 27.5 昵称恢复显示（卡片上方一行，超宽省略号截断），9 人密集桌下昵称随卡片收窄降字号、不隐藏
+- [ ] 27.6 **气泡常驻化**：`.action-bubble` 从 1.6s 淡出改为常驻至该玩家下次行动/进入下一街；`.fold-tag`/`.allin-tag` 下线，弃牌/ALL IN 并入常驻气泡机制；`.bet-chip` 浮标不变
+- [ ] 27.7 **行动指示**：`.is-active .avatar` 去掉 `activePulse` 动画改静态描边；新增读秒遮罩（半透明遮罩 + 正向读秒数字，纯客户端本地计时，`actionPlayerId` 变化时清零，无上限无惩罚，不动服务端）
+- [ ] 27.8 **拍一拍**：新增 socket 事件 `player:poke`/`player:poked`（服务端广播），目标卡片抖动动画 + 瞬时"戳了戳"气泡；服务端按 `fromId→targetId` 2 秒冷却防刷，禁止拍自己；弃牌/旁观玩家可被拍
+- [ ] 27.9 视觉打磨：英雄手牌 `md`→`sm`；底池/街道文字对比度提升；桌面绒面噪点纹理（用 `frontend-design` skill 出图，预览页确认）
+- [ ] 27.10 服务端单测覆盖拍一拍冷却/禁止拍自己；Playwright 回归全部既有座位/发牌/摊牌/密集桌场景，确认骨架替换未破坏既有功能；真实浏览器实测确认，不只看 checklist
+
+## 28. 修复冷启动（整页重载）场景下的会话恢复缺失（第二十轮，2026-07-20）
+
+- [x] 28.1 **根因确认**：第七轮修的是"socket 断线又重连、页面不重载"这一种路径（`RoomPage.jsx` 挂载/`connect` 事件发 `room:sync`）。移动端切 App 被系统回收标签页对应的是另一种路径——整页冷启动，`App.jsx` 从不读 `localStorage` 里的 `vr_playerId`/`vr_roomCode` 做会话恢复判断，无差别渲染 `HomePage` 走人工加入表单，最终发的是 `room:join` 而不是 `room:sync`，导致宽限期内报"已在房间内"、宽限期外被当全新玩家塞入（房主身份/筹码全部丢失）。详见 design.md「房主切 App 再切回来，重连后变成"全新受邀者"」
+- [x] 28.2 `App.jsx`：挂载时检查 `localStorage.vr_playerId` + `vr_roomCode`，且当前 URL 未指定房间号或与 `vr_roomCode` 一致时，直接以 `{code, playerId}` 挂载 `RoomPage`（复用其已有的 `room:sync` 挂载逻辑），不新增单独的恢复态/新 socket 事件
+- [x] 28.3 `App.jsx` 的 `handleLeave`：`room:gone`/`room:kicked`/主动退出这三条最终都会走到这里，一并清掉 `localStorage.vr_roomCode`（`vr_playerId` 保留作为跨房间的匿名设备身份），避免退出/失效后下次冷启动又尝试恢复同一个死会话
+- [x] 28.4 Playwright 回归（`e2e/lobby.spec.js`「冷启动会话恢复」describe 块，4 条用例）：房主 `page.reload()` 后直接看到大厅、`hostId` 不变、看得到"开始游戏/重新开始"；非房主 reload 后仍在房间且不重复加入；被踢出后本地会话被清除、reload 不再尝试恢复（跟"宽限期耗尽"共用同一条 `handleLeave` 清理路径，用被踢这个确定性事件触发，而不是真的等 120 秒宽限期超时——行为等价，但没有单独跑一条真实等待 120 秒的用例）；持有另一房间旧会话时点新邀请链接不会被误判为恢复。过程中还修了一个纯测试层面的竞态 bug（用 p1 的广播确认 p2 已加入，不能保证 p2 自己的 `room:joined`/localStorage 写入已完成，导致偶发 flake），跟本次功能修复无关
+- [x] 28.5 服务端本次无改动（问题根因和修复都在客户端）；`npm test`（server，75/75）与 `npm run test:e2e`（29/29，含既有回归）全绿

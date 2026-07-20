@@ -18,6 +18,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [settlementProgress, setSettlementProgress] = useState(null);
   const [showBustModal, setShowBustModal] = useState(false);
   const [showLedger, setShowLedger] = useState(false);
+  const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ msg, type });
@@ -58,6 +59,13 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setTimeout(onLeave, 2500);
     },
     'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
+    'player:poked': ({ targetId }) => {
+      const key = Date.now();
+      setPokedSeat({ targetId, key });
+      setTimeout(() => {
+        setPokedSeat(p => (p?.key === key ? null : p));
+      }, 700);
+    },
   });
 
   useEffect(() => {
@@ -90,6 +98,10 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
 
   function rebuy() {
     emit('player:rebuy', { playerId });
+  }
+
+  function poke(targetId) {
+    emit('player:poke', { fromId: playerId, targetId });
   }
 
   function handleAction(action, amount) {
@@ -161,6 +173,8 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         myChips={myRoomChips}
         onRebuy={rebuy}
         onOpenLedger={() => setShowLedger(true)}
+        onPoke={poke}
+        pokedSeat={pokedSeat}
       />
       {showBustModal && !amPlaying && myRoomChips === 0 && (
         <BustDecisionModal

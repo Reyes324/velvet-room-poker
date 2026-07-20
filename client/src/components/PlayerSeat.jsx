@@ -3,6 +3,7 @@
 // Bet chip is rendered by RoomPage (owns toward-center offset). Opponents show two
 // face-down cards for the whole hand once dealt; their faces only reveal at showdown.
 import Card from './Card';
+import { useThinkSeconds } from '../hooks/useThinkSeconds';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
@@ -26,13 +27,14 @@ function bubbleStyle(cardsSide) {
   return { bottom: 'calc(100% + 50px)' }; // clears the 40px-tall xs reveal card + its own 4px gap + margin
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, dealing = false, dealDelays, cardsSide = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, dealing = false, dealDelays, cardsSide = null, onPoke, poked = false }) {
   const isShowdown = gamePhase === 'showdown';
   const hasCards = gamePhase !== 'waiting';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
   const badge = player.isDealer ? '庄家' : player.isSB ? '小盲' : player.isBB ? '大盲' : null;
   const avClass = isMe ? 'av-gold' : AV[color % AV.length];
+  const thinkSeconds = useThinkSeconds(isAction);
 
   const seatClass = [
     'seat',
@@ -40,22 +42,25 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
     isAction && !isWinner && 'is-active',
     folded && 'is-folded',
     allin && 'is-allin',
+    poked && 'is-poked',
   ].filter(Boolean).join(' ');
 
   return (
     <div className={seatClass}>
-      <div className={`avatar ${avClass}`}>
-        {player.name[0].toUpperCase()}
-        {badge && <span className="pos-badge">{badge}</span>}
+      <div className="seat-name">{player.name}</div>
+      <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>
+        <div className="avatar-photo">
+          {player.name[0].toUpperCase()}
+          {badge && <span className="pos-badge">{badge}</span>}
+          {isAction && (
+            <div className="think-overlay">{thinkSeconds}s</div>
+          )}
+        </div>
+        <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
       </div>
 
-      {folded
-        ? <div className="fold-tag">弃牌</div>
-        : allin
-          ? <div className="allin-tag">ALL IN</div>
-          : <div className="stack-chip">¥{player.chips.toLocaleString()}</div>}
-
       {bubble && <div key={bubble.key} className="action-bubble" style={bubbleStyle(cardsSide)}>{bubble.text}</div>}
+      {poked && <div className="action-bubble poke-bubble" style={bubbleStyle(cardsSide)}>戳了戳</div>}
 
       {hasCards && !isMe && !folded && !isShowdown && (
         <div className="reveal" style={sideStyle(cardsSide)}>
