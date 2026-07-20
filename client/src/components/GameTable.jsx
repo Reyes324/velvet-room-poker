@@ -5,7 +5,7 @@ import Card from './Card';
 import Pot from './Pot';
 import { useTableScale } from '../hooks/useTableScale';
 
-// Fixed design canvas for just the table scene (oval + seats + hero cards) —
+// Fixed design canvas for just the table scene (felt + seats + hero cards) —
 // the single source of truth for both .table-canvas's inline size and
 // useTableScale's fit calculation. Top bar and action bar live outside this
 // canvas entirely now (real flex siblings, always full device width); this
@@ -24,20 +24,14 @@ function colorForId(id) {
   return h;
 }
 
-const BET_CHIP_OFFSET = 40; // px toward the pot, from the seat center — was 65, tightened so the tail visibly reaches back to the avatar
+const BET_CHIP_OFFSET = 40; // px toward the pot, from the seat center — was 65, tightened so the chip visibly sits between seat and pot
 
-// The bet-chip is offset from its seat toward the pot center by (dx,dy). Its
-// little speech-bubble tail must point the opposite way — back at the seat it
-// came from — for every seat around the oval, not just hero's (whose seat
-// happens to sit at the bottom, the one position where "tail points straight
-// down" was already correct by coincidence). --tail-deg rotates the tail
-// (drawn pointing down by default) to match; see .bet-chip::after in velvet.css.
+// The bet-chip (a chip icon + amount, no tail — see .bet-chip in velvet.css)
+// is offset from its seat toward the pot center by (dx,dy).
 function betChipStyle(dx, dy) {
   const len = Math.hypot(dx, dy) || 1;
-  const tailDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
   return {
     transform: `translate(calc(-50% + ${(dx / len) * BET_CHIP_OFFSET}px), calc(-50% + ${(dy / len) * BET_CHIP_OFFSET}px))`,
-    '--tail-deg': `${tailDeg}deg`,
   };
 }
 
@@ -71,13 +65,13 @@ const COL_TOP_Y = 46;
 const COL_ROW_PITCH = 76;
 // A seat whose card would render its above-avatar reveal cards / action
 // bubble off the top of the canvas (row 0 of either column, closest to
-// COL_TOP_Y) renders them to its own outward side instead — same purpose as
-// the old CARDS_SIDE_BELOW_Y threshold under the oval, recomputed for the
-// new column geometry.
+// COL_TOP_Y) renders them toward the center strip instead (see the
+// cardsSide derivation below — pushing toward a column's own outward edge
+// instead runs the card off-screen there, confirmed on a real device).
 const CARDS_SIDE_BELOW_Y = COL_TOP_Y + COL_ROW_PITCH / 2;
 
 function seatPositions(n) {
-  const heroPos = { x: 187.5, y: 585 };
+  const heroPos = { x: 187.5, y: 430 };
   if (n === 0) return { hero: heroPos, opponents: [] };
   const opponents = [];
   let leftRow = 0, rightRow = 0;
@@ -117,12 +111,12 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const [showMenu, setShowMenu] = useState(false);
   const tableZoneRef = useRef(null);
   const { scaleX: tableScaleX, scaleY: tableScaleY } = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
-  // Position (seat rail, oval shape) stretches non-uniformly with tableScaleX/Y so the
-  // table always fills the container's actual width/height. Content (cards, avatars,
-  // text) must NOT stretch with it — each content layer below counters the parent's
-  // non-uniform scale back down to this single uniform factor via its own
+  // Position (seat columns, felt background) stretches non-uniformly with tableScaleX/Y
+  // so the table always fills the container's actual width/height. Content (cards,
+  // avatars, text) must NOT stretch with it — each content layer below counters the
+  // parent's non-uniform scale back down to this single uniform factor via its own
   // scale(csx, csy), so a wide-but-short viewport spreads seats out further apart
-  // without ever squashing a card or number into an ellipse.
+  // without ever squashing a card or number.
   const tableScaleUniform = Math.min(tableScaleX, tableScaleY) || 1;
   const csx = tableScaleX ? tableScaleUniform / tableScaleX : 1;
   const csy = tableScaleY ? tableScaleUniform / tableScaleY : 1;
@@ -130,7 +124,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // amPlaying=false means myId isn't in gameState.players at all (mid-game
   // joiner waiting for next hand, or a busted player excluded from this
   // one) — there is no "me" to anchor the layout on, so every seat renders
-  // via the opponent-style PlayerSeat, laid out on the full-ellipse variant.
+  // via the opponent-style PlayerSeat, laid out via spectatorSeatPositions()
+  // (same two-column layout, no reserved hero slot).
   const ordered = amPlaying ? getOrderedPlayers(gameState.players, myId) : gameState.players;
   const me = amPlaying ? ordered[0] : null;
   const opponents = amPlaying ? ordered.slice(1) : ordered;
@@ -352,9 +347,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         const betStyle = betChipStyle(187.5 - s.x, 0);
         const dealDelay = i * 0.1;
         // Only the topmost row of each column pushes its reveal cards to the
-        // side (toward its own column's outward edge, away from the center
-        // strip) to avoid clipping the canvas's top edge.
-        const cardsSide = s.y < CARDS_SIDE_BELOW_Y ? (s.side === 'left' ? 'left' : 'right') : null;
+        // side, to avoid clipping the canvas's top edge — toward the CENTER
+        // strip, not the column's own outward edge: a left-column seat sits
+        // right against the screen's left edge, so pushing further left runs
+        // the card off-screen (confirmed on a real device, not hand-computed:
+        // see design.md "真机实测：暗牌裁切..."). The center strip is the one
+        // direction with real room to spare.
+        const cardsSide = s.y < CARDS_SIDE_BELOW_Y ? (s.side === 'left' ? 'right' : 'left') : null;
         return (
           <div
             key={p.id}

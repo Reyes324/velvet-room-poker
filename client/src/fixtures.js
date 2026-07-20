@@ -167,3 +167,18 @@ STATES.push({
     ],
   },
 });
+
+// 英雄同时是行动方（读秒遮罩）且自己有下注（持久气泡）——真机实测暴露过这个组合会让
+// 英雄小头像座位跟 .hero-section（姓名+筹码+大手牌）重叠糊在一起，此前没有任何 fixture
+// 同时覆盖到这两个条件。2 人局，跟真机截图复现的场景一致。
+STATES.push({
+  name: '英雄行动中且有下注（2人局，真机重叠回归）', myId: 'me', roomCode: '4827',
+  gameState: {
+    phase: 'preflop', pot: 30, currentBet: 20, actionPlayerId: 'me',
+    communityCards: [null, null, null, null, null],
+    players: [
+      { id: 'op', name: '邱伟佳', chips: 980, bet: 20, status: 'active', holeCards: [null, null], isDealer: true },
+      { id: 'me', name: '测试', chips: 990, bet: 10, status: 'active', isSB: true, holeCards: [c('10', '♦'), c('J', '♦')] },
+    ],
+  },
+});

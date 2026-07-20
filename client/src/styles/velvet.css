@@ -82,16 +82,6 @@
    under the original radial gradient. Chosen autonomously from 3 candidates
    generated via the frontend-design skill (plain fine grain / coarser mottled
    grain + edge vignette / this one) — revisit if a different read is wanted. */
-.table-oval {
-  background:
-    repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0px, rgba(255,255,255,.025) 1px, transparent 1px, transparent 3px),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E") repeat,
-    radial-gradient(ellipse at 50% 38%, #103016 0%, #0A2210 45%, #061408 72%, #030A04 100%);
-  border-radius: 50%;
-  border: 2px solid rgba(212,175,55,.12);
-  box-shadow: inset 0 6px 70px rgba(0,0,0,.82), inset 0 0 0 8px rgba(212,175,55,.025), 0 0 0 7px rgba(4,10,6,.6), 0 14px 60px rgba(0,0,0,.7);
-}
-
 /* ── POT (bare focal number) ──────────────────────────────── */
 .pot { display:flex; flex-direction:column; align-items:center; gap:2px; }
 .street-tag { font-family:var(--font-mono); font-size:9px; color:#C9A94A; letter-spacing:4px; text-transform:uppercase; opacity:.9; }
@@ -176,19 +166,17 @@
    its seat toward the pot by GameTable.jsx's betChipStyle(); the tail below
    rotates via --tail-deg (same helper) to always point back at that seat,
    whichever direction around the oval it sits in — not just straight down. */
-.bet-chip { position:relative; display:inline-flex; align-items:center; justify-content:center; padding:3px 9px; background:rgba(8,18,10,.94); border:1px solid rgba(212,175,55,.65); border-radius:20px; font-family:var(--font-amount); font-size:11px; font-weight:700; color:#F5E6A0; white-space:nowrap; letter-spacing:.3px; box-shadow:0 2px 10px rgba(0,0,0,.7),0 0 8px rgba(212,175,55,.18); animation:chipPop .3s cubic-bezier(.34,1.56,.64,1) both; }
-/* A drawn, slightly curved comic-style tail (SVG, not a rigid CSS border-
-   triangle) — dark fill + thin gold stroke matching the pill itself, so it
-   reads as the same material tapering to a point, not a bolted-on wedge. The
-   wide end tucks under the pill (z-index below it); only the curved point
-   shows past the edge. Rotates via --tail-deg to always aim back at the seat. */
-.bet-chip::after {
+.bet-chip { position:relative; display:inline-flex; align-items:center; gap:5px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#F5E6A0; white-space:nowrap; letter-spacing:.3px; text-shadow:0 1px 5px rgba(0,0,0,.95), 0 0 10px rgba(0,0,0,.7); animation:chipPop .3s cubic-bezier(.34,1.56,.64,1) both; }
+/* Real casino-chip icon (edge dashes + inset ring + center disc) instead of
+   the old text-pill-with-a-tail — the tail direction/shape had already gone
+   through three redesign rounds chasing "does this read as a bubble" (see
+   design.md 第十五/十六/十八轮); an icon+amount sidesteps that entirely, per
+   user request to match the reference app's floating-chip treatment. */
+.bet-chip::before {
   content: '';
-  position: absolute; top: 50%; left: 50%;
-  width: 15px; height: 21px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='21' viewBox='0 0 15 21'%3E%3Cpath d='M3,0 C1.5,7 3,14 8,20 C6.5,13 6,6 9,0 C6.5,2 4.5,1.3 3,0 Z' fill='%2308120A' stroke='%23D4AF37' stroke-opacity='0.65' stroke-width='1.1' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain;
-  z-index: -1;
-  transform: translate(-50%, -50%) rotate(var(--tail-deg, 0deg)) translateY(17px);
+  width: 18px; height: 18px; flex-shrink: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='18.5' fill='%230F2410' stroke='%23D4AF37' stroke-width='2.5'/%3E%3Ccircle cx='20' cy='20' r='18.5' fill='none' stroke='%23D4AF37' stroke-width='3' stroke-dasharray='4.5 5.5'/%3E%3Ccircle cx='20' cy='20' r='12.5' fill='none' stroke='%23D4AF37' stroke-width='1.4' stroke-opacity='.75'/%3E%3Ccircle cx='20' cy='20' r='7' fill='%23D4AF37'/%3E%3C/svg%3E") no-repeat center / contain;
+  filter: drop-shadow(0 2px 5px rgba(0,0,0,.7));
 }
 @keyframes chipPop { from{opacity:0;scale:.55;} to{opacity:1;scale:1;} }
 
@@ -379,25 +367,41 @@
 .table-zone { position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
 /* Fixed design canvas for the table scene — width/height set inline from the
    same TABLE_REF_W/TABLE_REF_H constants GameTable.jsx uses for seat math,
-   scaled+centered via inline transform computed by useTableScale. */
-.table-canvas { position:absolute; left:50%; top:50%; }
+   scaled+centered via inline transform computed by useTableScale. Felt
+   texture lives here now (full-bleed) — it used to be a circle sized for the
+   abandoned elliptical seat rail, but with seats hugging the left/right
+   edges in two columns a circle in the middle no longer relates to anything
+   and reads as a big empty ring around one seat on a short-handed table
+   (confirmed on a real device, not just reasoned about — see design.md "真机
+   实测：暗牌裁切..."). Matches the flat-felt reference design this column
+   layout is based on. */
+.table-canvas {
+  position:absolute; left:50%; top:50%;
+  background:
+    repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0px, rgba(255,255,255,.025) 1px, transparent 1px, transparent 3px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E") repeat,
+    radial-gradient(ellipse at 50% 38%, #103016 0%, #0A2210 45%, #061408 72%, #030A04 100%);
+  box-shadow: inset 0 6px 70px rgba(0,0,0,.82), inset 0 0 0 8px rgba(212,175,55,.025);
+}
 
-/* Must match GameTable.jsx's seatPositions() ellipse exactly (cx 187.5, cy 215,
-   rx 169.5, ry 180 — ry deliberately trimmed from the box-matching 195, see
-   that function's comment) so opponent avatars land precisely on this rail. */
-.table-canvas .table-oval { position:absolute; top:35px; left:18px; right:18px; height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
-/* Oval itself inherits .table-canvas's full non-uniform scale (it's allowed to stretch
-   into an ellipse). Its content counters that stretch back down to a single uniform
-   factor (--csx/--csy, set by GameTable.jsx) so the pot number and community cards
-   never distort even when the oval around them does. */
+/* Pot + community cards center in the vertical channel between the two seat
+   columns (COL_LEFT_X=40 / COL_RIGHT_X=335 in GameTable.jsx) — purely a
+   layout container now, no drawn shape/border/background of its own (that
+   moved to .table-canvas above). `bottom` leaves room for .hero-section so
+   the pot doesn't visually center against the WHOLE canvas (which would sit
+   too low once the hero's name/chips/cards eat the bottom of it). */
+.table-canvas .table-oval { position:absolute; top:0; left:0; right:0; bottom:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
 .table-oval-content { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; transform:scale(var(--csx,1), var(--csy,1)); }
-/* Seat rail position (left/top) still stretches non-uniformly with the oval so seats
-   spread across the widened table; the seat's own content (avatar, cards, badges,
-   bet-chip) counters that stretch the same way as .table-oval-content above. */
+/* Seat rail position (left/top) still stretches non-uniformly with the
+   canvas so seats spread across the widened table; the seat's own content
+   (avatar, cards, badges, bet-chip) counters that stretch the same way as
+   .table-oval-content above. */
 .table-canvas .player-slot { position:absolute; transform:translate(-50%,-50%) scale(var(--csx,1), var(--csy,1)); z-index:5; }
 .table-canvas .player-slot .bet-chip { position:absolute; top:50%; left:50%; z-index:6; }
 .player-slot--hero { z-index: 4; }
-.player-slot--hero .stack-chip-footer { display: none; } /* 筹码已经在底部大卡显示，这里只需要头像+位置徽章+行动高亮，避免信息重复 */
+/* 英雄小头像卡片跟其他玩家保持同一个"长框"样式（头像+筹码 footer 同一张卡片），
+   不再单独砍掉 footer——即使跟下面 .hero-section 的筹码数字重复，也要保持视觉一致，
+   这是用户明确要求的（"我的头像布局要跟其他玩家的布局一样"）。 */
 /* hero's rail seat sits right at the top edge of .hero-section (y:585 of a 610-tall
    canvas) — the persistent .seat-name nickname would render right on top of
    .hero-name/.hero-chips below it. Name is already shown there ("Augustine（我）"),

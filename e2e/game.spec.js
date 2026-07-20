@@ -635,3 +635,27 @@ test.describe('座位布局：两栏贴边', () => {
     }
   });
 });
+
+// ─── 真机实测回归：英雄信息区重叠 + 顶排暗牌裁切 ──────────────────────────────────
+// 真机截图暴露过的组合场景（英雄同时是行动方 + 自己有下注）此前没有任何 fixture/测试
+// 覆盖到，见 fixtures.js "英雄行动中且有下注" 与 design.md "真机实测：暗牌裁切..."。
+
+test.describe('真机实测回归：贴边双栏骨架的两处重叠/裁切', () => {
+  test('英雄小头像座位不与 .hero-section（姓名/筹码/大手牌）重叠', async ({ page }) => {
+    await page.goto('/?states=11');
+    await page.waitForSelector('.player-slot--hero', { state: 'attached' });
+    await page.waitForTimeout(300);
+    const heroSeat = await page.locator('.player-slot--hero').boundingBox();
+    const heroSection = await page.locator('.hero-section').boundingBox();
+    expect(heroSeat.y + heroSeat.height).toBeLessThanOrEqual(heroSection.y);
+  });
+
+  test('顶排对手的暗牌图标不被画布左边缘裁切', async ({ page }) => {
+    await page.goto('/?states=11');
+    await page.waitForSelector('.player-slot:not(.player-slot--hero) .reveal', { state: 'attached' });
+    await page.waitForTimeout(300);
+    const reveal = await page.locator('.player-slot:not(.player-slot--hero) .reveal').first().boundingBox();
+    const tableZone = await page.locator('.table-zone').boundingBox();
+    expect(reveal.x).toBeGreaterThanOrEqual(tableZone.x);
+  });
+});
