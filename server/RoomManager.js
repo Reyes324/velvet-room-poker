@@ -14,7 +14,7 @@ class Room {
     do { code = randomCode(); } while (false); // uniqueness checked by RoomManager
     this.code = code;
     this.hostId = hostId;
-    this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null, debt: 0 }];
+    this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null, debt: 0, connected: true }];
     this.game = null;       // GameEngine instance when in progress
     // Tracked by player id (not array index) so the button reliably lands on
     // "whoever sits after the previous dealer" even when the roster's size or
@@ -30,7 +30,7 @@ class Room {
   addPlayer(id, name, socketId) {
     if (this.players.length >= 9) return { error: '房间已满，无法加入' };
     if (this.players.find(p => p.id === id)) return { error: '已在房间内' };
-    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0 });
+    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0, connected: true });
     return { ok: true };
   }
 
@@ -68,6 +68,15 @@ class Room {
   updateSocket(playerId, socketId) {
     const p = this.players.find(p => p.id === playerId);
     if (p) p.socketId = socketId;
+  }
+
+  // Explicit connection-status flag, separate from `socketId` (which is
+  // never cleared on disconnect and so doesn't reflect live status). Set
+  // false on disconnect, true on room:create/room:join/room:sync — see
+  // server/index.js.
+  setConnected(playerId, connected) {
+    const p = this.players.find(p => p.id === playerId);
+    if (p) p.connected = connected;
   }
 
   startGame() {
@@ -189,7 +198,7 @@ class Room {
       hostId: this.hostId,
       status: this.status,
       startingChips: STARTING_CHIPS,
-      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0 })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false })),
     };
   }
 }

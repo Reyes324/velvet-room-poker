@@ -79,6 +79,42 @@ describe('RoomManager — 加入房间', () => {
   });
 });
 
+describe('RoomManager — 连接状态', () => {
+  it('新创建/新加入的玩家默认 connected 为 true', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    expect(room.players.find(p => p.id === 'p1').connected).toBe(true);
+    expect(room.players.find(p => p.id === 'p2').connected).toBe(true);
+  });
+
+  it('setConnected(false) 标记玩家为断线，不影响其他字段', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.setConnected('p1', false);
+    const p = room.players.find(p => p.id === 'p1');
+    expect(p.connected).toBe(false);
+    expect(p.chips).toBe(1000);
+  });
+
+  it('setConnected(true) 能把断线状态改回来', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.setConnected('p1', false);
+    room.setConnected('p1', true);
+    expect(room.players.find(p => p.id === 'p1').connected).toBe(true);
+  });
+
+  it('setConnected 对不存在的 playerId 静默忽略', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(() => room.setConnected('nope', false)).not.toThrow();
+  });
+
+  it('getLobbyState() 的 players 里带上 connected 字段', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.setConnected('p1', false);
+    const state = room.getLobbyState();
+    expect(state.players.find(p => p.id === 'p1').connected).toBe(false);
+  });
+});
+
 describe('Room — 重新开始', () => {
   it('restart 后所有玩家筹码重置为初始值', () => {
     const room = rooms.create('p1', 'Alice');
