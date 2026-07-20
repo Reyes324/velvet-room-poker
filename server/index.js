@@ -22,6 +22,13 @@ function createServer() {
   // action a large fraction of the time on mobile. See GRACE_PERIOD_MS.
   const pendingRemovals = new Map();
   const GRACE_PERIOD_MS = 120000;
+  // Safety-timeout for a mid-hand pause: if the player whose turn it is
+  // stays disconnected this long with nobody (them or the host) resolving
+  // it, auto-fold on their behalf so the table isn't stuck forever if the
+  // host is unreachable too. Keyed by room code — only one turn can be
+  // "stuck" at a time per room. See maybeArmPauseTimer below.
+  const pauseTimers = new Map();
+  const PAUSE_TIMEOUT_MS = 5 * 60 * 1000;
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
@@ -34,12 +41,41 @@ function createServer() {
   // ─── helpers ───────────────────────────────────────────────────────────────
 
   function broadcastRoom(room) {
+    maybeArmPauseTimer(room);
     for (const p of room.players) {
       if (!p.socketId) continue;
       const state = room.getStateForPlayer(p.id);
       if (state) io.to(p.socketId).emit('game:state', state);
     }
     io.to(room.code).emit('room:state', room.getLobbyState());
+  }
+
+  // Arms, re-arms, or clears the pause-timeout for a room, based on
+  // whether whoever's turn it currently is is disconnected. Called from
+  // the single broadcastRoom() funnel point below, so it re-evaluates
+  // after every event that could change whose turn it is or someone's
+  // connection status (actions, disconnects, reconnects).
+  function maybeArmPauseTimer(room) {
+    const existing = pauseTimers.get(room.code);
+    const actionPlayerId = room.getActionPlayerId();
+    const player = actionPlayerId ? room.players.find(p => p.id === actionPlayerId) : null;
+    const shouldBeArmed = !!player && player.connected === false;
+
+    if (existing && existing.playerId === actionPlayerId && shouldBeArmed) return; // already correct
+    if (existing) {
+      clearTimeout(existing.timer);
+      pauseTimers.delete(room.code);
+    }
+    if (!shouldBeArmed) return;
+
+    const timer = setTimeout(() => {
+      pauseTimers.delete(room.code);
+      // Re-validate at fire time — the situation may have resolved itself
+      // (reconnect, host fold, hand ended) between arming and firing.
+      const result = room.resolveDisconnectedTurn(actionPlayerId);
+      if (!result.error) handleActionResult(room, result);
+    }, PAUSE_TIMEOUT_MS);
+    pauseTimers.set(room.code, { playerId: actionPlayerId, timer });
   }
 
   // Advances a room past its post-showdown settlement wait: clears the

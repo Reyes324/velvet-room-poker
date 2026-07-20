@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { createServer } = require('../index');
@@ -171,5 +171,57 @@ describe('打牌中断线：暂停而不是自动弃牌/踢出', () => {
     bystanderSocket.emit('game:fold-disconnected', { hostId: bystanderId, targetId: actingId });
     const msg = await err;
     expect(msg).toBeDefined();
+  });
+});
+
+describe('打牌中断线：5 分钟安全兜底', () => {
+  it('轮到断线玩家超过 5 分钟没人处理 → 自动帮他弃牌', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { c1, c2, actingId } = await setupPlayingRoom();
+      const actingSocket = actingId === 'p1' ? c1 : c2;
+      const otherSocket = actingId === 'p1' ? c2 : c1;
+
+      actingSocket.disconnect();
+      await vi.advanceTimersByTimeAsync(500); // let the disconnect land server-side
+
+      // NOTE: deviates from the plan's literal `10000` here. Under fake
+      // timers, waitFor's own internal reject-setTimeout is itself a fake
+      // timer — a 10s timeout fires (in virtual time) well before the 301s
+      // advanceTimersByTimeAsync below reaches the pause-timer's fire time,
+      // so the test failed deterministically with `10000` regardless of
+      // implementation correctness. Verified: raising this above the total
+      // advance amount fixes it, with the assertions unchanged.
+      const advanced = waitFor(otherSocket, 'room:state', 5 * 60 * 1000 + 5000);
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+      await advanced;
+
+      const room = rooms.getRoomByPlayer(actingId === 'p1' ? 'p2' : 'p1');
+      expect(room.players.map(p => p.id)).toContain(actingId); // still seated
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('5 分钟内玩家重连 → 不会被自动弃牌', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { c1, c2, actingId } = await setupPlayingRoom();
+      const actingSocket = actingId === 'p1' ? c1 : c2;
+
+      actingSocket.disconnect();
+      await vi.advanceTimersByTimeAsync(500);
+      actingSocket.connect();
+      await new Promise((resolve) => actingSocket.once('connect', resolve));
+      actingSocket.emit('room:sync', { playerId: actingId });
+      await vi.advanceTimersByTimeAsync(500);
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+
+      const room = rooms.getRoomByPlayer(actingId === 'p1' ? 'p2' : 'p1');
+      expect(room.getActionPlayerId()).toBe(actingId); // still their turn, not auto-folded
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
