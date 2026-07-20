@@ -441,3 +441,68 @@ describe('RoomManager — nextRound 跳过断线玩家', () => {
     expect(dealtIds).toContain('p2');
   });
 });
+
+describe('RoomManager — 断线玩家的行动兜底', () => {
+  function setupPlayingRoom() {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    rooms2.join(room.code, 'p2', 'Bob', 'socket2');
+    room.startGame();
+    return room;
+  }
+
+  it('getActionPlayerId 返回当前该行动的玩家 id', () => {
+    const room = setupPlayingRoom();
+    const id = room.getActionPlayerId();
+    expect(['p1', 'p2']).toContain(id);
+  });
+
+  it('getActionPlayerId 在没有牌局时返回 null', () => {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    expect(room.getActionPlayerId()).toBeNull();
+  });
+
+  it('resolveDisconnectedTurn：目标玩家没断线 → 拒绝', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    const result = room.resolveDisconnectedTurn(actingId);
+    expect(result.error).toBeDefined();
+  });
+
+  it('resolveDisconnectedTurn：目标玩家断线但不是他的回合 → 拒绝', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    const otherId = actingId === 'p1' ? 'p2' : 'p1';
+    room.setConnected(otherId, false);
+    const result = room.resolveDisconnectedTurn(otherId);
+    expect(result.error).toBeDefined();
+  });
+
+  it('resolveDisconnectedTurn：目标玩家断线且正是他的回合 → 成功弃牌', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    room.setConnected(actingId, false);
+    const result = room.resolveDisconnectedTurn(actingId);
+    expect(result.error).toBeUndefined();
+    expect(room.players.find(p => p.id === actingId)).toBeDefined(); // still seated
+  });
+
+  it('foldForDisconnected：非房主调用 → 拒绝', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    room.setConnected(actingId, false);
+    const result = room.foldForDisconnected('p2', actingId); // p2 isn't always host but this asserts the check exists
+    if (room.hostId !== 'p2') {
+      expect(result.error).toBeDefined();
+    }
+  });
+
+  it('foldForDisconnected：房主调用、目标断线且轮到他 → 成功', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    room.setConnected(actingId, false);
+    const result = room.foldForDisconnected(room.hostId, actingId);
+    expect(result.error).toBeUndefined();
+  });
+});
