@@ -129,6 +129,17 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const isHost = roomState?.hostId === playerId;
   const inGame = roomState?.status === 'playing' && gameState;
 
+  // Whoever's turn it currently is, cross-referenced against roomState's
+  // connection flags (gameState doesn't carry `connected` — that lives on
+  // the room-level player list, see server/RoomManager.js getLobbyState).
+  const stuckPlayer = inGame
+    ? roomState.players?.find(p => p.id === gameState.actionPlayerId && p.connected === false)
+    : null;
+
+  function foldForDisconnected() {
+    emit('game:fold-disconnected', { hostId: playerId, targetId: stuckPlayer.id });
+  }
+
   // ─── Lobby ───
   if (!inGame) {
     return (
@@ -201,6 +212,19 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
           onReady={handleReady}
         />
+      )}
+      {stuckPlayer && (
+        <div className="toast toast--info">
+          {stuckPlayer.name} 断线中，等待重连…
+          {isHost && (
+            <span
+              style={{ marginLeft: 12, textDecoration: 'underline', cursor: 'pointer' }}
+              onClick={foldForDisconnected}
+            >
+              帮TA弃牌
+            </span>
+          )}
+        </div>
       )}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </>
