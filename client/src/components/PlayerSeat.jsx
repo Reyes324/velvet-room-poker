@@ -7,24 +7,25 @@ import { useThinkSeconds } from '../hooks/useThinkSeconds';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
-// Card groups (dealing / showdown reveal) default to sitting above the avatar.
-// Seats near the top-bar (cardsSide set by GameTable) push them to whichever
-// side has more room instead, so the avatar itself can still sit exactly on
-// the table rail.
+// Card groups (dealing / showdown reveal) always render to the side of the
+// seat (toward whichever direction GameTable's cardsSide picks — the center
+// strip, per column). Rows are only COL_ROW_PITCH apart, so anything
+// rendered above/below a seat overlaps the neighboring row's card/footer —
+// side placement is the only direction with real room to spare, confirmed
+// on a real device. The "above" fallback below is unreachable in normal
+// play (GameTable always passes a side now) — kept only as a safe default
+// if this component is ever rendered without one.
 function sideStyle(cardsSide) {
-  if (cardsSide === 'left') return { position: 'absolute', right: 'calc(100% + 6px)', top: '50%', transform: 'translateY(-50%)' };
-  if (cardsSide === 'right') return { position: 'absolute', left: 'calc(100% + 6px)', top: '50%', transform: 'translateY(-50%)' };
+  if (cardsSide === 'left') return { position: 'absolute', right: 'calc(100% + 3px)', top: '50%', transform: 'translateY(-50%)' };
+  if (cardsSide === 'right') return { position: 'absolute', left: 'calc(100% + 3px)', top: '50%', transform: 'translateY(-50%)' };
   return { position: 'absolute', bottom: 'calc(100% + 4px)', left: '50%', transform: 'translateX(-50%)' };
 }
 
-// The action-text bubble must never sit on top of the (now permanent) face-down
-// reveal cards. When the reveal sits above the avatar (the common case) the
-// bubble stacks further above it; when the reveal has been pushed to a side
-// instead (near-top-edge seats), the avatar's own default top slot is free and
-// the bubble uses that (same sideStyle call the reveal used to also use here).
+// The action-text bubble sits in the avatar's own top slot — free now that
+// the reveal cards always render to the side instead of above it.
 function bubbleStyle(cardsSide) {
   if (cardsSide) return undefined;
-  return { bottom: 'calc(100% + 50px)' }; // clears the 40px-tall xs reveal card + its own 4px gap + margin
+  return { bottom: 'calc(100% + 50px)' }; // fallback if ever rendered without a side (see sideStyle)
 }
 
 export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, dealing = false, dealDelays, cardsSide = null, onPoke, poked = false }) {

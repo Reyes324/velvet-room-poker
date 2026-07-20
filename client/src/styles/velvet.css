@@ -15,7 +15,7 @@
   flex-shrink: 0; user-select: none;
 }
 /* sizes */
-.c-xs { width: 24px; height: 34px; border-radius: 4px; }
+.c-xs { width: 17px; height: 24px; border-radius: 3px; } /* only used by the opponent .reveal cards — shrunk to leave the center strip (community cards + bet-chip) real room, per real-device feedback */
 .c-sm { width: 36px; height: 50px; }
 .c-md { width: 52px; height: 72px; border-radius: 8px; }
 .c-lg { width: 62px; height: 84px; border-radius: 9px; }
@@ -38,14 +38,14 @@
 .c-md .c-tl .cs, .c-md .c-br .cs { font-size: 10px; }
 .c-lg .c-tl .cr, .c-lg .c-br .cr { font-size: 18px; }
 .c-lg .c-tl .cs, .c-lg .c-br .cs { font-size: 12px; }
-.c-xs .c-tl .cr, .c-xs .c-br .cr { font-size: 9px; }
-.c-xs .c-tl .cs, .c-xs .c-br .cs { font-size: 6px; }
+.c-xs .c-tl .cr, .c-xs .c-br .cr { font-size: 7px; }
+.c-xs .c-tl .cs, .c-xs .c-br .cs { font-size: 5px; }
 
 /* center suit pip */
 .c-ct { font-size: 15px; line-height: 1; opacity: .9; }
 .c-md .c-ct { font-size: 24px; }
 .c-lg .c-ct { font-size: 30px; }
-.c-xs .c-ct { font-size: 12px; }
+.c-xs .c-ct { font-size: 9px; }
 
 /* back — classic blue lattice, like a real deck (not a felt-green reskin). No
    outer border — the rounded rect edge alone is the card boundary, same as a
@@ -74,7 +74,7 @@
 .c-back::after { content: '✦'; position: relative; color: rgba(255,255,255,.6); font-family: var(--font-display); font-size: 15px; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
 .c-md.c-back::after { font-size: 22px; }
 .c-lg.c-back::after { font-size: 26px; }
-.c-xs.c-back::after { font-size: 12px; }
+.c-xs.c-back::after { font-size: 9px; }
 
 /* ── OVAL TABLE ────────────────────────────────────────────── */
 /* Felt texture: fine grayscale SVG grain (feTurbulence, baked-in low alpha)
@@ -156,10 +156,11 @@
 
 /* chip footer — inside the same card border as the photo, not floating text below it */
 .stack-chip-footer {
-  width:100%; padding:3px 0; text-align:center;
+  width:100%; padding:3px 2px; text-align:center; box-sizing:border-box;
   background:rgba(4,10,6,.75); border-top:1px solid rgba(212,175,55,.14);
-  font-family:var(--font-amount); font-size:11px; font-weight:700; color:#C9D6D0;
+  font-family:var(--font-amount); font-size:11px; font-weight:400; color:#C9D6D0;
   border-radius:0 0 8px 8px;
+  overflow:hidden; white-space:nowrap; text-overflow:ellipsis; /* large stacks (¥15,989+) must not spill past the card's rounded edge */
 }
 
 /* bet chip — pill badge (speech-bubble style, visually prominent). Offset from
@@ -205,11 +206,6 @@
 /* ── HERO INFO ────────────────────────────────────────────── */
 .hero-cards { display:flex; gap:10px; }
 .hero-name { font-family:var(--font-body); font-size:14px; color:var(--text-primary); text-align:center; }
-/* Same meaning as opponents' .stack-chip (current chip count) → same plain
-   grayish text treatment, just larger since it's the hero's own primary info,
-   not a gold pill (that read as a different, unrelated thing). */
-.hero-chips { font-family:var(--font-amount); font-size:13px; color:#9FB0AC; text-shadow:0 1px 3px rgba(0,0,0,.85); margin-top:3px; }
-.hero-bet { font-family:var(--font-amount); font-size:10px; font-weight:700; color:#C9A94A; margin-top:3px; }
 
 /* ── TOP BAR ──────────────────────────────────────────────── */
 .menu-btn { width:44px; height:44px; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.14); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--text-secondary); cursor:pointer; }
@@ -390,7 +386,7 @@
    moved to .table-canvas above). `bottom` leaves room for .hero-section so
    the pot doesn't visually center against the WHOLE canvas (which would sit
    too low once the hero's name/chips/cards eat the bottom of it). */
-.table-canvas .table-oval { position:absolute; top:0; left:0; right:0; bottom:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
+.table-canvas .table-oval { position:absolute; top:0; left:0; right:0; bottom:200px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
 .table-oval-content { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; transform:scale(var(--csx,1), var(--csy,1)); }
 /* Seat rail position (left/top) still stretches non-uniformly with the
    canvas so seats spread across the widened table; the seat's own content
@@ -400,12 +396,13 @@
 .table-canvas .player-slot .bet-chip { position:absolute; top:50%; left:50%; z-index:6; }
 .player-slot--hero { z-index: 4; }
 /* 英雄小头像卡片跟其他玩家保持同一个"长框"样式（头像+筹码 footer 同一张卡片），
-   不再单独砍掉 footer——即使跟下面 .hero-section 的筹码数字重复，也要保持视觉一致，
-   这是用户明确要求的（"我的头像布局要跟其他玩家的布局一样"）。 */
-/* hero's rail seat sits right at the top edge of .hero-section (y:585 of a 610-tall
-   canvas) — the persistent .seat-name nickname would render right on top of
-   .hero-name/.hero-chips below it. Name is already shown there ("Augustine（我）"),
-   confirmed overlapping via real rendered screenshot, not just computed from the CSS. */
+   不再单独砍掉 footer，这是用户明确要求的视觉一致性（"我的头像布局要跟其他玩家的布局
+   一样"）。.hero-section 下面原来也单独显示一份筹码（.hero-chips），造成重复展示，
+   已删掉——筹码量现在只在这张小卡片的 footer 里出现一次。 */
+/* hero's rail seat sits right above .hero-section — the persistent .seat-name
+   nickname would render right on top of .hero-name below it (name is already
+   shown there, "Augustine（我）"); confirmed overlapping via real rendered
+   screenshot, not just computed from the CSS. */
 .player-slot--hero .seat-name { display: none; }
 /* .pos-badge defaults to bottom-right so it clears the centered .stack-chip below it
    on opponent seats — but the hero's stack-chip is hidden above, so that offset just
@@ -435,9 +432,9 @@
 .game-stage--dense .stack-chip-footer { font-size:9px; padding:2px 0; }
 .game-stage--dense .pos-badge { font-size:7px; height:13px; line-height:13px; min-width:19px; padding:0 3px; }
 .game-stage--dense .reveal { gap:2px; }
-.game-stage--dense .reveal .c-xs { width:19px; height:27px; border-radius:4px; }
+.game-stage--dense .reveal .c-xs { width:14px; height:20px; border-radius:3px; }
 .game-stage--dense .reveal .c-xs.c-back::before { inset:2px; }
-.game-stage--dense .reveal .c-xs.c-back::after { font-size:8px; }
+.game-stage--dense .reveal .c-xs.c-back::after { font-size:7px; }
 
 /* ── LOBBY layout (in game-stage) ─────────────────────────── */
 .game-stage .lobby { position:relative; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:14px; padding-bottom:calc(14px + env(safe-area-inset-bottom,0px)); z-index:5; }

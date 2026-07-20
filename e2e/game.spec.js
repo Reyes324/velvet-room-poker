@@ -658,4 +658,72 @@ test.describe('真机实测回归：贴边双栏骨架的两处重叠/裁切', (
     const tableZone = await page.locator('.table-zone').boundingBox();
     expect(reveal.x).toBeGreaterThanOrEqual(tableZone.x);
   });
+
+  test('9人密集桌：每个座位的暗牌都贴在自己头像旁边，不遮挡相邻行的头像/筹码', async ({ page }) => {
+    // 9-max: rows are only 76 (ref units) apart — cards used to default to
+    // rendering ABOVE a seat, which overlapped the row above it. All cards
+    // now render to the side (toward center) unconditionally, for every
+    // row, not just the topmost one.
+    await page.goto('/?states=10');
+    await page.waitForSelector('.player-slot:not(.player-slot--hero) .reveal', { state: 'attached' });
+    await page.waitForTimeout(300);
+
+    const seats = await page.locator('.player-slot:not(.player-slot--hero)').all();
+    const allCards = [];
+    const reveals = []; // { seatIndex, box } — folded seats render no .reveal at all
+    for (let i = 0; i < seats.length; i++) {
+      allCards.push(await seats[i].locator('.avatar-card').boundingBox());
+      const revealLocator = seats[i].locator('.reveal');
+      if (await revealLocator.count() > 0) {
+        reveals.push({ seatIndex: i, box: await revealLocator.boundingBox() });
+      }
+    }
+
+    // Every seat's own reveal must sit roughly level with (not above/below)
+    // its own avatar card — vertical centers within one card-height of
+    // each other means "beside", not "above/below".
+    for (const { seatIndex, box: reveal } of reveals) {
+      const card = allCards[seatIndex];
+      expect(Math.abs((reveal.y + reveal.height / 2) - (card.y + card.height / 2))).toBeLessThan(card.height);
+    }
+
+    // No seat's reveal cards overlap a DIFFERENT seat's avatar card (the
+    // exact failure mode reported on a real device: cards from one row
+    // covering the neighboring row's chip amount) — checked against every
+    // seat's card, folded or not.
+    for (const { seatIndex, box: reveal } of reveals) {
+      for (let j = 0; j < allCards.length; j++) {
+        if (j === seatIndex) continue;
+        const card = allCards[j];
+        const overlapsX = reveal.x < card.x + card.width && reveal.x + reveal.width > card.x;
+        const overlapsY = reveal.y < card.y + card.height && reveal.y + reveal.height > card.y;
+        expect(overlapsX && overlapsY).toBe(false);
+      }
+    }
+
+    // Reveal cards must also not creep into the community-card zone in the
+    // center strip (reported on a real device for the bottom-most row).
+    const community = await page.locator('.community').boundingBox();
+    for (const { box: reveal } of reveals) {
+      const overlapsX = reveal.x < community.x + community.width && reveal.x + reveal.width > community.x;
+      const overlapsY = reveal.y < community.y + community.height && reveal.y + reveal.height > community.y;
+      expect(overlapsX && overlapsY).toBe(false);
+    }
+  });
+
+  test('对手的暗牌不遮挡自己的下注筹码', async ({ page }) => {
+    await page.goto('/?states=0'); // fixture has chen/li both with active bets
+    await page.waitForSelector('.bet-chip', { state: 'attached' });
+    await page.waitForTimeout(300);
+    const oppSlots = await page.locator('.player-slot:not(.player-slot--hero)').all();
+    for (const seat of oppSlots) {
+      const chipLocator = seat.locator('.bet-chip');
+      if (await chipLocator.count() === 0) continue; // this seat hasn't bet
+      const reveal = await seat.locator('.reveal').boundingBox();
+      const chip = await chipLocator.boundingBox();
+      const overlapsX = reveal.x < chip.x + chip.width && reveal.x + reveal.width > chip.x;
+      const overlapsY = reveal.y < chip.y + chip.height && reveal.y + reveal.height > chip.y;
+      expect(overlapsX && overlapsY).toBe(false);
+    }
+  });
 });

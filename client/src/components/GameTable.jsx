@@ -24,7 +24,7 @@ function colorForId(id) {
   return h;
 }
 
-const BET_CHIP_OFFSET = 40; // px toward the pot, from the seat center — was 65, tightened so the chip visibly sits between seat and pot
+const BET_CHIP_OFFSET = 92; // px toward the pot, from the seat center — raised from 40 so the chip clears the (now side-rendered, every row) reveal cards instead of overlapping them, per real-device feedback; value tuned empirically against real rendered bounding boxes, not hand-computed
 
 // The bet-chip (a chip icon + amount, no tail — see .bet-chip in velvet.css)
 // is offset from its seat toward the pot center by (dx,dy).
@@ -62,25 +62,33 @@ const COMMUNITY_COUNT = 5; // flop(3) + turn(1) + river(1), all dealt face-down 
 const COL_LEFT_X = 40;
 const COL_RIGHT_X = 335;
 const COL_TOP_Y = 46;
-const COL_ROW_PITCH = 76;
-// A seat whose card would render its above-avatar reveal cards / action
-// bubble off the top of the canvas (row 0 of either column, closest to
-// COL_TOP_Y) renders them toward the center strip instead (see the
-// cardsSide derivation below — pushing toward a column's own outward edge
-// instead runs the card off-screen there, confirmed on a real device).
-const CARDS_SIDE_BELOW_Y = COL_TOP_Y + COL_ROW_PITCH / 2;
+
+// Row spacing is looser with fewer players and only tightens as the table
+// fills up — a 2-handed table shouldn't be as cramped as a 9-max one just
+// because they share the same column x-positions. `rowsPerColumn` is
+// however many rows the taller of the two columns needs (opponents[0]→left
+// row 0, opponents[1]→right row 0, … so the two columns differ by at most
+// one row). Values tuned empirically against real rendered bounding boxes
+// (reveal cards must not collide with the row above/below, or with the
+// community-card zone in the center strip), not hand-computed.
+function rowPitchFor(rowsPerColumn) {
+  if (rowsPerColumn <= 2) return 130;
+  if (rowsPerColumn === 3) return 100;
+  return 76; // 4 rows — the densest supported table (7-9 handed)
+}
 
 function seatPositions(n) {
   const heroPos = { x: 187.5, y: 430 };
   if (n === 0) return { hero: heroPos, opponents: [] };
+  const pitch = rowPitchFor(Math.ceil(n / 2));
   const opponents = [];
   let leftRow = 0, rightRow = 0;
   for (let i = 0; i < n; i++) {
     if (i % 2 === 0) {
-      opponents.push({ x: COL_LEFT_X, y: COL_TOP_Y + leftRow * COL_ROW_PITCH, side: 'left' });
+      opponents.push({ x: COL_LEFT_X, y: COL_TOP_Y + leftRow * pitch, side: 'left' });
       leftRow++;
     } else {
-      opponents.push({ x: COL_RIGHT_X, y: COL_TOP_Y + rightRow * COL_ROW_PITCH, side: 'right' });
+      opponents.push({ x: COL_RIGHT_X, y: COL_TOP_Y + rightRow * pitch, side: 'right' });
       rightRow++;
     }
   }
@@ -92,14 +100,15 @@ function seatPositions(n) {
 // bottom slot.
 function spectatorSeatPositions(n) {
   if (n === 0) return [];
+  const pitch = rowPitchFor(Math.ceil(n / 2));
   const seats = [];
   let leftRow = 0, rightRow = 0;
   for (let i = 0; i < n; i++) {
     if (i % 2 === 0) {
-      seats.push({ x: COL_LEFT_X, y: COL_TOP_Y + leftRow * COL_ROW_PITCH, side: 'left' });
+      seats.push({ x: COL_LEFT_X, y: COL_TOP_Y + leftRow * pitch, side: 'left' });
       leftRow++;
     } else {
-      seats.push({ x: COL_RIGHT_X, y: COL_TOP_Y + rightRow * COL_ROW_PITCH, side: 'right' });
+      seats.push({ x: COL_RIGHT_X, y: COL_TOP_Y + rightRow * pitch, side: 'right' });
       rightRow++;
     }
   }
@@ -346,14 +355,14 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         // live, directly between the two columns at every row.
         const betStyle = betChipStyle(187.5 - s.x, 0);
         const dealDelay = i * 0.1;
-        // Only the topmost row of each column pushes its reveal cards to the
-        // side, to avoid clipping the canvas's top edge — toward the CENTER
-        // strip, not the column's own outward edge: a left-column seat sits
-        // right against the screen's left edge, so pushing further left runs
-        // the card off-screen (confirmed on a real device, not hand-computed:
-        // see design.md "真机实测：暗牌裁切..."). The center strip is the one
-        // direction with real room to spare.
-        const cardsSide = s.y < CARDS_SIDE_BELOW_Y ? (s.side === 'left' ? 'right' : 'left') : null;
+        // Reveal cards / action bubble always render toward the center strip,
+        // never above/below the seat — with rows only COL_ROW_PITCH (76px)
+        // apart, anything rendered above a seat overlaps the row above it
+        // (its footer/avatar), and anything below overlaps the row below
+        // (confirmed on a real device, not hand-computed). The center strip
+        // is the one direction with real room to spare, for every row, not
+        // just the topmost one.
+        const cardsSide = s.side === 'left' ? 'right' : 'left';
         return (
           <div
             key={p.id}
@@ -405,8 +414,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               : [<Card key={0} size="sm" faceDown />, <Card key={1} size="sm" faceDown />]}
           </div>
           <div className="hero-info">
+            {/* 筹码量已经在上面小头像座位的 footer 显示（跟其他玩家卡片样式保持一致），
+                这里不再重复展示，只留姓名。 */}
             <div className="hero-name">{me.name}（我）</div>
-            <div className="hero-chips">¥{me.chips.toLocaleString()}</div>
           </div>
         </div>
       )}
