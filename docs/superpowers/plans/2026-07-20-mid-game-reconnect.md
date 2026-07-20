@@ -681,19 +681,37 @@ Add to `server/__tests__/reconnect.test.js`:
     expect(room.players.map(p => p.id)).toContain(actingId); // still seated
   });
 
-  it('非房主发 game:fold-disconnected → 收到 game:error，牌局不推进', async () => {
-    const { c1, c2, actingId } = await setupPlayingRoom();
-    const actingSocket = actingId === 'p1' ? c1 : c2;
-    const otherSocket = actingId === 'p1' ? c2 : c1;
+  it('非房主、非目标本人 发 game:fold-disconnected → 收到 game:error，牌局不推进', async () => {
+    // Needs 3 players: in a 2-player room the only non-host player is also
+    // always the one acting first (deterministic first-hand order — see
+    // setupPlayingRoom's dealerIndex=0 convention), so there's no room for
+    // a distinct "online bystander" caller. With 3 players there always is,
+    // regardless of who the deal happens to put first to act.
+    const [c1, c2, c3] = await Promise.all([connect(), connect(), connect()]);
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'p1', playerName: 'Alice' });
+    const { code } = await joined1;
+    const ready2 = waitFor(c2, 'room:state');
+    c2.emit('room:join', { code, playerId: 'p2', playerName: 'Bob' });
+    await ready2;
+    const ready3 = waitFor(c3, 'room:state');
+    c3.emit('room:join', { code, playerId: 'p3', playerName: 'Carol' });
+    await ready3;
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    const state1 = await gs1;
+
+    const actingId = state1.actionPlayerId;
+    const socketsById = { p1: c1, p2: c2, p3: c3 };
+    const actingSocket = socketsById[actingId];
+    const bystanderId = ['p1', 'p2', 'p3'].find(id => id !== actingId && id !== 'p1'); // p1 is host
+    const bystanderSocket = socketsById[bystanderId];
 
     actingSocket.disconnect();
     await new Promise((r) => setTimeout(r, 300));
 
-    const nonHostId = 'p2'; // p1 is always host per setupPlayingRoom
-    if (nonHostId === actingId) return; // needs the caller to be online
-
-    const err = waitFor(otherSocket, 'game:error');
-    otherSocket.emit('game:fold-disconnected', { hostId: nonHostId, targetId: actingId });
+    const err = waitFor(bystanderSocket, 'game:error');
+    bystanderSocket.emit('game:fold-disconnected', { hostId: bystanderId, targetId: actingId });
     const msg = await err;
     expect(msg).toBeDefined();
   });
