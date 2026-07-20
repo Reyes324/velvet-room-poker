@@ -73,7 +73,10 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
             <div key={p.id} className="pl-row">
               <div className={`pr-av ${p.id === playerId ? 'av-gold' : AV[colorForId(p.id)]}`}>{p.name[0].toUpperCase()}</div>
               <div className="pr-info">
-                <div className="pr-name">{p.name}{p.id === playerId ? '（我）' : ''}</div>
+                <div className="pr-name">
+                {p.name}{p.id === playerId ? '（我）' : ''}
+                {p.connected === false && <span style={{ color: '#B08A3A' }}>（断线中）</span>}
+              </div>
                 <div className="pr-chips">
                   {p.chips === 0 ? <span style={{ color: '#E08A4A' }}>¥0 · 筹码不足</span> : `¥${p.chips.toLocaleString()}`}
                 </div>
