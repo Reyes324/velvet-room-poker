@@ -184,22 +184,23 @@ describe('集成测试 — 游戏流程', () => {
     const gs1 = waitFor(c1, 'game:state');
     c1.emit('room:start', { playerId: 'p1' });
     const state1 = await gs1;
-    // 首手 dealerIndex=0：p1 是庄+大盲，p2 是小盲，小盲先行动（确定性，不依赖随机发牌）
-    expect(state1.actionPlayerId).toBe('p2');
+    // 首手 dealerIndex=0，单挑（2人）：p1 是庄+小盲、翻牌前先手，p2 是大盲（确定性，不依赖随机发牌）
+    expect(state1.actionPlayerId).toBe('p1');
 
-    // 直接模拟 p2 本局已经输光（不依赖具体牌局随机结果）
+    // 直接模拟 p1（本局先手弃牌的那位）已经输光（不依赖具体牌局随机结果）——
+    // 必须是弃牌的那位，赢牌的一方结算时会把底池加回筹码，手动设的 0 会被覆盖掉。
     const room = rooms.getRoomByPlayer('p1');
-    room.game.players.find(p => p.id === 'p2').chips = 0;
+    room.game.players.find(p => p.id === 'p1').chips = 0;
 
     // 用持续监听收集每一次 room:state 广播，取 game:ended 后的最后一次，
     // 避免与 fold 处理本身立即触发的那次广播（此时 status 还是 'playing'）产生竞态。
     const roomStates = [];
     c1.on('room:state', (s) => roomStates.push(s));
 
-    // p2 弃牌 → p1 赢下底池，p2 维持 0 筹码 → 触发结算；结算后需双方都发 game:ready-next
+    // p1 弃牌 → p2 赢下底池，p1 维持 0 筹码 → 触发结算；结算后需双方都发 game:ready-next
     // 才会推进（新协议），推进时才判定"不足2人有筹码，游戏结束"。
     const showdown = waitFor(c1, 'game:showdown');
-    c2.emit('game:action', { playerId: 'p2', action: 'fold' });
+    c1.emit('game:action', { playerId: 'p1', action: 'fold' });
     await showdown;
 
     const ended = waitFor(c1, 'game:ended', 6000);
@@ -210,7 +211,7 @@ describe('集成测试 — 游戏流程', () => {
 
     const finalState = roomStates[roomStates.length - 1];
     expect(finalState.status).toBe('waiting');
-    expect(finalState.players.find(p => p.id === 'p2').chips).toBe(0);
+    expect(finalState.players.find(p => p.id === 'p1').chips).toBe(0);
   });
 
   it('结算后必须所有在线玩家都发 game:ready-next，才会推进到下一局', async () => {
@@ -252,35 +253,35 @@ describe('集成测试 — 游戏流程', () => {
     c1.emit('room:start', { playerId: 'p1' });
     await gs1;
 
-    // 首手 dealerIndex=0：p1 是庄+大盲，p2 是小盲，小盲（p2）先行动（确定性，见上文用例说明）。
-    // 让 p2 直接弃牌结束本局 —— 此时 GameEngine.actionIndex 仍停留在 p2（fold/_advance/_endHand
+    // 首手 dealerIndex=0，单挑：p1 是庄+小盲、翻牌前先手（见上文用例说明）。
+    // 让 p1 直接弃牌结束本局 —— 此时 GameEngine.actionIndex 仍停留在 p1（fold/_advance/_endHand
     // 都不会推进 actionIndex），为下面的断线重入场景创造前提条件。
     const showdown1 = waitFor(c1, 'game:showdown');
     const showdown2 = waitFor(c2, 'game:showdown');
-    c2.emit('game:action', { playerId: 'p2', action: 'fold' });
+    c1.emit('game:action', { playerId: 'p1', action: 'fold' });
     await Promise.all([showdown1, showdown2]);
 
-    // 结算等待期开始后，持续监听存活玩家 c1 是否再收到第二次 game:showdown
-    // （若 bug 未修复：p2 断线会被误判为"轮到 p2 时弃牌"，重新执行一次 fold →
+    // 结算等待期开始后，持续监听存活玩家 c2 是否再收到第二次 game:showdown
+    // （若 bug 未修复：p1 断线会被误判为"轮到 p1 时弃牌"，重新执行一次 fold →
     // _advance → _endHand，广播一个 pot=0 的伪造 showdown）。
     let extraShowdowns = 0;
-    c1.on('game:showdown', () => { extraShowdowns += 1; });
+    c2.on('game:showdown', () => { extraShowdowns += 1; });
 
-    // 正是刚才那个让本局结束的弃牌者（p2）此时断线
-    c2.disconnect();
+    // 正是刚才那个让本局结束的弃牌者（p1）此时断线
+    c1.disconnect();
 
     // 给服务端一点时间处理断线逻辑
     await new Promise((r) => setTimeout(r, 400));
     expect(extraShowdowns).toBe(0);
 
-    // p2 断线时已从 eligiblePlayerIds 中移除，且已被整体移出房间（人数不足2）。
-    // 此时只需 p1 确认，房间即可正确推进 —— 由于只剩1名有筹码玩家，应触发 game:ended。
-    const ended = waitFor(c1, 'game:ended', 3000);
-    c1.emit('game:ready-next', { playerId: 'p1' });
+    // p1 断线时已从 eligiblePlayerIds 中移除，且已被整体移出房间（人数不足2）。
+    // 此时只需 p2 确认，房间即可正确推进 —— 由于只剩1名有筹码玩家，应触发 game:ended。
+    const ended = waitFor(c2, 'game:ended', 3000);
+    c2.emit('game:ready-next', { playerId: 'p2' });
     const endedResult = await ended;
     expect(endedResult.ended).toBe(true);
 
-    const room = rooms.getRoomByPlayer('p1');
+    const room = rooms.getRoomByPlayer('p2');
     expect(room.status).toBe('waiting');
     expect(room.players).toHaveLength(1);
   });

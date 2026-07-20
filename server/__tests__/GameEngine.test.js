@@ -37,6 +37,30 @@ describe('GameEngine — 初始化', () => {
     expect(game.players[1].chips).toBe(900); // SB paid 100
     expect(game.players[2].chips).toBe(800); // BB paid 200
   });
+
+  it('单挑（2人）时庄家是小盲、翻牌前先手，另一人是大盲', () => {
+    // Heads-up is a special case in real Hold'em rules: the dealer/button
+    // posts the small blind (and acts first preflop) — NOT the ring-game
+    // rule (dealer+1=SB, dealer+2=BB), which for n=2 degenerates to handing
+    // the dealer the BIG blind instead (dealer+2 wraps back to the dealer).
+    const game = new GameEngine(makePlayers(2, 1000), 0, 200);
+    expect(game.players[0].isDealer).toBe(true);
+    expect(game.players[0].isSB).toBe(true);
+    expect(game.players[0].isBB).toBe(false);
+    expect(game.players[1].isSB).toBe(false);
+    expect(game.players[1].isBB).toBe(true);
+    expect(game.players[0].chips).toBe(900); // dealer/SB paid 100
+    expect(game.players[1].chips).toBe(800); // BB paid 200
+    expect(game.players[game.actionIndex].id).toBe(game.players[0].id); // dealer/SB acts first preflop
+  });
+
+  it('单挑时庄家换成非 0 号座位，小盲依然正确跟着庄家走', () => {
+    const game = new GameEngine(makePlayers(2, 1000), 1, 200);
+    expect(game.players[1].isDealer).toBe(true);
+    expect(game.players[1].isSB).toBe(true);
+    expect(game.players[0].isBB).toBe(true);
+    expect(game.players[game.actionIndex].id).toBe(game.players[1].id);
+  });
 });
 
 describe('GameEngine — 动作校验', () => {

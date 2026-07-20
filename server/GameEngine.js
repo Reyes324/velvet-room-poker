@@ -68,8 +68,12 @@ class GameEngine {
     this.dealerIndex = dealerIndex;
     this._assignBlinds();
     this._dealHoleCards();
-    // action starts left of BB
-    this.actionIndex = this._nextActive((this.dealerIndex + 3) % this.players.length);
+    // Action starts left of BB in a ring game (3+ players) — but heads-up
+    // (2 players) is the special case where the dealer/SB acts first
+    // preflop instead (see _assignBlinds for why n===2 needs its own branch).
+    this.actionIndex = this._nextActive(
+      this.players.length === 2 ? this.dealerIndex : (this.dealerIndex + 3) % this.players.length
+    );
     this.lastAggressorIndex = this.actionIndex;
     this.actedThisStreet = new Set();
   }
@@ -92,8 +96,14 @@ class GameEngine {
   }
 
   _assignBlinds() {
-    const sbIdx = (this.dealerIndex + 1) % this.players.length;
-    const bbIdx = (this.dealerIndex + 2) % this.players.length;
+    const n = this.players.length;
+    // Heads-up (n===2) follows a different rule than a ring game: the
+    // dealer/button posts the SMALL blind (and acts first preflop) —
+    // the ring-game formula below (dealer+1=SB, dealer+2=BB) degenerates
+    // incorrectly for n===2, since dealer+2 wraps back to the dealer
+    // himself and hands him the BIG blind instead.
+    const sbIdx = n === 2 ? this.dealerIndex : (this.dealerIndex + 1) % n;
+    const bbIdx = n === 2 ? (this.dealerIndex + 1) % n : (this.dealerIndex + 2) % n;
     this.players[sbIdx].isSB = true;
     this.players[bbIdx].isBB = true;
     this._placeBet(sbIdx, this.smallBlind);
