@@ -187,6 +187,14 @@ function createServer() {
       io.to(room.code).emit('room:state', room.getLobbyState());
     });
 
+    socket.on('game:fold-disconnected', ({ hostId, targetId }) => {
+      const room = rooms.getRoomByPlayer(hostId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.foldForDisconnected(hostId, targetId);
+      if (result.error) return socket.emit('game:error', result.error);
+      handleActionResult(room, result);
+    });
+
     socket.on('game:ready-next', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room?.isAwaitingSettlementAck()) return;
