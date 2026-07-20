@@ -410,3 +410,34 @@ describe('RoomManager — 拍一拍', () => {
     expect(room.poke('p1', 'p2').ok).toBe(true);
   });
 });
+
+describe('RoomManager — nextRound 跳过断线玩家', () => {
+  it('断线的玩家不会被发进下一手，即使筹码 > 0', () => {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    rooms2.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms2.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame();
+    room.setConnected('p2', false);
+    const result = room.nextRound();
+    expect(result.ok).toBe(true);
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).not.toContain('p2');
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p3']));
+  });
+
+  it('重连后下一次 nextRound 会把玩家重新算进去', () => {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    rooms2.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms2.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame();
+    room.setConnected('p2', false);
+    room.nextRound();
+    room.setConnected('p2', true);
+    const result = room.nextRound();
+    expect(result.ok).toBe(true);
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toContain('p2');
+  });
+});

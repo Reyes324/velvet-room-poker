@@ -96,11 +96,15 @@ class Room {
       const gp = this.game?.players.find(p => p.id === rp.id);
       if (gp) rp.chips = gp.chips;
     }
-    // Only active (chips > 0) players enter the next hand — this already
-    // naturally picks up anyone who joined mid-game or just rebought, since
-    // it's filtered fresh from the full room roster every time, not carried
-    // over from the previous hand's player list.
-    const active = this.players.filter(p => p.chips > 0);
+    // Only active (chips > 0, currently connected) players enter the next
+    // hand — this already naturally picks up anyone who joined mid-game,
+    // just rebought, or just reconnected, since it's filtered fresh from
+    // the full room roster every time, not carried over from the previous
+    // hand's player list. Disconnected players are skipped (not dealt in)
+    // rather than force-included, so the same absent player doesn't stall
+    // every subsequent hand — they're picked back up automatically the
+    // next time nextRound() runs after they reconnect.
+    const active = this.players.filter(p => p.chips > 0 && p.connected !== false);
     if (active.length < 2) {
       this.status = 'waiting';
       this.game = null;
