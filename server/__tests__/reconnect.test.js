@@ -97,4 +97,22 @@ describe('打牌中断线：暂停而不是自动弃牌/踢出', () => {
     expect(room.players.map(p => p.id)).toContain(actingId);
     expect(room.getActionPlayerId()).toBe(actingId);
   });
+
+  it('room:sync 重连后 connected 恢复 true，且对手也能收到更新后的 room:state', async () => {
+    const { c1, c2, actingId } = await setupPlayingRoom();
+    const actingSocket = actingId === 'p1' ? c1 : c2;
+    const otherSocket = actingId === 'p1' ? c2 : c1;
+
+    actingSocket.disconnect();
+    await new Promise((r) => setTimeout(r, 300));
+
+    const otherSeesReconnect = waitFor(otherSocket, 'room:state');
+    actingSocket.connect();
+    await new Promise((resolve) => actingSocket.once('connect', resolve));
+    actingSocket.emit('room:sync', { playerId: actingId });
+
+    const stateSeenByOther = await otherSeesReconnect;
+    const player = stateSeenByOther.players.find(p => p.id === actingId);
+    expect(player.connected).toBe(true);
+  });
 });

@@ -164,12 +164,16 @@ function createServer() {
       // future 'disconnect' wouldn't know which player it was for.
       myPlayerId = playerId;
       room.updateSocket(playerId, socket.id);
+      room.setConnected(playerId, true);
       socket.join(room.code);
       clearTimeout(pendingRemovals.get(playerId));
       pendingRemovals.delete(playerId);
-      socket.emit('room:state', room.getLobbyState());
-      const state = room.getStateForPlayer(playerId);
-      if (state) socket.emit('game:state', state);
+      // Broadcast to the whole room (not just this socket) so everyone
+      // else's "XXX 断线中" indicator clears too, and — once a game is in
+      // progress — so maybeArmPauseTimer (Task 7) re-evaluates whether the
+      // safety timeout should still be ticking.
+      if (room.game) broadcastRoom(room);
+      else io.to(room.code).emit('room:state', room.getLobbyState());
     });
 
     socket.on('room:kick', ({ hostId, targetId }) => {
