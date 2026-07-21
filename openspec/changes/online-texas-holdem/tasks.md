@@ -257,3 +257,17 @@
 - [x] 28.3 `App.jsx` 的 `handleLeave`：`room:gone`/`room:kicked`/主动退出这三条最终都会走到这里，一并清掉 `localStorage.vr_roomCode`（`vr_playerId` 保留作为跨房间的匿名设备身份），避免退出/失效后下次冷启动又尝试恢复同一个死会话
 - [x] 28.4 Playwright 回归（`e2e/lobby.spec.js`「冷启动会话恢复」describe 块，4 条用例）：房主 `page.reload()` 后直接看到大厅、`hostId` 不变、看得到"开始游戏/重新开始"；非房主 reload 后仍在房间且不重复加入；被踢出后本地会话被清除、reload 不再尝试恢复（跟"宽限期耗尽"共用同一条 `handleLeave` 清理路径，用被踢这个确定性事件触发，而不是真的等 120 秒宽限期超时——行为等价，但没有单独跑一条真实等待 120 秒的用例）；持有另一房间旧会话时点新邀请链接不会被误判为恢复。过程中还修了一个纯测试层面的竞态 bug（用 p1 的广播确认 p2 已加入，不能保证 p2 自己的 `room:joined`/localStorage 写入已完成，导致偶发 flake），跟本次功能修复无关
 - [x] 28.5 服务端本次无改动（问题根因和修复都在客户端）；`npm test`（server，75/75）与 `npm run test:e2e`（29/29，含既有回归）全绿
+
+## 29. 游戏中途断线从"自动弃牌+移出房间"改为"暂停等待重连"（第二十一轮，2026-07-20）
+
+- [x] 29.1 `Room` 新增显式 `connected` 字段：构造函数/`addPlayer` 默认 `connected: true`，新增 `setConnected(playerId, connected)`，`getLobbyState()` 的 players 里带上这个字段
+- [x] 29.2 `Room.nextRound()` 发下一手时的 `active` 过滤条件从 `chips > 0` 扩展为 `chips > 0 && connected !== false`——断线玩家跳过不发进新一手，重连后下次 `nextRound()` 自动重新计入
+- [x] 29.3 新增 `Room.getActionPlayerId()` / `resolveDisconnectedTurn(targetId)` / `foldForDisconnected(hostId, targetId)`——分别用于查询当前该行动的玩家、对"断线且正是他的回合"这一具体场景执行弃牌、以及房主触发的带权限校验的包装
+- [x] 29.4 `server/index.js` 的 `disconnect` handler 去掉游戏进行中自动弃牌 + 移出房间这两个动作，只调用 `setConnected(id, false)` 并广播；这一步暂时打破了一条既有集成测试（预期行为改变，非回归），推迟到 Task 10 一并修正
+- [x] 29.5 `room:sync` 重连路径调用 `setConnected(id, true)` 并广播给全房间，让其他玩家客户端看到断线状态解除
+- [x] 29.6 新增房主专属 socket 事件 `game:fold-disconnected`，走 `foldForDisconnected` 权限校验后调用 `resolveDisconnectedTurn`，即"帮TA弃牌"按钮的服务端支撑
+- [x] 29.7 新增 `maybeArmPauseTimer` 辅助函数，从唯一的 `broadcastRoom` 汇聚点调用，管理 5 分钟安全超时定时器的完整生命周期（武装/续期/清除），到点后对断线中的行动玩家调用 `resolveDisconnectedTurn` 自动弃牌；定时器的 6 种状态迁移逐一手动跟踪验证过
+- [x] 29.8 客户端新增"断线中"纯文字 toast + 房主可见的"帮TA弃牌"按钮；本轮不改 `GameTable.jsx`/`PlayerSeat.jsx`/`velvet.css`，因为这些文件正在并行分支里做视觉重做，完整视觉呈现推迟
+- [x] 29.9 大厅玩家列表里断线玩家名字后追加"（断线中）"文字角标
+- [x] 29.10 Playwright e2e：用页面调试钩子 `window.__vrSocket.disconnect()`/`.connect()` 模拟牌局进行中真实断线再重连，覆盖玩家自己重连、房主"帮TA弃牌"两条路径；同时修正 Task 4 打破的那条服务端集成测试，并新增 5 分钟安全超时的假定时器测试
+- [x] 29.11 SDD 收尾 + 全量验证：`npm test`（server，101/101）、`npm run build`（client，构建通过）、`npx playwright test`（31/31，含既有回归）全绿——过程中两次遇到同一进程内反复起停测试服务器导致的偶发 `ERR_CONNECTION_REFUSED`，清掉残留进程后重跑即恢复全绿，判断为本次沙盒会话的环境噪音，非代码回归
