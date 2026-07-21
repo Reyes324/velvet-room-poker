@@ -271,10 +271,13 @@ class GameEngine {
     const pots = this._buildSidePots();
     const won = {};
     const winnersById = new Map();
+    // A property of the whole hand, not of any individual side-pot layer —
+    // see _determineWinners for why that distinction matters.
+    const isFoldWin = contenders.length === 1;
 
     for (const layer of pots) {
       const eligible = this.players.filter(p => layer.eligibleIds.includes(p.id));
-      const layerWinners = this._determineWinners(eligible);
+      const layerWinners = this._determineWinners(eligible, isFoldWin);
       const share = Math.floor(layer.amount / layerWinners.length);
       layerWinners.forEach((w, i) => {
         const amt = share + (i === 0 ? layer.amount - share * layerWinners.length : 0);
@@ -295,7 +298,7 @@ class GameEngine {
       // look at" apart from an actual multi-way card comparison — they call
       // for very different presentations (a quick banner vs. giving players
       // a beat to see the revealed hands before covering the table).
-      foldWin: contenders.length === 1,
+      foldWin: isFoldWin,
       pot: potWon,
       winners: winners.map(w => ({
         id: w.id,
@@ -314,16 +317,25 @@ class GameEngine {
     };
   }
 
-  _determineWinners(contenders) {
+  // `contenders` here is one side-pot layer's eligible players, which can
+  // land on exactly one name for two completely different reasons: either
+  // this is a real single-winner fold-out (isFoldWin — every layer has
+  // exactly one eligible player, because everyone else is folded), or it's
+  // an all-in/side-pot layer where the other non-folded contenders simply
+  // didn't commit enough chips to be eligible for *this* layer — a normal,
+  // frequent outcome of unequal all-in stack sizes, not a fold. Confirmed
+  // as a real bug from a live 3+ player game: a side-pot winner who reached
+  // a genuine showdown was mislabeled "其他人全部弃牌" ("everyone else
+  // folded") right next to another winner's real hand description in the
+  // very same settlement, reading as two contradictory outcomes for one
+  // hand. Only the true fold-out case gets that label; an uncontested side
+  // pot at a real showdown still gets the winner's actual hand.
+  _determineWinners(contenders, isFoldWin) {
     if (contenders.length === 1) {
-      // Not "对手全部弃牌" ("the opponent(s) folded") — that phrasing is
-      // relative to whoever's reading it, so it reads differently (and
-      // ambiguously) for the winner, the folder, and any other player at
-      // the table (confirmed by user feedback on a real render). Anchored
-      // to the winner instead ("everyone else folded"), which the client
-      // always displays right next to the winner's own name — unambiguous
-      // regardless of who's looking at it.
-      contenders[0].handName = contenders[0].handName || '其他人全部弃牌';
+      const w = contenders[0];
+      w.handName = isFoldWin
+        ? (w.handName || '其他人全部弃牌')
+        : (w.handName || Hand.solve([...w.holeCards, ...this.communityCards]).descr);
       return contenders;
     }
     const hands = contenders.map(p => ({
@@ -362,11 +374,19 @@ class GameEngine {
     return pots;
   }
 
-  // Returns state safe to send to a specific player (hides others' cards)
+  // Returns state safe to send to a specific player (hides others' cards).
+  // A viewer who already folded this hand does NOT get the showdown reveal
+  // for everyone else, even though the hand did reach a real showdown —
+  // confirmed as unwanted behavior from real-device feedback ("我弃牌之后
+  // 还能看到对方摊牌，这不合理"): once you're out of a hand, you shouldn't
+  // keep watching it resolve. This only affects OTHER players' cards; a
+  // viewer always sees their own regardless of status.
   getStateForPlayer(playerId) {
     const pub = this.getPublicState();
+    const viewer = this.players.find(x => x.id === playerId);
+    const viewerFolded = viewer?.status === 'folded';
     pub.players = pub.players.map(p => {
-      if (p.id === playerId || this.phase === 'showdown') {
+      if (p.id === playerId || (this.phase === 'showdown' && !viewerFolded)) {
         return { ...p, holeCards: this.players.find(x => x.id === p.id).holeCards.map(parseCard) };
       }
       return { ...p, holeCards: p.status === 'folded' ? [] : [null, null] };

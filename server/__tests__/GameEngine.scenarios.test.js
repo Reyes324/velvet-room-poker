@@ -363,6 +363,42 @@ describe('边池 — 三人不等额 All-In', () => {
     expect(byId('A').chips).toBe(0);
     expect(byId('B').chips).toBe(0);
   });
+
+  it('边池分层胜出者若是因为筹码差（而非全场弃牌）唯一有资格，牌型描述必须是真实比牌结果，不能标成"其他人全部弃牌"（回归：真机实测发现两个矛盾的结算原因同时出现在同一手结算里）', () => {
+    // A(庄,1000) 全下 / B(小盲,300,短码) 全下 / C(大盲,1000) 弃牌。
+    // A/B 两人真正打到摊牌（isFoldWin 应为 false）——但最高那层边池
+    // （300~1000 之间那 700）只有 A 一个人筹码够格，不是因为 B 弃牌。
+    const players = [
+      { id: 'A', name: 'A', chips: 1000 },
+      { id: 'B', name: 'B', chips: 300 },
+      { id: 'C', name: 'C', chips: 1000 },
+    ];
+    const game = new GameEngine(players, 0, BIG_BLIND);
+    const byId = id => game.players.find(p => p.id === id);
+    byId('A').holeCards = ['Kh', 'Kd']; // A 全场最强：一对K
+    byId('B').holeCards = ['5h', '5d']; // B：一对5
+    byId('C').holeCards = ['2h', '2d']; // C 弃牌，牌力无关紧要
+    game.deck = ['3h', 'Tc', '9d', '7c', '2s']; // 不成顺/不成同花，纯比对子
+
+    expect(game.players[game.actionIndex].id).toBe('A');
+    game.allIn('A'); // 全下 1000
+    game.allIn('B'); // 短码全下 300
+    const result = game.fold('C'); // C 弃牌（此前已投入大盲 20）
+
+    expect(result.showdown).toBe(true);
+    expect(result.foldWin).toBe(false); // 整手牌层面：A/B 两个真实参与者打到摊牌，不是弃牌获胜
+
+    // A 一对K全场最强，三层边池全部由 A 一人拿下（B 一对5真实比牌落败，
+    // 不会出现在 winners 里）——尤其是最高那层，唯一有资格的原因是筹码额度，
+    // 不是弃牌，这正是本回归要盯住的那一层。
+    const aWinner = result.winners.find(w => w.id === 'A');
+    expect(aWinner).toBeDefined();
+    expect(aWinner.handName).not.toBe('其他人全部弃牌');
+    expect(aWinner.handName).toMatch(/Pair/i); // pokersolver 对一对K的真实描述，例如 "Pair, K's"
+    expect(byId('A').chips).toBe(1320); // 三层边池全部拿下：60+560+700
+
+    assertPotConservation(game, 2300);
+  });
 });
 
 describe('加注金额上限校验', () => {

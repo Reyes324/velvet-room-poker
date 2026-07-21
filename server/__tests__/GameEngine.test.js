@@ -142,4 +142,34 @@ describe('GameEngine — getStateForPlayer 隐藏底牌', () => {
     expect(winnerState.holeCards.length).toBeGreaterThan(0);
     expect(winnerState.holeCards[0]).not.toBeNull();
   });
+
+  it('摊牌阶段，本手已经弃牌的玩家看不到其他人的揭示牌（回归：真机实测"弃牌后还能看到对方摊牌"）', () => {
+    const game = new GameEngine(makePlayers(3), 0, 20);
+    // 让第一个行动方弃牌，其余两人打到摊牌（简化：直接把剩下两人也弃到只剩一个，
+    // 关键是先弃牌那位在摊牌阶段回看，不应该看到任何人的牌）。
+    const folder = game.players[game.actionIndex];
+    game.fold(folder.id);
+    const second = game.players[game.actionIndex];
+    game.fold(second.id);
+    // 此时只剩一人未弃牌 → 直接 _endHand，phase 变为 showdown。
+    expect(game.phase).toBe('showdown');
+
+    const folderState = game.getStateForPlayer(folder.id);
+    for (const p of folderState.players) {
+      if (p.id === folder.id) continue; // 自己的牌永远可见，不受影响
+      expect(p.holeCards.every(c => c === null || c === undefined)).toBe(true);
+    }
+  });
+
+  it('摊牌阶段，本手未弃牌的玩家仍能看到其他人的揭示牌（确认上一条修复没有误伤正常摊牌）', () => {
+    const game = new GameEngine(makePlayers(3), 0, 20);
+    const folder = game.players[game.actionIndex];
+    game.fold(folder.id);
+    const second = game.players[game.actionIndex];
+    game.fold(second.id);
+    const winner = game.players.find(p => p.status !== 'folded');
+    const winnerState = game.getStateForPlayer(winner.id);
+    const folderInWinnerView = winnerState.players.find(p => p.id === folder.id);
+    expect(folderInWinnerView.holeCards[0]).not.toBeNull();
+  });
 });
