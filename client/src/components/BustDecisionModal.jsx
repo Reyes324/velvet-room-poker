@@ -23,14 +23,15 @@ export default function BustDecisionModal({ onRebuy, onLeave }) {
       <div className="modal">
         <div className="modal-title">筹码已用完</div>
         <div className="modal-body">要再借一底回到牌桌，还是退出本局对局？</div>
-        <div
-          className="modal-btn"
-          style={pending ? { opacity: .5, cursor: 'default' } : undefined}
-          onClick={handleRebuy}
-        >
-          +借一底（¥1,000）
+        <div className="modal-btns">
+          <div
+            className={`modal-btn modal-btn--paired${pending ? ' modal-btn--waiting' : ''}`}
+            onClick={handleRebuy}
+          >
+            +借一底
+          </div>
+          <div className="modal-btn-danger" onClick={onLeave}>退出对局</div>
         </div>
-        <div className="modal-btn-danger" style={{ width: '100%' }} onClick={onLeave}>退出对局</div>
       </div>
     </div>
   );
