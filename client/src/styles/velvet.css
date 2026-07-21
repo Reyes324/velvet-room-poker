@@ -15,6 +15,7 @@
   flex-shrink: 0; user-select: none;
 }
 /* sizes */
+.c-xs { width: 24px; height: 34px; border-radius: 4px; }
 .c-sm { width: 36px; height: 50px; }
 .c-md { width: 52px; height: 72px; border-radius: 8px; }
 .c-lg { width: 62px; height: 84px; border-radius: 9px; }
@@ -33,6 +34,11 @@
 .c-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
 .c-tl .cr, .c-br .cr { font-family: var(--font-card); font-size: 11px; font-weight: 600; letter-spacing: -.3px; line-height: 1; }
 .c-tl .cs, .c-br .cs { font-size: 8px; line-height: 1; }
+.c-xs .c-tl, .c-xs .c-br { gap: 0; }
+.c-xs .c-tl { top: 2px; left: 2px; }
+.c-xs .c-br { bottom: 2px; right: 2px; }
+.c-xs .c-tl .cr, .c-xs .c-br .cr { font-size: 9px; }
+.c-xs .c-tl .cs, .c-xs .c-br .cs { font-size: 7px; }
 .c-md .c-tl .cr, .c-md .c-br .cr { font-size: 15px; }
 .c-md .c-tl .cs, .c-md .c-br .cs { font-size: 10px; }
 .c-lg .c-tl .cr, .c-lg .c-br .cr { font-size: 18px; }
@@ -40,6 +46,7 @@
 
 /* center suit pip */
 .c-ct { font-size: 15px; line-height: 1; opacity: .9; }
+.c-xs .c-ct { font-size: 11px; }
 .c-md .c-ct { font-size: 24px; }
 .c-lg .c-ct { font-size: 30px; }
 
@@ -215,11 +222,13 @@
 @keyframes actionBubbleOut { to { opacity:0; scale:.9; translate:0 -8px; } }
 
 /* showdown reveal */
+/* Used to be a bespoke mini-card (one rank + one centered suit glyph, no
+   corner pair, no real card layout) — read as visually incomplete next to
+   hero's own cards and the community cards, which both use the real Card
+   component's corner+corner+center layout (confirmed by user feedback on a
+   real render: "牌本身显示不完全"). Now just wraps real Card elements at the
+   new c-xs size instead of maintaining a second, simpler card look. */
 .reveal { display:flex; gap:3px; }
-.reveal .rc { width:24px; height:34px; border-radius:4px; position:relative; background:#F7F2E8; border:1px solid rgba(0,0,0,.07); box-shadow:0 2px 8px rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; color:var(--ink-black); }
-.reveal .rc.red { color:var(--ink-red); }
-.reveal .rc .rct { position:absolute; top:1px; left:2px; font-family:var(--font-card); font-size:9px; font-weight:600; line-height:1; }
-.reveal .rc .rcc { font-family:Georgia,serif; font-size:13px; }
 .hand-rank { font-family:var(--font-mono); font-size:8px; color:#C8B888; white-space:nowrap; }
 
 /* ── HERO INFO ────────────────────────────────────────────── */

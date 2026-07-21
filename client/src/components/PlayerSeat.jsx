@@ -7,6 +7,7 @@
 // and only ate into the tight center-strip space); they only appear at real
 // showdown.
 import { useThinkSeconds } from '../hooks/useThinkSeconds';
+import Card from './Card';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
@@ -79,9 +80,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
       {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && (
         <div className="reveal" style={sideStyle(cardsSide)}>
           {player.holeCards.map((c, i) => (
-            <div key={i} className={`rc${c.color === 'red' ? ' red' : ''}`}>
-              <span className="rct">{c.rank}</span><span className="rcc">{c.suit}</span>
-            </div>
+            <Card key={i} card={c} size="xs" />
           ))}
         </div>
       )}
