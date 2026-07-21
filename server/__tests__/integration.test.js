@@ -273,8 +273,10 @@ describe('集成测试 — 游戏流程', () => {
     await new Promise((r) => setTimeout(r, 400));
     expect(extraShowdowns).toBe(0);
 
-    // p2 断线时已从 eligiblePlayerIds 中移除，且已被整体移出房间（人数不足2）。
-    // 此时只需 p1 确认，房间即可正确推进 —— 由于只剩1名有筹码玩家，应触发 game:ended。
+    // p2 断线时已从 eligiblePlayerIds 中移除，但不再被整体移出房间——现在断线
+    // 只标记 connected:false，玩家本人（含筹码）仍留在座位上，等待重连。
+    // 此时只需 p1 确认，房间即可正确推进 —— 由于 nextRound() 只把 connected
+    // 的玩家算作 active，此刻只剩 p1 一名 active 玩家，应触发 game:ended。
     const ended = waitFor(c1, 'game:ended', 3000);
     c1.emit('game:ready-next', { playerId: 'p1' });
     const endedResult = await ended;
@@ -282,6 +284,9 @@ describe('集成测试 — 游戏流程', () => {
 
     const room = rooms.getRoomByPlayer('p1');
     expect(room.status).toBe('waiting');
-    expect(room.players).toHaveLength(1);
+    expect(room.players).toHaveLength(2);
+    const p2 = room.players.find((p) => p.id === 'p2');
+    expect(p2).toBeDefined();
+    expect(p2.connected).toBe(false);
   });
 });
