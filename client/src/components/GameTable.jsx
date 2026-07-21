@@ -377,8 +377,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               gamePhase={gameState.phase}
               color={colorForId(p.id)}
               bubble={actionBubbles[p.id]}
-              dealing={dealing}
-              dealDelays={[dealDelayFor(p.id, 0), dealDelayFor(p.id, 1)]}
               cardsSide={cardsSide}
               onPoke={() => onPoke?.(p.id)}
               poked={pokedSeat?.targetId === p.id}

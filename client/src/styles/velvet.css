@@ -15,7 +15,6 @@
   flex-shrink: 0; user-select: none;
 }
 /* sizes */
-.c-xs { width: 17px; height: 24px; border-radius: 3px; } /* only used by the opponent .reveal cards — shrunk to leave the center strip (community cards + bet-chip) real room, per real-device feedback */
 .c-sm { width: 36px; height: 50px; }
 .c-md { width: 52px; height: 72px; border-radius: 8px; }
 .c-lg { width: 62px; height: 84px; border-radius: 9px; }
@@ -38,14 +37,11 @@
 .c-md .c-tl .cs, .c-md .c-br .cs { font-size: 10px; }
 .c-lg .c-tl .cr, .c-lg .c-br .cr { font-size: 18px; }
 .c-lg .c-tl .cs, .c-lg .c-br .cs { font-size: 12px; }
-.c-xs .c-tl .cr, .c-xs .c-br .cr { font-size: 7px; }
-.c-xs .c-tl .cs, .c-xs .c-br .cs { font-size: 5px; }
 
 /* center suit pip */
 .c-ct { font-size: 15px; line-height: 1; opacity: .9; }
 .c-md .c-ct { font-size: 24px; }
 .c-lg .c-ct { font-size: 30px; }
-.c-xs .c-ct { font-size: 9px; }
 
 /* back — classic blue lattice, like a real deck (not a felt-green reskin). No
    outer border — the rounded rect edge alone is the card boundary, same as a
@@ -74,7 +70,6 @@
 .c-back::after { content: '✦'; position: relative; color: rgba(255,255,255,.6); font-family: var(--font-display); font-size: 15px; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
 .c-md.c-back::after { font-size: 22px; }
 .c-lg.c-back::after { font-size: 26px; }
-.c-xs.c-back::after { font-size: 9px; }
 
 /* ── OVAL TABLE ────────────────────────────────────────────── */
 /* Felt texture: fine grayscale SVG grain (feTurbulence, baked-in low alpha)
@@ -121,8 +116,9 @@
 }
 .think-overlay {
   position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  background:rgba(4,10,6,.55); color:#F5E6A0; font-family:var(--font-mono);
-  font-size:11px; font-weight:700; border-radius:8px 8px 0 0;
+  background:rgba(4,10,6,.6); color:#F5E6A0; font-family:var(--font-mono);
+  font-size:15px; font-weight:700; border-radius:8px 8px 0 0;
+  text-shadow:0 1px 3px rgba(0,0,0,.9);
 }
 .av-green  .avatar-photo { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
 .av-purple .avatar-photo { background:radial-gradient(circle at 38% 35%, #4A228A, #1E0855); }
@@ -134,7 +130,9 @@
 .av-gold   .avatar-photo { background:radial-gradient(circle at 38% 35%, #8B6914, #3D2800); }
 .av-gold.avatar-card { border-color:rgba(212,175,55,.45); }
 
-.is-active .avatar-card { border:3px solid #D4AF37 !important; box-shadow:0 0 0 4px rgba(212,175,55,.3), 0 0 32px rgba(212,175,55,.6) !important; }
+/* Simplified from a 3px border + two stacked box-shadows (heavy/busy look,
+   real-device feedback) to a single clean ring. */
+.is-active .avatar-card { border:2px solid #D4AF37 !important; box-shadow:0 0 0 3px rgba(212,175,55,.35) !important; }
 .is-folded .avatar-card { filter:grayscale(.75) brightness(.42); border-color:rgba(150,145,130,.22) !important; box-shadow:none !important; }
 .is-folded .pos-badge { opacity:.5; }
 .is-allin .avatar-card { border:2px solid var(--state-danger) !important; box-shadow:0 0 18px rgba(192,57,43,.65) !important; }
@@ -260,15 +258,22 @@
 .ab-raise { display:none; flex-direction:column; gap:6px; }
 .ab-raise.open { display:flex; }
 .preset-row { display:flex; gap:6px; }
-.preset-btn { flex:1; height:26px; border-radius:13px; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.18); color:#C8B888; font-family:var(--font-mono); font-size:10px; display:flex; align-items:center; justify-content:center; letter-spacing:.2px; cursor:pointer; white-space:nowrap; transition:background .15s,border-color .15s,color .15s; }
+.preset-btn { flex:1; height:38px; border-radius:13px; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.18); color:#C8B888; font-family:var(--font-mono); font-size:12px; display:flex; align-items:center; justify-content:center; letter-spacing:.2px; cursor:pointer; white-space:nowrap; transition:background .15s,border-color .15s,color .15s; }
 .preset-btn:active { opacity:.7; }
 .preset-btn.is-picked { background:rgba(212,175,55,.22); border-color:#D4AF37; color:#F5E6A0; }
+/* Clamped to the same value as another preset (pot too small for this
+   fraction to be legal on its own) — shown unavailable instead of letting
+   it silently look "picked" alongside whichever preset it collided with. */
+.preset-btn.is-clamped { opacity:.35; cursor:default; }
+.preset-btn.is-clamped:active { opacity:.35; }
 .stepper-row { display:flex; gap:9px; align-items:center; }
 .stepper { display:flex; align-items:center; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.2); border-radius:21px; height:42px; overflow:hidden; flex:1; }
 .step-btn { width:38px; height:42px; display:flex; align-items:center; justify-content:center; font-size:22px; color:#D4AF37; cursor:pointer; }
 .step-val { flex:1; font-family:var(--font-amount); font-size:14px; color:var(--text-primary); text-align:center; }
 .raise-bottom { display:flex; gap:9px; }
-.waiting-text { font-family:var(--font-mono); font-size:9px; color:#203820; letter-spacing:2px; }
+/* Was #203820 on a near-black gradient (~#050D06) — nearly invisible,
+   real-device feedback. */
+.waiting-text { font-family:var(--font-mono); font-size:11px; color:#9FB0AC; letter-spacing:2px; }
 
 /* ── SETTLEMENT MODAL ─────────────────────────────────────── */
 .settlement-sheet {
@@ -432,9 +437,6 @@
 .game-stage--dense .stack-chip-footer { font-size:9px; padding:2px 0; }
 .game-stage--dense .pos-badge { font-size:7px; height:13px; line-height:13px; min-width:19px; padding:0 3px; }
 .game-stage--dense .reveal { gap:2px; }
-.game-stage--dense .reveal .c-xs { width:14px; height:20px; border-radius:3px; }
-.game-stage--dense .reveal .c-xs.c-back::before { inset:2px; }
-.game-stage--dense .reveal .c-xs.c-back::after { font-size:7px; }
 
 /* ── LOBBY layout (in game-stage) ─────────────────────────── */
 .game-stage .lobby { position:relative; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:14px; padding-bottom:calc(14px + env(safe-area-inset-bottom,0px)); z-index:5; }

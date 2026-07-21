@@ -1,20 +1,19 @@
 // Rail seat: avatar + unified position badge + platinum stack (styled by shared velvet.css).
-// Emits the approved preview's classes (.seat/.avatar/.av-*/.pos-badge/.stack-chip/.reveal).
-// Bet chip is rendered by RoomPage (owns toward-center offset). Opponents show two
-// face-down cards for the whole hand once dealt; their faces only reveal at showdown.
-import Card from './Card';
+// Bet chip is rendered by RoomPage (owns toward-center offset). Opponents' hole cards are
+// never shown face-down pre-showdown (removed — they carried no information and only ate
+// into the tight center-strip space); they only appear at real showdown.
 import { useThinkSeconds } from '../hooks/useThinkSeconds';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
-// Card groups (dealing / showdown reveal) always render to the side of the
-// seat (toward whichever direction GameTable's cardsSide picks — the center
-// strip, per column). Rows are only COL_ROW_PITCH apart, so anything
-// rendered above/below a seat overlaps the neighboring row's card/footer —
-// side placement is the only direction with real room to spare, confirmed
-// on a real device. The "above" fallback below is unreachable in normal
-// play (GameTable always passes a side now) — kept only as a safe default
-// if this component is ever rendered without one.
+// The showdown reveal always renders to the side of the seat (toward
+// whichever direction GameTable's cardsSide picks — the center strip, per
+// column). Rows are only COL_ROW_PITCH apart, so anything rendered
+// above/below a seat overlaps the neighboring row's card/footer — side
+// placement is the only direction with real room to spare, confirmed on a
+// real device. The "above" fallback below is unreachable in normal play
+// (GameTable always passes a side now) — kept only as a safe default if
+// this component is ever rendered without one.
 function sideStyle(cardsSide) {
   if (cardsSide === 'left') return { position: 'absolute', right: 'calc(100% + 3px)', top: '50%', transform: 'translateY(-50%)' };
   if (cardsSide === 'right') return { position: 'absolute', left: 'calc(100% + 3px)', top: '50%', transform: 'translateY(-50%)' };
@@ -28,9 +27,8 @@ function bubbleStyle(cardsSide) {
   return { bottom: 'calc(100% + 50px)' }; // fallback if ever rendered without a side (see sideStyle)
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, dealing = false, dealDelays, cardsSide = null, onPoke, poked = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, onPoke, poked = false }) {
   const isShowdown = gamePhase === 'showdown';
-  const hasCards = gamePhase !== 'waiting';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
   const badge = player.isDealer ? '庄家' : player.isSB ? '小盲' : player.isBB ? '大盲' : null;
@@ -62,13 +60,6 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
 
       {bubble && <div key={bubble.key} className="action-bubble" style={bubbleStyle(cardsSide)}>{bubble.text}</div>}
       {poked && <div className="action-bubble poke-bubble" style={bubbleStyle(cardsSide)}>戳了戳</div>}
-
-      {hasCards && !isMe && !folded && !isShowdown && (
-        <div className="reveal" style={sideStyle(cardsSide)}>
-          <Card size="xs" faceDown animate={dealing ? 'card-deal' : null} delay={dealing ? (dealDelays?.[0] ?? 0) : 0} />
-          <Card size="xs" faceDown animate={dealing ? 'card-deal' : null} delay={dealing ? (dealDelays?.[1] ?? 0) : 0} />
-        </div>
-      )}
 
       {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && (
         <div className="reveal" style={sideStyle(cardsSide)}>

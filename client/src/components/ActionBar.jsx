@@ -17,17 +17,24 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
   const amt = Math.min(maxRaise, Math.max(minRaise, amount ?? minRaise));
 
   // Pot-fraction quick sizing: raise TO (call + a fraction of the pot as it
-  // stands), clamped into the legal [minRaise, maxRaise] range.
+  // stands), clamped into the legal [minRaise, maxRaise] range. A preset
+  // whose raw (pre-clamp) value falls outside that range doesn't actually
+  // represent its own fraction anymore — it silently collapses to whatever
+  // it got clamped to, which can coincide with a neighboring preset's value
+  // (e.g. pot is small enough that both "1/3 池" and "半池" clamp up to the
+  // same minRaise). `clamped` flags that case so the UI can show it as
+  // unavailable instead of letting two buttons look identically "picked".
   const potPresets = [
     { label: '1/3 池', frac: 1 / 3 },
     { label: '半池', frac: 1 / 2 },
     { label: '2/3 池', frac: 2 / 3 },
     { label: '满池', frac: 1 },
     { label: '2倍超池', frac: 2 },
-  ].map(p => ({
-    ...p,
-    value: Math.min(maxRaise, Math.max(minRaise, me.bet + toCall + Math.round(gameState.pot * p.frac))),
-  }));
+  ].map(p => {
+    const raw = me.bet + toCall + Math.round(gameState.pot * p.frac);
+    const value = Math.min(maxRaise, Math.max(minRaise, raw));
+    return { ...p, value, clamped: value !== raw };
+  });
 
   function openRaise() { setAmount(minRaise); setOpen(true); }
   function adj(d) { setAmount(a => Math.min(maxRaise, Math.max(minRaise, (a ?? minRaise) + d))); }
@@ -49,7 +56,7 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
             {potPresets.map(p => (
               <div
                 key={p.label}
-                className={`preset-btn${amt === p.value ? ' is-picked' : ''}`}
+                className={`preset-btn${p.clamped ? ' is-clamped' : (amt === p.value ? ' is-picked' : '')}`}
                 onClick={() => setAmount(p.value)}
               >
                 {p.label}

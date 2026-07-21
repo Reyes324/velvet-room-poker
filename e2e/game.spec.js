@@ -650,80 +650,25 @@ test.describe('真机实测回归：贴边双栏骨架的两处重叠/裁切', (
     expect(heroSeat.y + heroSeat.height).toBeLessThanOrEqual(heroSection.y);
   });
 
-  test('顶排对手的暗牌图标不被画布左边缘裁切', async ({ page }) => {
-    await page.goto('/?states=11');
-    await page.waitForSelector('.player-slot:not(.player-slot--hero) .reveal', { state: 'attached' });
+});
+
+// ─── 摊牌前不再显示对手的暗牌占位（去掉了，见 design.md 同一轮决策）──────────────────
+// 上面几条"暗牌不被裁切/不遮挡筹码/不遮挡公共牌"的测试连同它们要保护的功能一起下线了——
+// 暗牌摊牌前不再渲染，不存在"暗牌跟别的元素抢位置"这类问题了。改成两条更简单直接的
+// 断言：摊牌前确实不渲染、真摊牌时确实渲染。
+
+test.describe('摊牌前不显示对手暗牌，摊牌时才显示', () => {
+  test('翻牌前/翻牌圈：非本人座位不渲染任何 .reveal', async ({ page }) => {
+    await page.goto('/?states=0'); // 翻牌前，多个未弃牌对手
+    await page.waitForSelector('.player-slot:not(.player-slot--hero)', { state: 'attached' });
     await page.waitForTimeout(300);
-    const reveal = await page.locator('.player-slot:not(.player-slot--hero) .reveal').first().boundingBox();
-    const tableZone = await page.locator('.table-zone').boundingBox();
-    expect(reveal.x).toBeGreaterThanOrEqual(tableZone.x);
+    expect(await page.locator('.player-slot:not(.player-slot--hero) .reveal').count()).toBe(0);
   });
 
-  test('9人密集桌：每个座位的暗牌都贴在自己头像旁边，不遮挡相邻行的头像/筹码', async ({ page }) => {
-    // 9-max: rows are only 76 (ref units) apart — cards used to default to
-    // rendering ABOVE a seat, which overlapped the row above it. All cards
-    // now render to the side (toward center) unconditionally, for every
-    // row, not just the topmost one.
-    await page.goto('/?states=10');
+  test('摊牌：未弃牌的对手渲染真实牌面 .reveal', async ({ page }) => {
+    await page.goto('/?states=3'); // 摊牌 fixture（见 fixtures.js）
     await page.waitForSelector('.player-slot:not(.player-slot--hero) .reveal', { state: 'attached' });
-    await page.waitForTimeout(300);
-
-    const seats = await page.locator('.player-slot:not(.player-slot--hero)').all();
-    const allCards = [];
-    const reveals = []; // { seatIndex, box } — folded seats render no .reveal at all
-    for (let i = 0; i < seats.length; i++) {
-      allCards.push(await seats[i].locator('.avatar-card').boundingBox());
-      const revealLocator = seats[i].locator('.reveal');
-      if (await revealLocator.count() > 0) {
-        reveals.push({ seatIndex: i, box: await revealLocator.boundingBox() });
-      }
-    }
-
-    // Every seat's own reveal must sit roughly level with (not above/below)
-    // its own avatar card — vertical centers within one card-height of
-    // each other means "beside", not "above/below".
-    for (const { seatIndex, box: reveal } of reveals) {
-      const card = allCards[seatIndex];
-      expect(Math.abs((reveal.y + reveal.height / 2) - (card.y + card.height / 2))).toBeLessThan(card.height);
-    }
-
-    // No seat's reveal cards overlap a DIFFERENT seat's avatar card (the
-    // exact failure mode reported on a real device: cards from one row
-    // covering the neighboring row's chip amount) — checked against every
-    // seat's card, folded or not.
-    for (const { seatIndex, box: reveal } of reveals) {
-      for (let j = 0; j < allCards.length; j++) {
-        if (j === seatIndex) continue;
-        const card = allCards[j];
-        const overlapsX = reveal.x < card.x + card.width && reveal.x + reveal.width > card.x;
-        const overlapsY = reveal.y < card.y + card.height && reveal.y + reveal.height > card.y;
-        expect(overlapsX && overlapsY).toBe(false);
-      }
-    }
-
-    // Reveal cards must also not creep into the community-card zone in the
-    // center strip (reported on a real device for the bottom-most row).
-    const community = await page.locator('.community').boundingBox();
-    for (const { box: reveal } of reveals) {
-      const overlapsX = reveal.x < community.x + community.width && reveal.x + reveal.width > community.x;
-      const overlapsY = reveal.y < community.y + community.height && reveal.y + reveal.height > community.y;
-      expect(overlapsX && overlapsY).toBe(false);
-    }
-  });
-
-  test('对手的暗牌不遮挡自己的下注筹码', async ({ page }) => {
-    await page.goto('/?states=0'); // fixture has chen/li both with active bets
-    await page.waitForSelector('.bet-chip', { state: 'attached' });
-    await page.waitForTimeout(300);
-    const oppSlots = await page.locator('.player-slot:not(.player-slot--hero)').all();
-    for (const seat of oppSlots) {
-      const chipLocator = seat.locator('.bet-chip');
-      if (await chipLocator.count() === 0) continue; // this seat hasn't bet
-      const reveal = await seat.locator('.reveal').boundingBox();
-      const chip = await chipLocator.boundingBox();
-      const overlapsX = reveal.x < chip.x + chip.width && reveal.x + reveal.width > chip.x;
-      const overlapsY = reveal.y < chip.y + chip.height && reveal.y + reveal.height > chip.y;
-      expect(overlapsX && overlapsY).toBe(false);
-    }
+    const revealCount = await page.locator('.player-slot:not(.player-slot--hero) .reveal').count();
+    expect(revealCount).toBeGreaterThan(0);
   });
 });
