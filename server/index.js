@@ -22,6 +22,13 @@ function createServer() {
   // action a large fraction of the time on mobile. See GRACE_PERIOD_MS.
   const pendingRemovals = new Map();
   const GRACE_PERIOD_MS = 120000;
+  // Safety-timeout for a mid-hand pause: if the player whose turn it is
+  // stays disconnected this long with nobody (them or the host) resolving
+  // it, auto-fold on their behalf so the table isn't stuck forever if the
+  // host is unreachable too. Keyed by room code — only one turn can be
+  // "stuck" at a time per room. See maybeArmPauseTimer below.
+  const pauseTimers = new Map();
+  const PAUSE_TIMEOUT_MS = 5 * 60 * 1000;
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
@@ -34,12 +41,41 @@ function createServer() {
   // ─── helpers ───────────────────────────────────────────────────────────────
 
   function broadcastRoom(room) {
+    maybeArmPauseTimer(room);
     for (const p of room.players) {
       if (!p.socketId) continue;
       const state = room.getStateForPlayer(p.id);
       if (state) io.to(p.socketId).emit('game:state', state);
     }
     io.to(room.code).emit('room:state', room.getLobbyState());
+  }
+
+  // Arms, re-arms, or clears the pause-timeout for a room, based on
+  // whether whoever's turn it currently is is disconnected. Called from
+  // the single broadcastRoom() funnel point below, so it re-evaluates
+  // after every event that could change whose turn it is or someone's
+  // connection status (actions, disconnects, reconnects).
+  function maybeArmPauseTimer(room) {
+    const existing = pauseTimers.get(room.code);
+    const actionPlayerId = room.getActionPlayerId();
+    const player = actionPlayerId ? room.players.find(p => p.id === actionPlayerId) : null;
+    const shouldBeArmed = !!player && player.connected === false;
+
+    if (existing && existing.playerId === actionPlayerId && shouldBeArmed) return; // already correct
+    if (existing) {
+      clearTimeout(existing.timer);
+      pauseTimers.delete(room.code);
+    }
+    if (!shouldBeArmed) return;
+
+    const timer = setTimeout(() => {
+      pauseTimers.delete(room.code);
+      // Re-validate at fire time — the situation may have resolved itself
+      // (reconnect, host fold, hand ended) between arming and firing.
+      const result = room.resolveDisconnectedTurn(actionPlayerId);
+      if (!result.error) handleActionResult(room, result);
+    }, PAUSE_TIMEOUT_MS);
+    pauseTimers.set(room.code, { playerId: actionPlayerId, timer });
   }
 
   // Advances a room past its post-showdown settlement wait: clears the
@@ -164,12 +200,16 @@ function createServer() {
       // future 'disconnect' wouldn't know which player it was for.
       myPlayerId = playerId;
       room.updateSocket(playerId, socket.id);
+      room.setConnected(playerId, true);
       socket.join(room.code);
       clearTimeout(pendingRemovals.get(playerId));
       pendingRemovals.delete(playerId);
-      socket.emit('room:state', room.getLobbyState());
-      const state = room.getStateForPlayer(playerId);
-      if (state) socket.emit('game:state', state);
+      // Broadcast to the whole room (not just this socket) so everyone
+      // else's "XXX 断线中" indicator clears too, and — once a game is in
+      // progress — so maybeArmPauseTimer (Task 7) re-evaluates whether the
+      // safety timeout should still be ticking.
+      if (room.game) broadcastRoom(room);
+      else io.to(room.code).emit('room:state', room.getLobbyState());
     });
 
     socket.on('room:kick', ({ hostId, targetId }) => {
@@ -183,6 +223,14 @@ function createServer() {
       io.to(room.code).emit('room:state', room.getLobbyState());
     });
 
+    socket.on('game:fold-disconnected', ({ hostId, targetId }) => {
+      const room = rooms.getRoomByPlayer(hostId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.foldForDisconnected(hostId, targetId);
+      if (result.error) return socket.emit('game:error', result.error);
+      handleActionResult(room, result);
+    });
+
     socket.on('game:ready-next', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room?.isAwaitingSettlementAck()) return;
@@ -193,29 +241,37 @@ function createServer() {
     socket.on('disconnect', () => {
       if (!myPlayerId) return;
       const room = rooms.getRoomByPlayer(myPlayerId);
-      if (room?.game && !room.isAwaitingSettlementAck()) {
-        const result = room.playerAction(myPlayerId, 'fold');
-        handleActionResult(room, result);
-      }
-      if (room?.isAwaitingSettlementAck()) {
+      if (!room) return;
+
+      room.setConnected(myPlayerId, false);
+
+      if (room.isAwaitingSettlementAck()) {
+        // Unchanged: settlement-ack disconnects still drop the player from
+        // the "must ack" set immediately rather than pausing — this is a
+        // lower-stakes confirmation click, not an in-hand decision, and is
+        // explicitly out of scope for the pause-and-wait behavior below.
         if (room.dropFromSettlementWait(myPlayerId)) advanceRoom(room);
         else io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
+      } else if (room.game) {
+        // Mid-hand disconnect: no auto-fold, no removal. broadcastRoom lets
+        // everyone see the "connected:false" flag immediately, and (once
+        // Task 7 lands) arms the safety-timeout if it's this player's turn.
+        broadcastRoom(room);
+      } else {
+        io.to(room.code).emit('room:state', room.getLobbyState());
       }
 
-      if (room && room.status === 'waiting') {
+      if (room.status === 'waiting') {
         // Lobby disconnect: give them a grace period to reconnect (e.g. they
         // just backgrounded the tab to paste the invite link somewhere)
         // instead of yanking them — and possibly deleting the whole room,
-        // if they were its only player — immediately.
+        // if they were its only player — immediately. Unchanged from before.
         const pid = myPlayerId;
         const deadSocketId = socket.id;
         const timer = setTimeout(() => {
           pendingRemovals.delete(pid);
           const stillRoom = rooms.getRoomByPlayer(pid);
           const player = stillRoom?.players.find(p => p.id === pid);
-          // Only actually remove them if nothing re-associated this player
-          // with a live socket in the meantime (room:sync on reconnect
-          // updates socketId away from this dead one).
           if (stillRoom && player && player.socketId === deadSocketId) {
             rooms.leave(pid);
             if (stillRoom.players.length > 0) {
@@ -224,12 +280,11 @@ function createServer() {
           }
         }, GRACE_PERIOD_MS);
         pendingRemovals.set(pid, timer);
-      } else {
-        rooms.leave(myPlayerId);
-        if (room && room.players.length > 0) {
-          io.to(room.code).emit('room:state', room.getLobbyState());
-        }
       }
+      // Mid-game (room.status !== 'waiting'): deliberately no removal timer
+      // at all. The only ways a mid-game player loses their seat are an
+      // explicit host kick (room:kick, unchanged) or busting out of chips
+      // (existing nextRound() elimination, unchanged) — see design.md.
     });
   });
 

@@ -14,7 +14,7 @@ class Room {
     do { code = randomCode(); } while (false); // uniqueness checked by RoomManager
     this.code = code;
     this.hostId = hostId;
-    this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null, debt: 0 }];
+    this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null, debt: 0, connected: true }];
     this.game = null;       // GameEngine instance when in progress
     // Tracked by player id (not array index) so the button reliably lands on
     // "whoever sits after the previous dealer" even when the roster's size or
@@ -30,7 +30,7 @@ class Room {
   addPlayer(id, name, socketId) {
     if (this.players.length >= 9) return { error: '房间已满，无法加入' };
     if (this.players.find(p => p.id === id)) return { error: '已在房间内' };
-    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0 });
+    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0, connected: true });
     return { ok: true };
   }
 
@@ -70,6 +70,15 @@ class Room {
     if (p) p.socketId = socketId;
   }
 
+  // Explicit connection-status flag, separate from `socketId` (which is
+  // never cleared on disconnect and so doesn't reflect live status). Set
+  // false on disconnect, true on room:create/room:join/room:sync — see
+  // server/index.js.
+  setConnected(playerId, connected) {
+    const p = this.players.find(p => p.id === playerId);
+    if (p) p.connected = connected;
+  }
+
   startGame() {
     if (this.players.length < 2) return { error: '至少需要2名玩家' };
     if (this.status !== 'waiting') return { error: '游戏已在进行中' };
@@ -87,11 +96,15 @@ class Room {
       const gp = this.game?.players.find(p => p.id === rp.id);
       if (gp) rp.chips = gp.chips;
     }
-    // Only active (chips > 0) players enter the next hand — this already
-    // naturally picks up anyone who joined mid-game or just rebought, since
-    // it's filtered fresh from the full room roster every time, not carried
-    // over from the previous hand's player list.
-    const active = this.players.filter(p => p.chips > 0);
+    // Only active (chips > 0, currently connected) players enter the next
+    // hand — this already naturally picks up anyone who joined mid-game,
+    // just rebought, or just reconnected, since it's filtered fresh from
+    // the full room roster every time, not carried over from the previous
+    // hand's player list. Disconnected players are skipped (not dealt in)
+    // rather than force-included, so the same absent player doesn't stall
+    // every subsequent hand — they're picked back up automatically the
+    // next time nextRound() runs after they reconnect.
+    const active = this.players.filter(p => p.chips > 0 && p.connected !== false);
     if (active.length < 2) {
       this.status = 'waiting';
       this.game = null;
@@ -166,6 +179,33 @@ class Room {
     return [...eligiblePlayerIds].every((id) => readyPlayerIds.has(id));
   }
 
+  // The id of whoever's turn it currently is, or null if no hand is in
+  // progress. Cross-references GameEngine's own actionIndex — GameEngine
+  // doesn't know about room-level connection status, so this is the seam
+  // between "whose turn is it" (GameEngine) and "are they actually here"
+  // (Room).
+  getActionPlayerId() {
+    if (!this.game) return null;
+    return this.game.players[this.game.actionIndex]?.id ?? null;
+  }
+
+  // Shared by the host's manual "帮TA弃牌" button and the system safety
+  // timeout (see server/index.js maybeArmPauseTimer) — the only difference
+  // between those two callers is who's allowed to trigger it, not what
+  // happens once triggered, so both funnel through here.
+  resolveDisconnectedTurn(targetId) {
+    if (!this.game) return { error: '游戏未开始' };
+    const target = this.players.find(p => p.id === targetId);
+    if (!target || target.connected !== false) return { error: '该玩家未处于断线状态' };
+    if (this.getActionPlayerId() !== targetId) return { error: '还没轮到该玩家' };
+    return this.game.fold(targetId);
+  }
+
+  foldForDisconnected(hostId, targetId) {
+    if (this.hostId !== hostId) return { error: '只有房主可以这样做' };
+    return this.resolveDisconnectedTurn(targetId);
+  }
+
   playerAction(playerId, action, amount) {
     if (!this.game) return { error: '游戏未开始' };
     switch (action) {
@@ -189,7 +229,7 @@ class Room {
       hostId: this.hostId,
       status: this.status,
       startingChips: STARTING_CHIPS,
-      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0 })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false })),
     };
   }
 }

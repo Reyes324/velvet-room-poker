@@ -293,3 +293,17 @@
 
 - [x] 32.1 `BET_CHIP_OFFSET` 92→58——之前提到 92 是为了躲开对手暗牌，暗牌已下线，这个理由不再成立
 - [x] 32.2 Playwright 实测确认筹码跟加宽后的头像卡片零重叠、间距~10-11px；相关 e2e 用例回归通过
+
+## 33. 游戏中途断线从"自动弃牌+移出房间"改为"暂停等待重连"（第二十一轮，2026-07-20）
+
+- [x] 33.1 `Room` 新增显式 `connected` 字段：构造函数/`addPlayer` 默认 `connected: true`，新增 `setConnected(playerId, connected)`，`getLobbyState()` 的 players 里带上这个字段
+- [x] 33.2 `Room.nextRound()` 发下一手时的 `active` 过滤条件从 `chips > 0` 扩展为 `chips > 0 && connected !== false`——断线玩家跳过不发进新一手，重连后下次 `nextRound()` 自动重新计入
+- [x] 33.3 新增 `Room.getActionPlayerId()` / `resolveDisconnectedTurn(targetId)` / `foldForDisconnected(hostId, targetId)`——分别用于查询当前该行动的玩家、对"断线且正是他的回合"这一具体场景执行弃牌、以及房主触发的带权限校验的包装
+- [x] 33.4 `server/index.js` 的 `disconnect` handler 去掉游戏进行中自动弃牌 + 移出房间这两个动作，只调用 `setConnected(id, false)` 并广播；这一步暂时打破了一条既有集成测试（预期行为改变，非回归），推迟到 Task 10 一并修正
+- [x] 33.5 `room:sync` 重连路径调用 `setConnected(id, true)` 并广播给全房间，让其他玩家客户端看到断线状态解除
+- [x] 33.6 新增房主专属 socket 事件 `game:fold-disconnected`，走 `foldForDisconnected` 权限校验后调用 `resolveDisconnectedTurn`，即"帮TA弃牌"按钮的服务端支撑
+- [x] 33.7 新增 `maybeArmPauseTimer` 辅助函数，从唯一的 `broadcastRoom` 汇聚点调用，管理 5 分钟安全超时定时器的完整生命周期（武装/续期/清除），到点后对断线中的行动玩家调用 `resolveDisconnectedTurn` 自动弃牌；定时器的 6 种状态迁移逐一手动跟踪验证过
+- [x] 33.8 客户端新增"断线中"纯文字 toast + 房主可见的"帮TA弃牌"按钮；本轮不改 `GameTable.jsx`/`PlayerSeat.jsx`/`velvet.css`，因为这些文件正在并行分支里做视觉重做，完整视觉呈现推迟
+- [x] 33.9 大厅玩家列表里断线玩家名字后追加"（断线中）"文字角标
+- [x] 33.10 Playwright e2e：用页面调试钩子 `window.__vrSocket.disconnect()`/`.connect()` 模拟牌局进行中真实断线再重连，覆盖玩家自己重连、房主"帮TA弃牌"两条路径；同时修正 Task 4 打破的那条服务端集成测试，并新增 5 分钟安全超时的假定时器测试
+- [x] 33.11 SDD 收尾 + 全量验证：`npm test`（server，101/101）、`npm run build`（client，构建通过）、`npx playwright test`（31/31，含既有回归）全绿——过程中两次遇到同一进程内反复起停测试服务器导致的偶发 `ERR_CONNECTION_REFUSED`，清掉残留进程后重跑即恢复全绿，判断为本次沙盒会话的环境噪音，非代码回归

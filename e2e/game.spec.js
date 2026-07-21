@@ -59,6 +59,13 @@ async function startGame(page) {
 
 /** 找到当前有操作栏的那一页（行动玩家），返回 [actor, other] */
 async function findActor(p1, p2) {
+  // 发牌动画（分帧发牌+英雄翻面）跑完之前操作栏不会出现——等任意一侧的
+  // 操作栏真正可见了再判断是谁，而不是发牌刚开始那一刻就做一次性快照
+  // 判断（会跟动画时长产生竞态，尤其是牌桌渲染变重之后更容易踩到）。
+  await Promise.race([
+    p1.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }),
+    p2.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }),
+  ]);
   const p1HasBar = await p1.locator(S.actionBar).isVisible();
   return p1HasBar ? [p1, p2] : [p2, p1];
 }
@@ -79,8 +86,19 @@ async function runToShowdown(p1, p2) {
     const done = await p1.locator(S.settlement).isVisible({ timeout: 500 }).catch(() => false);
     if (done) break;
 
-    const p1Bar = await p1.locator(S.actionBar).isVisible({ timeout: 3000 }).catch(() => false);
-    const p2Bar = await p2.locator(S.actionBar).isVisible({ timeout: 3000 }).catch(() => false);
+    // 等操作栏或结算弹窗任意一个真正出现，再判断该怎么走——不要在发牌动画
+    // 还没播完的那一瞬间做一次性快照判断（同 findActor 的踩坑记录）。
+    await Promise.race([
+      p1.locator(S.actionBar).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
+      p2.locator(S.actionBar).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
+      p1.locator(S.settlement).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
+    ]);
+
+    const doneNow = await p1.locator(S.settlement).isVisible().catch(() => false);
+    if (doneNow) break;
+
+    const p1Bar = await p1.locator(S.actionBar).isVisible().catch(() => false);
+    const p2Bar = await p2.locator(S.actionBar).isVisible().catch(() => false);
     if (!p1Bar && !p2Bar) break;
 
     const actor = p1Bar ? p1 : p2;
@@ -163,8 +181,12 @@ test.describe('游戏基础流程', () => {
     await joinRoom(p2, 'Bob', code);
     await startGame(p1);
 
-    const p1Bar = await p1.locator(S.actionBar).isVisible({ timeout: 5000 });
-    const p2Bar = await p2.locator(S.actionBar).isVisible({ timeout: 500 }).catch(() => false);
+    await Promise.race([
+      p1.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }),
+      p2.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }),
+    ]);
+    const p1Bar = await p1.locator(S.actionBar).isVisible();
+    const p2Bar = await p2.locator(S.actionBar).isVisible();
     // 恰好一方有操作栏
     expect(p1Bar !== p2Bar).toBe(true);
 
@@ -386,7 +408,7 @@ test.describe('S5：重新开始', () => {
 // ─── S2：断线自动 fold ─────────────────────────────────────────────────────────
 
 test.describe('S2：断线处理', () => {
-  test('行动玩家关闭页面后对方获得行动机会', async ({ browser }) => {
+  test('行动玩家断线后牌局暂停等待，不会自动弃牌给对方行动机会', async ({ browser }) => {
     const ctx1 = await browser.newContext();
     const ctx2 = await browser.newContext();
     const p1 = await ctx1.newPage();
@@ -398,17 +420,62 @@ test.describe('S2：断线处理', () => {
 
     const [actor, other] = await findActor(p1, p2);
 
-    // 行动玩家关闭标签
-    await actor.close();
+    // 用页面里暴露的调试钩子强制断开 socket（不是关闭标签页）——关闭标签页
+    // 之后这个 context 就没法再操作了，没法验证"重连后恢复正常"这一半；
+    // 用 __vrSocket.disconnect() 保留 context，可以后续重连回来。
+    await actor.evaluate(() => window.__vrSocket.disconnect());
 
-    // 对方应在短时间内获得行动机会（或直接看到摊牌）
-    // waitFor 才会真正轮询等待元素出现，isVisible 是即时快照不会等待
+    // 对方应该看到"断线中，等待重连"的提示，且**不会**获得行动机会
+    await other.locator('.toast--info', { hasText: '断线中' }).waitFor({ state: 'visible', timeout: 8000 });
+    const gotActionBar = await other.locator(S.actionBar).isVisible().catch(() => false);
+    expect(gotActionBar).toBe(false);
+
+    // 断线的一方重连后，应该能继续正常操作（说明筹码/座位都还在，游戏没有被打断）
+    await actor.evaluate(() => window.__vrSocket.connect());
+    await actor.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('房主可以帮断线且轮到行动的玩家弃牌，牌局能继续', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice'); // p1 is host
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    const [actor, other] = await findActor(p1, p2);
+    const actorIsHost = actor === p1;
+    if (actorIsHost) {
+      // Host is the one who's stuck — the host-fold-button path can't run
+      // (no one else can click it); this scenario is covered by the
+      // 5-minute safety timeout instead (server-side test, Task 7), not
+      // re-tested here since it isn't practical to wait 5 real minutes in
+      // an e2e run.
+      await ctx1.close();
+      await ctx2.close();
+      return;
+    }
+
+    await actor.evaluate(() => window.__vrSocket.disconnect());
+    await other.locator('.toast--info', { hasText: '断线中' }).waitFor({ state: 'visible', timeout: 8000 });
+
+    // `other` here is the host (p1) since actor !== p1 in this branch
+    await other.locator('text=帮TA弃牌').click();
+
+    // Hand should advance past the disconnected player — settlement or a
+    // fresh action bar for whoever's next both indicate progress happened.
     const [gotBar, gotResult] = await Promise.all([
       other.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false),
       other.locator(S.settlement).waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false),
     ]);
     expect(gotBar || gotResult).toBe(true);
 
+    await ctx1.close();
     await ctx2.close();
   });
 });

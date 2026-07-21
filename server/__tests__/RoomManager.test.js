@@ -79,6 +79,42 @@ describe('RoomManager — 加入房间', () => {
   });
 });
 
+describe('RoomManager — 连接状态', () => {
+  it('新创建/新加入的玩家默认 connected 为 true', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    expect(room.players.find(p => p.id === 'p1').connected).toBe(true);
+    expect(room.players.find(p => p.id === 'p2').connected).toBe(true);
+  });
+
+  it('setConnected(false) 标记玩家为断线，不影响其他字段', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.setConnected('p1', false);
+    const p = room.players.find(p => p.id === 'p1');
+    expect(p.connected).toBe(false);
+    expect(p.chips).toBe(1000);
+  });
+
+  it('setConnected(true) 能把断线状态改回来', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.setConnected('p1', false);
+    room.setConnected('p1', true);
+    expect(room.players.find(p => p.id === 'p1').connected).toBe(true);
+  });
+
+  it('setConnected 对不存在的 playerId 静默忽略', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(() => room.setConnected('nope', false)).not.toThrow();
+  });
+
+  it('getLobbyState() 的 players 里带上 connected 字段', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.setConnected('p1', false);
+    const state = room.getLobbyState();
+    expect(state.players.find(p => p.id === 'p1').connected).toBe(false);
+  });
+});
+
 describe('Room — 重新开始', () => {
   it('restart 后所有玩家筹码重置为初始值', () => {
     const room = rooms.create('p1', 'Alice');
@@ -372,5 +408,101 @@ describe('RoomManager — 拍一拍', () => {
     expect(room.poke('p1', 'p2').ok).toBe(true);
     room.pokeCooldowns.set('p1→p2', Date.now() - 3000); // simulate 3s elapsed
     expect(room.poke('p1', 'p2').ok).toBe(true);
+  });
+});
+
+describe('RoomManager — nextRound 跳过断线玩家', () => {
+  it('断线的玩家不会被发进下一手，即使筹码 > 0', () => {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    rooms2.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms2.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame();
+    room.setConnected('p2', false);
+    const result = room.nextRound();
+    expect(result.ok).toBe(true);
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).not.toContain('p2');
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p3']));
+  });
+
+  it('重连后下一次 nextRound 会把玩家重新算进去', () => {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    rooms2.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms2.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame();
+    room.setConnected('p2', false);
+    room.nextRound();
+    room.setConnected('p2', true);
+    const result = room.nextRound();
+    expect(result.ok).toBe(true);
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toContain('p2');
+  });
+});
+
+describe('RoomManager — 断线玩家的行动兜底', () => {
+  function setupPlayingRoom() {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    rooms2.join(room.code, 'p2', 'Bob', 'socket2');
+    room.startGame();
+    return room;
+  }
+
+  it('getActionPlayerId 返回当前该行动的玩家 id', () => {
+    const room = setupPlayingRoom();
+    const id = room.getActionPlayerId();
+    expect(['p1', 'p2']).toContain(id);
+  });
+
+  it('getActionPlayerId 在没有牌局时返回 null', () => {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    expect(room.getActionPlayerId()).toBeNull();
+  });
+
+  it('resolveDisconnectedTurn：目标玩家没断线 → 拒绝', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    const result = room.resolveDisconnectedTurn(actingId);
+    expect(result.error).toBeDefined();
+  });
+
+  it('resolveDisconnectedTurn：目标玩家断线但不是他的回合 → 拒绝', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    const otherId = actingId === 'p1' ? 'p2' : 'p1';
+    room.setConnected(otherId, false);
+    const result = room.resolveDisconnectedTurn(otherId);
+    expect(result.error).toBeDefined();
+  });
+
+  it('resolveDisconnectedTurn：目标玩家断线且正是他的回合 → 成功弃牌', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    room.setConnected(actingId, false);
+    const result = room.resolveDisconnectedTurn(actingId);
+    expect(result.error).toBeUndefined();
+    expect(room.players.find(p => p.id === actingId)).toBeDefined(); // still seated
+  });
+
+  it('foldForDisconnected：非房主调用 → 拒绝', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    room.setConnected(actingId, false);
+    const result = room.foldForDisconnected('p2', actingId); // p2 isn't always host but this asserts the check exists
+    if (room.hostId !== 'p2') {
+      expect(result.error).toBeDefined();
+    }
+  });
+
+  it('foldForDisconnected：房主调用、目标断线且轮到他 → 成功', () => {
+    const room = setupPlayingRoom();
+    const actingId = room.getActionPlayerId();
+    room.setConnected(actingId, false);
+    const result = room.foldForDisconnected(room.hostId, actingId);
+    expect(result.error).toBeUndefined();
   });
 });
