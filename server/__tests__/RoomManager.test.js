@@ -300,14 +300,16 @@ describe('Room — getLobbyState', () => {
 });
 
 describe('RoomManager — 离开房间', () => {
-  it('离开后从玩家列表移除', () => {
+  it('离开后标记 left，但仍留在玩家列表里（账本要留存最终数字）', () => {
     const room = rooms.create('p1', 'Alice');
     rooms.join(room.code, 'p2', 'Bob', 'socket2');
     rooms.leave('p2');
-    expect(room.players.find(p => p.id === 'p2')).toBeUndefined();
+    const p2 = room.players.find(p => p.id === 'p2');
+    expect(p2).toBeDefined();
+    expect(p2.left).toBe(true);
   });
 
-  it('最后一个玩家离开后房间被删除', () => {
+  it('所有玩家都离开后房间被删除', () => {
     const room = rooms.create('p1', 'Alice');
     rooms.leave('p1');
     expect(rooms.rooms.has(room.code)).toBe(false);
@@ -317,6 +319,23 @@ describe('RoomManager — 离开房间', () => {
     rooms.create('p1', 'Alice');
     rooms.leave('p1');
     expect(rooms.getRoomByPlayer('p1')).toBeNull();
+  });
+
+  it('离开的玩家不计入 startGame 的人数门槛', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    rooms.join(room.code, 'p3', 'Charlie', 's3');
+    rooms.leave('p3');
+    const result = room.startGame();
+    expect(result.error).toBeUndefined();
+    expect(room.game.players).toHaveLength(2);
+  });
+
+  it('房主离开后，房主身份转移给下一个仍在场（未离开）的玩家', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    rooms.leave('p1');
+    expect(room.hostId).toBe('p2');
   });
 });
 

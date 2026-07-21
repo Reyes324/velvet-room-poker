@@ -4,6 +4,7 @@ import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
 import BustDecisionModal from '../components/BustDecisionModal';
+import BustWaitModal from '../components/BustWaitModal';
 import LedgerModal from '../components/LedgerModal';
 
 // Real showdowns give the table this long to actually show the revealed
@@ -23,7 +24,6 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [actionDisabled, setActionDisabled] = useState(false);
   const [iAmReady, setIAmReady] = useState(false);
   const [settlementProgress, setSettlementProgress] = useState(null);
-  const [showBustModal, setShowBustModal] = useState(false);
   const [showLedger, setShowLedger] = useState(false);
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
   const settlementTimerRef = useRef(null);
@@ -108,18 +108,35 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const myRoomChips = roomState?.players?.find(p => p.id === playerId)?.chips ?? 0;
   const amPlaying = gameState?.players?.some(p => p.id === playerId) ?? false;
 
-  // Detect the >0 → 0 transition (just busted) to pop the decision modal
-  // once, the same pattern GameTable.jsx uses for justDealt/justRevealed.
-  // Re-crossing 0 → >0 (rebuy landed) auto-dismisses it.
-  const prevChipsRef = useRef(myRoomChips);
+  // Fires when someone else (the host, via room:leave-for) marks me left —
+  // my own self-triggered leave (leaveRoom below) navigates immediately
+  // and doesn't need to wait for this round-trip, but a host acting on my
+  // behalf while I'm unresponsive has no other way to tell my client to
+  // navigate away.
   useEffect(() => {
-    if (prevChipsRef.current > 0 && myRoomChips === 0) setShowBustModal(true);
-    else if (myRoomChips > 0) setShowBustModal(false);
-    prevChipsRef.current = myRoomChips;
-  }, [myRoomChips]);
+    const me = roomState?.players?.find(p => p.id === playerId);
+    if (me?.left) {
+      showToast('已离开对局', 'info');
+      setTimeout(onLeave, 1500);
+    }
+  }, [roomState]);
 
   function rebuy() {
     emit('player:rebuy', { playerId });
+  }
+
+  // Intentional leave — used by the busted player's "退出对局", an
+  // impatient other player's "退出" while waiting on someone else's bust
+  // decision, and the lobby's own "退出房间". Resolves immediately server-
+  // side (marks left, keeps the ledger row) rather than relying on the
+  // disconnect grace period, then navigates away right away.
+  function leaveRoom() {
+    emit('player:leave-room', { playerId });
+    onLeave();
+  }
+
+  function bustLeaveFor(targetId) {
+    emit('room:leave-for', { hostId: playerId, targetId });
   }
 
   function poke(targetId) {
@@ -162,6 +179,14 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     emit('game:fold-disconnected', { hostId: playerId, targetId: stuckPlayer.id });
   }
 
+  // Anyone with 0 chips who hasn't left yet is exactly who the room is
+  // holding the next hand for (server-side: awaitingBustResolution) — the
+  // room stays on 'playing' status throughout, so this only needs the
+  // roomState.players list, not any dedicated event.
+  const bustedPlayers = inGame ? (roomState.players ?? []).filter(p => p.chips === 0 && !p.left) : [];
+  const myBust = bustedPlayers.find(p => p.id === playerId);
+  const othersBust = bustedPlayers.filter(p => p.id !== playerId);
+
   // ─── Lobby ───
   if (!inGame) {
     return (
@@ -174,7 +199,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           onStart={() => emit('room:start', { playerId })}
           onRestart={() => emit('room:restart', { playerId })}
           onRebuy={rebuy}
-          onExit={onLeave}
+          onExit={leaveRoom}
           onOpenLedger={() => setShowLedger(true)}
           copied={copied}
         />
@@ -210,12 +235,25 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         pokedSeat={pokedSeat}
         settlementOpen={!!settlement}
       />
-      {showBustModal && !amPlaying && myRoomChips === 0 && (
-        <BustDecisionModal
-          onRebuy={rebuy}
-          onSpectate={() => setShowBustModal(false)}
-          onLeave={onLeave}
-        />
+      {myBust && (
+        <BustDecisionModal onRebuy={rebuy} onLeave={leaveRoom} />
+      )}
+      {!myBust && othersBust.length > 0 && (
+        <BustWaitModal names={othersBust.map(p => p.name)} onLeave={leaveRoom} />
+      )}
+      {!myBust && othersBust.length > 0 && isHost && (
+        <div className="toast toast--info">
+          等待 {othersBust.map(p => p.name).join('、')} 决策中…
+          {othersBust.map(p => (
+            <span
+              key={p.id}
+              style={{ marginLeft: 12, textDecoration: 'underline', cursor: 'pointer' }}
+              onClick={() => bustLeaveFor(p.id)}
+            >
+              帮{p.name}离开
+            </span>
+          ))}
+        </div>
       )}
       {showLedger && (
         <LedgerModal

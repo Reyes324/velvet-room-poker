@@ -1,10 +1,14 @@
 import { useState } from 'react';
 
-// Shown once to a player the moment their own chips cross >0 → 0 (see
-// RoomPage.jsx's prevChipsRef effect) — everyone else's game keeps running
-// uninterrupted. Backdrop click and "旁观留下" do the same thing (dismiss,
-// non-destructive default); "离开" is the only exit from the room itself.
-export default function BustDecisionModal({ onRebuy, onSpectate, onLeave }) {
+// Shown to a player the moment their own chips hit 0 — the room holds the
+// next hand until they resolve this (see RoomPage's awaitingBustResolution
+// handling), so everyone else sees a matching "等待中" modal in the
+// meantime rather than the game silently moving on without them. Only two
+// choices for now — a third "旁观留下" (spectate, no decision) option was
+// cut per explicit user feedback: every bust should end in an actual
+// resolution, not a player left in limbo holding the room open. No
+// backdrop-dismiss either, for the same reason.
+export default function BustDecisionModal({ onRebuy, onLeave }) {
   const [pending, setPending] = useState(false);
 
   function handleRebuy() {
@@ -15,10 +19,10 @@ export default function BustDecisionModal({ onRebuy, onSpectate, onLeave }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onSpectate}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal">
         <div className="modal-title">筹码已用完</div>
-        <div className="modal-body">其他玩家的牌局不受影响，继续进行。要再借一底回到牌桌，还是先留下来看牌？</div>
+        <div className="modal-body">要再借一底回到牌桌，还是退出本局对局？</div>
         <div
           className="modal-btn"
           style={pending ? { opacity: .5, cursor: 'default' } : undefined}
@@ -26,10 +30,7 @@ export default function BustDecisionModal({ onRebuy, onSpectate, onLeave }) {
         >
           +借一底（¥1,000）
         </div>
-        <div className="modal-btns">
-          <div className="modal-btn-cancel" onClick={onSpectate}>旁观留下</div>
-          <div className="modal-btn-danger" onClick={onLeave}>离开</div>
-        </div>
+        <div className="modal-btn-danger" style={{ width: '100%' }} onClick={onLeave}>退出对局</div>
       </div>
     </div>
   );

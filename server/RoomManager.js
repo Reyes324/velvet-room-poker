@@ -14,7 +14,7 @@ class Room {
     do { code = randomCode(); } while (false); // uniqueness checked by RoomManager
     this.code = code;
     this.hostId = hostId;
-    this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null, debt: 0, connected: true }];
+    this.players = [{ id: hostId, name: hostName, chips: STARTING_CHIPS, socketId: null, debt: 0, connected: true, left: false }];
     this.game = null;       // GameEngine instance when in progress
     // Tracked by player id (not array index) so the button reliably lands on
     // "whoever sits after the previous dealer" even when the roster's size or
@@ -24,13 +24,19 @@ class Room {
     this.dealerId = hostId;
     this.status = 'waiting'; // waiting | playing
     this.settlementWait = null; // { eligiblePlayerIds, readyPlayerIds } while waiting for post-showdown acks
+    // True between a hand ending and every busted (chips===0, not left)
+    // player having resolved their rebuy-or-leave decision — see
+    // server/index.js's tryAdvanceIfClear. While true, nextRound() is
+    // deliberately not called, so the room stays on the table instead of
+    // snapping back to the lobby the instant someone busts.
+    this.awaitingBustResolution = false;
     this.pokeCooldowns = new Map(); // `${fromId}→${targetId}` -> last-poke timestamp (ms)
   }
 
   addPlayer(id, name, socketId) {
     if (this.players.length >= 9) return { error: '房间已满，无法加入' };
     if (this.players.find(p => p.id === id)) return { error: '已在房间内' };
-    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0, connected: true });
+    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0, connected: true, left: false });
     return { ok: true };
   }
 
@@ -43,13 +49,31 @@ class Room {
     if (p.chips !== 0) return { error: '筹码充足，无需借入' };
     p.chips += STARTING_CHIPS;
     p.debt = (p.debt || 0) + STARTING_CHIPS;
+    // nextRound() unconditionally re-syncs room.players' chips FROM
+    // this.game.players every time it runs, including when a rebuy is
+    // exactly what just cleared a bust-wait pause — without also writing
+    // through to the (still-referenced, already-finished-hand) game
+    // engine's own copy here, that resync would clobber the rebuy right
+    // back down to 0 using the old pre-rebuy chip count.
+    const gp = this.game?.players.find(gp => gp.id === playerId);
+    if (gp) gp.chips = p.chips;
     return { ok: true };
   }
 
-  removePlayer(id) {
-    this.players = this.players.filter(p => p.id !== id);
-    if (this.hostId === id && this.players.length > 0) {
-      this.hostId = this.players[0].id;
+  // Was removePlayer(id) — deleted the row outright, which silently wiped
+  // that player's chips/debt from the shared ledger the moment they left
+  // (confirmed by user feedback: the ledger is meant to be the group's
+  // real-money settlement record, not just a live scoreboard). Marking
+  // `left` instead keeps their final numbers visible in 账本 forever, and
+  // just excludes them from anything seating-related (dealt hands, the
+  // lobby's open-seat count, host handoff).
+  markLeft(id) {
+    const p = this.players.find(p => p.id === id);
+    if (!p) return;
+    p.left = true;
+    if (this.hostId === id) {
+      const next = this.players.find(p => !p.left);
+      if (next) this.hostId = next.id;
     }
   }
 
@@ -80,31 +104,45 @@ class Room {
   }
 
   startGame() {
-    if (this.players.length < 2) return { error: '至少需要2名玩家' };
+    const seated = this.players.filter(p => !p.left);
+    if (seated.length < 2) return { error: '至少需要2名玩家' };
     if (this.status !== 'waiting') return { error: '游戏已在进行中' };
     this.status = 'playing';
-    const idx = this.players.findIndex(p => p.id === this.dealerId);
+    const idx = seated.findIndex(p => p.id === this.dealerId);
     const dealerIndex = idx === -1 ? 0 : idx;
-    this.dealerId = this.players[dealerIndex].id;
-    this.game = new GameEngine(this.players, dealerIndex, BIG_BLIND);
+    this.dealerId = seated[dealerIndex].id;
+    this.game = new GameEngine(seated, dealerIndex, BIG_BLIND);
     return { ok: true };
   }
 
-  nextRound() {
-    // Sync chips from game engine back to room players; keep busted players for rebuy
+  // Sync chips from the (just-finished) game engine back onto the room's
+  // own player records — keeps busted players' rows around at chips===0
+  // for rebuy instead of dropping them. Split out from nextRound() because
+  // index.js's tryAdvanceIfClear needs this to have already happened
+  // *before* it decides whether nextRound() should even be called — chips
+  // dropping to 0 is exactly the condition it's checking for, and checking
+  // stale (pre-sync) values silently never caught anyone busting (confirmed
+  // the hard way: a live test only passed because the bust-pause it was
+  // meant to exercise never actually engaged).
+  syncChipsFromGame() {
     for (const rp of this.players) {
       const gp = this.game?.players.find(p => p.id === rp.id);
       if (gp) rp.chips = gp.chips;
     }
-    // Only active (chips > 0, currently connected) players enter the next
-    // hand — this already naturally picks up anyone who joined mid-game,
-    // just rebought, or just reconnected, since it's filtered fresh from
-    // the full room roster every time, not carried over from the previous
-    // hand's player list. Disconnected players are skipped (not dealt in)
-    // rather than force-included, so the same absent player doesn't stall
-    // every subsequent hand — they're picked back up automatically the
-    // next time nextRound() runs after they reconnect.
-    const active = this.players.filter(p => p.chips > 0 && p.connected !== false);
+  }
+
+  nextRound() {
+    this.syncChipsFromGame();
+    // Only active (chips > 0, currently connected, hasn't left) players
+    // enter the next hand — this already naturally picks up anyone who
+    // joined mid-game, just rebought, or just reconnected, since it's
+    // filtered fresh from the full room roster every time, not carried
+    // over from the previous hand's player list. Disconnected players are
+    // skipped (not dealt in) rather than force-included, so the same
+    // absent player doesn't stall every subsequent hand — they're picked
+    // back up automatically the next time nextRound() runs after they
+    // reconnect.
+    const active = this.players.filter(p => p.chips > 0 && p.connected !== false && !p.left);
     if (active.length < 2) {
       this.status = 'waiting';
       this.game = null;
@@ -120,11 +158,17 @@ class Room {
     return { ok: true };
   }
 
+  // The one place that actually clears the session's history — chips,
+  // debt (accumulated rebuys), and anyone who'd left all reset, since a
+  // restart is explicitly "start a fresh night", unlike a player leaving
+  // mid-session (markLeft), which deliberately keeps their final numbers
+  // on the ledger.
   restart() {
-    for (const p of this.players) p.chips = STARTING_CHIPS;
+    for (const p of this.players) { p.chips = STARTING_CHIPS; p.debt = 0; p.left = false; }
     this.status = 'waiting';
     this.game = null;
-    this.dealerId = this.players[0]?.id ?? null;
+    this.awaitingBustResolution = false;
+    this.dealerId = this.players.find(p => !p.left)?.id ?? null;
   }
 
   // ─── post-showdown "wait for everyone to ack" state ───────────────────────
@@ -229,7 +273,8 @@ class Room {
       hostId: this.hostId,
       status: this.status,
       startingChips: STARTING_CHIPS,
-      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false, left: p.left || false })),
+      awaitingBustResolution: this.awaitingBustResolution,
     };
   }
 }
@@ -264,9 +309,12 @@ class RoomManager {
     if (!code) return;
     const room = this.rooms.get(code);
     if (!room) return;
-    room.removePlayer(playerId);
+    room.markLeft(playerId);
     this.playerRoom.delete(playerId);
-    if (room.players.length === 0) this.rooms.delete(code);
+    // A room is only truly abandoned once everyone in it has left — the
+    // player rows themselves stay (markLeft keeps them for the ledger), so
+    // "empty" is no longer players.length === 0.
+    if (room.players.every(p => p.left)) this.rooms.delete(code);
     return room;
   }
 

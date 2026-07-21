@@ -355,3 +355,18 @@
 - [x] 38.1 排查确认：`PlayerSeat.jsx` 对手揭示牌用的是自制迷你卡面（`.rc`/`.rct`/`.rcc`，只有左上角点数+正中央花色，没有真实卡面该有的"角标成对+中心 pip"结构），跟英雄手牌/公共牌用的 `Card.jsx` 长得不一样，这才是用户说的"显示不完全"
 - [x] 38.2 `Card.jsx` 新增 `size="xs"`（24×34px），配套角标/中心 pip 字号缩小；`PlayerSeat.jsx` 揭示牌位置改用 `<Card card={c} size="xs" />`，删掉整套自制 `.rc`/`.rct`/`.rcc` CSS
 - [x] 38.3 Playwright 截图对比确认对手揭示牌现在跟英雄手牌/公共牌视觉一致；`?states=` 全部 fixture 重跑重叠扫描确认卡面尺寸变化未引入新裁切/重叠；真机两人局弃牌+摊牌两条路径重新验证；服务端 103/103 全绿
+
+## 39. 大厅按钮/图标偏小 + 筹码归零处理重新设计 + 发牌动画放慢（用户反馈，2026-07-21/22）
+
+- [x] 39.1 `.pr-badge--action` 新修饰类（"+借一底"/"移出"这类可点击操作，12px/6px 12px padding），跟"房主"这类纯信息标签的 `.pr-badge`（8px/2px 7px）区分开；`.pr-chips` 9px→11px；`.menu-btn` 图标字号 20px→26px
+- [x] 39.2 **架构根因**：`Room.nextRound()` 一旦"有筹码且在线"玩家数 < 2 就把整个房间打回 `waiting`，`BustDecisionModal` 只在 `status==='playing'` 时渲染——两者叠加导致这个场景下弹窗压根不出现，大家被无声打回大厅
+- [x] 39.3 服务端新增 `Room.awaitingBustResolution` 标志 + `index.js` 的 `tryAdvanceIfClear(room)`：一手结束后只要有 `chips===0 && !left` 的玩家就暂停（不调用 `nextRound()`），不区分桌子人数场景，`advanceRoom`/`player:rebuy`/新的两个离开事件都收敛到这一个函数
+- [x] 39.4 `Room.removePlayer` 改名 `markLeft`，只打标记不删行；`nextRound`/`startGame` 加 `!left` 过滤；`getLobbyState` 带上 `left` 字段；房间废弃判断从 `players.length===0` 改成 `players.every(left)`；`restart()` 额外重置 `debt`/`left`（唯一真正清空历史的地方）
+- [x] 39.5 新增 `player:leave-room`（自己主动离开，账本保留）、`room:leave-for`（仅房主，帮清零未响应的玩家决定离开，校验目标必须是当前卡住的那个人）；5 分钟安全超时扩展到覆盖清零未决策场景
+- [x] 39.6 弃牌结束文案"对手全部弃牌"→"其他人全部弃牌"（原文案视角歧义：对手是相对读者而言，赢家/输家/旁观看同一句话理解不一样；新文案相对界面上紧邻显式命名的赢家而言，任何视角都唯一确定）
+- [x] 39.7 `BustDecisionModal` 去掉"旁观留下"，只留"再借一底"/"退出对局"；新增 `BustWaitModal` 给非清零者看，"等待 [姓名] 决策中……" + 自己的"退出"按钮；两个弹窗都是 overlay 样式，牌桌本身继续在底下可见，不跳转大厅（`room.status` 全程 `playing`）
+- [x] 39.8 `Lobby.jsx` 座位列表/空位数/开局人数门槛改成基于过滤 `left` 后的数组；`LedgerModal` 保留展示已离开玩家，加"已离开"标签
+- [x] 39.9 **踩坑 1**：暂停判断最初直接查 `room.players`，但筹码同步只在 `nextRound()` 内部发生——"要不要调用 nextRound"本身却要先知道有没有人清零，先有鸡还是先有蛋。第一版暂停机制永远查到的是同步前的旧筹码，从未真正触发过（一条服务端回归测试因为断言被顺手改掉而"侥幸通过"，实际没验证到任何东西）。改法：拆出 `Room.syncChipsFromGame()`，在 `advanceRoom()` 里判断暂停之前显式调用一次
+- [x] 39.10 **踩坑 2**：修完踩坑1后，"清零后再借一底"卡在弹窗不消失——因为再借一底的 handler 第二次调用 `tryAdvanceIfClear` 时，途经的 `nextRound()` 自己又内部重跑了一遍面向"直接单测调用"设计的旧同步逻辑，用的是已经打完、没被触碰过的旧 GameEngine 实例，把刚借的筹码覆盖回 0。改法：`rebuy()` 同时把加的筹码写回 `this.game.players` 里对应的那份，两份数据保持一致
+- [x] 39.11 `DEAL_STEP` 0.07s→0.09s，`.card-deal` 0.4s→0.48s（`DEAL_CARD_DURATION` 常量同步改为 0.48，顺带修正了原本就跟 CSS 不一致的旧漂移），`.flip-reveal` 0.52s→0.62s
+- [x] 39.12 服务端新增/重写 6 条测试（暂停触发、再借一底解除+直接发下一手、主动离开解除+账本保留、房主代离开+权限校验、非房主调用被拒绝），109/109 全绿；真机验证用独立测试服务器实例（复用 `createServer()`）+ Playwright 双页面直接操作 `room` 对象制造清零场景（比反复真实全下更稳定）：三条解除路径全部验证状态正确、双方全程保持在牌桌视图未跳转大厅、离开后账本行保留且带"已离开"标签、大厅座位列表正确排除已离开玩家

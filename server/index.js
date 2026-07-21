@@ -29,6 +29,10 @@ function createServer() {
   // "stuck" at a time per room. See maybeArmPauseTimer below.
   const pauseTimers = new Map();
   const PAUSE_TIMEOUT_MS = 5 * 60 * 1000;
+  // Same 5-minute safety net, for the "someone busted and won't decide"
+  // pause (awaitingBustResolution) instead of a stuck mid-hand turn. Keyed
+  // by room code, like pauseTimers — see maybeArmBustTimer below.
+  const bustTimers = new Map();
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
@@ -42,12 +46,68 @@ function createServer() {
 
   function broadcastRoom(room) {
     maybeArmPauseTimer(room);
+    maybeArmBustTimer(room);
     for (const p of room.players) {
       if (!p.socketId) continue;
       const state = room.getStateForPlayer(p.id);
       if (state) io.to(p.socketId).emit('game:state', state);
     }
     io.to(room.code).emit('room:state', room.getLobbyState());
+  }
+
+  // Mirrors maybeArmPauseTimer, for the "someone busted, hasn't rebought or
+  // left yet" pause instead of a stuck mid-hand turn. Re-evaluated from the
+  // same broadcastRoom funnel point after every event that could change who's
+  // pending (a bust, a rebuy, a leave).
+  function maybeArmBustTimer(room) {
+    const existing = bustTimers.get(room.code);
+    const pendingIds = room.players.filter(p => p.chips === 0 && !p.left).map(p => p.id).sort().join(',');
+    const shouldBeArmed = room.awaitingBustResolution && pendingIds.length > 0;
+
+    if (existing && existing.pendingIds === pendingIds) return; // already correct
+    if (existing) {
+      clearTimeout(existing.timer);
+      bustTimers.delete(room.code);
+    }
+    if (!shouldBeArmed) return;
+
+    const timer = setTimeout(() => {
+      bustTimers.delete(room.code);
+      // Re-validate at fire time — someone may have resolved (rebought or
+      // left) between arming and firing.
+      const stillPending = room.players.filter(p => p.chips === 0 && !p.left);
+      for (const p of stillPending) room.markLeft(p.id);
+      tryAdvanceIfClear(room);
+    }, PAUSE_TIMEOUT_MS);
+    bustTimers.set(room.code, { pendingIds, timer });
+  }
+
+  // The single place that decides whether the room can actually deal the
+  // next hand: holds (and broadcasts the pause) if anyone's chips===0 and
+  // hasn't resolved yet, otherwise proceeds to nextRound() as before. Called
+  // both right after the settlement-ack wait clears, and again whenever a
+  // pending player resolves (rebuy or leave) — either can be the thing that
+  // finally clears the pause.
+  function tryAdvanceIfClear(room) {
+    // Deliberately does NOT call room.syncChipsFromGame() itself — that
+    // must happen exactly once, right when a hand finishes (see
+    // advanceRoom), not on every call here. This function is also called
+    // after a rebuy/leave resolves the pause, and by then room.players
+    // already holds the current truth (the rebuy already incremented
+    // chips directly); re-syncing from the finished, untouched game engine
+    // at that point would clobber the rebuy's chips right back down to 0
+    // (confirmed the hard way — a live test kept looping instead of
+    // clearing the pause).
+    const busted = room.players.filter(p => p.chips === 0 && !p.left);
+    if (busted.length > 0) {
+      room.awaitingBustResolution = true;
+      broadcastRoom(room);
+      return;
+    }
+    room.awaitingBustResolution = false;
+    const nr = room.nextRound();
+    if (nr.ended) io.to(room.code).emit('game:ended', nr);
+    broadcastRoom(room);
   }
 
   // Arms, re-arms, or clears the pause-timeout for a room, based on
@@ -86,9 +146,8 @@ function createServer() {
   // before the next hand deals, full stop.
   function advanceRoom(room) {
     room.clearSettlementWait();
-    const nr = room.nextRound();
-    if (nr.ended) io.to(room.code).emit('game:ended', nr);
-    broadcastRoom(room);
+    room.syncChipsFromGame();
+    tryAdvanceIfClear(room);
   }
 
   function handleActionResult(room, result) {
@@ -167,7 +226,41 @@ function createServer() {
       if (!room) return socket.emit('game:error', '未找到房间');
       const result = room.rebuy(playerId);
       if (result.error) return socket.emit('game:error', result.error);
-      io.to(room.code).emit('room:state', room.getLobbyState());
+      // If the room was paused waiting on this player's bust decision,
+      // rebuying is one of the two ways to resolve it — re-check whether
+      // everyone's clear to deal the next hand now.
+      if (room.awaitingBustResolution) tryAdvanceIfClear(room);
+      else io.to(room.code).emit('room:state', room.getLobbyState());
+    });
+
+    // Self-triggered "I'm intentionally leaving" — used for the busted
+    // player's "退出对局" choice, an impatient other player's "退出" while
+    // waiting on someone else's bust decision, and the lobby's own "退出
+    // 房间" button. Unlike a disconnect, this resolves immediately rather
+    // than waiting out a grace period, and (via RoomManager.leave) marks
+    // the player left instead of deleting their row, so their final
+    // numbers stay on the ledger.
+    socket.on('player:leave-room', ({ playerId }) => {
+      const room = rooms.leave(playerId);
+      if (!room) return;
+      if (room.awaitingBustResolution) tryAdvanceIfClear(room);
+      else io.to(room.code).emit('room:state', room.getLobbyState());
+    });
+
+    // Host-only equivalent of "player:leave-room", for a busted player who
+    // won't decide (mirrors game:fold-disconnected's manual override of
+    // the mid-hand pause timer). Only usable while that specific player is
+    // actually the thing the room is paused on — can't be used to force
+    // out a player who simply hasn't rebought yet outside a bust pause.
+    socket.on('room:leave-for', ({ hostId, targetId }) => {
+      const room = rooms.getRoomByPlayer(hostId);
+      if (!room || room.hostId !== hostId) return;
+      const target = room.players.find(p => p.id === targetId);
+      if (!target || target.chips !== 0 || target.left) return;
+      const result = rooms.leave(targetId);
+      if (!result) return;
+      if (result.awaitingBustResolution) tryAdvanceIfClear(result);
+      else io.to(result.code).emit('room:state', result.getLobbyState());
     });
 
     socket.on('player:poke', ({ fromId, targetId }) => {

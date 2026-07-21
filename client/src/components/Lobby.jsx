@@ -12,7 +12,12 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
   const [showExit, setShowExit] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [rebuying, setRebuying] = useState(false);
-  const players = roomState?.players ?? [];
+  // Players who've left (voluntarily, kicked, or timed out) stay in
+  // roomState.players so their final numbers survive in 账本 — but the
+  // lobby's own seat list, open-seat count, and start-game eligibility
+  // should only ever reflect who's actually still here.
+  const allPlayers = roomState?.players ?? [];
+  const players = allPlayers.filter(p => !p.left);
   const isHost = roomState?.hostId === playerId;
   const me = players.find(p => p.id === playerId);
   const canStart = players.filter(p => p.chips > 0).length >= 2;
@@ -85,7 +90,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
               {p.debt > 0 && <span className="pr-badge debt-badge">借¥{p.debt.toLocaleString()}</span>}
               {p.id === playerId && p.chips === 0 && onRebuy && (
                 <span
-                  className="pr-badge"
+                  className="pr-badge pr-badge--action"
                   style={{
                     cursor: rebuying ? 'default' : 'pointer',
                     opacity: rebuying ? .5 : 1,
@@ -97,7 +102,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
                 </span>
               )}
               {isHost && p.id !== playerId && (
-                <span className="pr-badge" style={{ cursor: 'pointer', color: '#E08080', background: 'rgba(192,57,43,.15)' }} onClick={() => onKick(p.id)}>移出</span>
+                <span className="pr-badge pr-badge--action" style={{ cursor: 'pointer', color: '#E08080', background: 'rgba(192,57,43,.15)' }} onClick={() => onKick(p.id)}>移出</span>
               )}
             </div>
           ))}

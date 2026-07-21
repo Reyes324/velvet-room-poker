@@ -139,7 +139,7 @@ describe('集成测试 — 游戏流程', () => {
     expect(msg).toBeDefined();
   });
 
-  it('房主踢人 → 目标玩家收到 room:kicked，房间人数减少', async () => {
+  it('房主踢人 → 目标玩家收到 room:kicked，且被标记 left（账本仍保留这一行）', async () => {
     const { c1, c2 } = await setupRoom();
     const kicked = waitFor(c2, 'room:kicked');
     c1.emit('room:kick', { hostId: 'p1', targetId: 'p2' });
@@ -149,8 +149,10 @@ describe('集成测试 — 游戏流程', () => {
     const stateCheck = waitFor(c1, 'room:state');
     c1.emit('room:sync', { playerId: 'p1' });
     const state = await stateCheck;
-    expect(state.players).toHaveLength(1);
-    expect(state.players.map(p => p.id)).not.toContain('p2');
+    expect(state.players).toHaveLength(2);
+    const p2 = state.players.find(p => p.id === 'p2');
+    expect(p2).toBeDefined();
+    expect(p2.left).toBe(true);
   });
 
   it('非房主发送 room:kick → 房间人数不变（被静默忽略）', async () => {
@@ -179,12 +181,11 @@ describe('集成测试 — 游戏流程', () => {
     expect(msg).toBeDefined();
   });
 
-  it('筹码归零导致游戏结束时，双方仍收到含最新筹码的 room:state（回归：曾经只发 game:ended 不发 room:state）', async () => {
+  it('筹码归零后，房间暂停在当前牌桌等待决策，而不是立即弹回大厅（曾经的行为，用户反馈改掉了）', async () => {
     const { c1, c2 } = await setupRoom();
     const gs1 = waitFor(c1, 'game:state');
     c1.emit('room:start', { playerId: 'p1' });
     const state1 = await gs1;
-    // 首手 dealerIndex=0，单挑（2人）：p1 是庄+小盲、翻牌前先手，p2 是大盲（确定性，不依赖随机发牌）
     expect(state1.actionPlayerId).toBe('p1');
 
     // 直接模拟 p1（本局先手弃牌的那位）已经输光（不依赖具体牌局随机结果）——
@@ -192,26 +193,134 @@ describe('集成测试 — 游戏流程', () => {
     const room = rooms.getRoomByPlayer('p1');
     room.game.players.find(p => p.id === 'p1').chips = 0;
 
-    // 用持续监听收集每一次 room:state 广播，取 game:ended 后的最后一次，
-    // 避免与 fold 处理本身立即触发的那次广播（此时 status 还是 'playing'）产生竞态。
-    const roomStates = [];
-    c1.on('room:state', (s) => roomStates.push(s));
-
-    // p1 弃牌 → p2 赢下底池，p1 维持 0 筹码 → 触发结算；结算后需双方都发 game:ready-next
-    // 才会推进（新协议），推进时才判定"不足2人有筹码，游戏结束"。
     const showdown = waitFor(c1, 'game:showdown');
     c1.emit('game:action', { playerId: 'p1', action: 'fold' });
     await showdown;
 
-    const ended = waitFor(c1, 'game:ended', 6000);
+    // 双方都确认结算后，房间应该暂停等待 p1 决策——不是 game:ended，room.status
+    // 仍是 'playing'，room:state 里能看到 p1 chips=0 且 awaitingBustResolution=true。
+    const stateAfterAck = waitFor(c1, 'room:state');
     c1.emit('game:ready-next', { playerId: 'p1' });
     c2.emit('game:ready-next', { playerId: 'p2' });
-    await ended;
-    await new Promise((r) => setTimeout(r, 200)); // 让同批次的 room:state 广播送达
+    const paused = await stateAfterAck;
+    expect(paused.status).toBe('playing');
+    expect(paused.awaitingBustResolution).toBe(true);
+    expect(paused.players.find(p => p.id === 'p1').chips).toBe(0);
+    expect(paused.players.find(p => p.id === 'p1').left).toBe(false);
+  });
 
-    const finalState = roomStates[roomStates.length - 1];
-    expect(finalState.status).toBe('waiting');
-    expect(finalState.players.find(p => p.id === 'p1').chips).toBe(0);
+  it('筹码归零后选择离开 → 标记 left（账本保留），单挑桌活跃人数不足 2 人，游戏结束回到大厅', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    const room = rooms.getRoomByPlayer('p1');
+    room.game.players.find(p => p.id === 'p1').chips = 0;
+
+    const showdown = waitFor(c1, 'game:showdown');
+    c1.emit('game:action', { playerId: 'p1', action: 'fold' });
+    await showdown;
+
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    await new Promise((r) => setTimeout(r, 150)); // 让暂停状态的 room:state 先落地
+
+    // p1 选择"退出对局"
+    const ended = waitFor(c2, 'game:ended', 3000);
+    c1.emit('player:leave-room', { playerId: 'p1' });
+    const endedResult = await ended;
+    expect(endedResult.ended).toBe(true);
+
+    expect(room.status).toBe('waiting');
+    expect(room.awaitingBustResolution).toBe(false);
+    const p1 = room.players.find(p => p.id === 'p1');
+    expect(p1).toBeDefined(); // 账本保留这一行
+    expect(p1.left).toBe(true);
+  });
+
+  it('筹码归零后选择再借一底 → 房间清除暂停状态并直接发下一手（不用先回大厅再手动开局）', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    const room = rooms.getRoomByPlayer('p1');
+    room.game.players.find(p => p.id === 'p1').chips = 0;
+
+    const showdown = waitFor(c1, 'game:showdown');
+    c1.emit('game:action', { playerId: 'p1', action: 'fold' });
+    await showdown;
+
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(room.awaitingBustResolution).toBe(true);
+
+    // Inspect server state directly rather than racing a fresh game:state
+    // listener against the still-in-flight "hold" broadcast from the
+    // ready-next handling just above (both fire on the same socket).
+    c1.emit('player:rebuy', { playerId: 'p1' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(room.game.phase).toBe('preflop');
+    expect(room.status).toBe('playing');
+    expect(room.awaitingBustResolution).toBe(false);
+    expect(room.players.find(p => p.id === 'p1').chips).toBe(1000);
+  });
+
+  it('房主可以帮不响应的筹码归零玩家（非房主本人）"退出对局"，解除暂停', async () => {
+    const { c1, c2 } = await setupRoom(); // p1 = 房主
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    // 手动设 0 筹码要设在最终"弃牌"的那位身上——赢牌一方结算时筹码会被赢的底池
+    // 覆盖掉。让 p1（庄+小盲，本局先手）先跟注把回合交给 p2，再让 p2（非房主）
+    // 弃牌本局输光，这样 p1 赢下这一手、p2 维持 0 筹码。
+    const room = rooms.getRoomByPlayer('p1');
+    const p2Turn = waitFor(c1, 'game:state');
+    c1.emit('game:action', { playerId: 'p1', action: 'call' });
+    await p2Turn;
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+
+    const showdown = waitFor(c1, 'game:showdown');
+    c2.emit('game:action', { playerId: 'p2', action: 'fold' });
+    await showdown;
+
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(room.awaitingBustResolution).toBe(true);
+
+    const ended = waitFor(c1, 'game:ended', 3000);
+    c1.emit('room:leave-for', { hostId: 'p1', targetId: 'p2' });
+    const endedResult = await ended;
+    expect(endedResult.ended).toBe(true);
+    expect(room.players.find(p => p.id === 'p2').left).toBe(true);
+  });
+
+  it('非房主发 room:leave-for → 被忽略，暂停状态不变', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    const room = rooms.getRoomByPlayer('p1');
+    room.game.players.find(p => p.id === 'p1').chips = 0;
+
+    const showdown = waitFor(c1, 'game:showdown');
+    c1.emit('game:action', { playerId: 'p1', action: 'fold' });
+    await showdown;
+
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(room.awaitingBustResolution).toBe(true);
+
+    c2.emit('room:leave-for', { hostId: 'p2', targetId: 'p1' }); // p2 不是房主
+    await new Promise((r) => setTimeout(r, 150));
+    expect(room.awaitingBustResolution).toBe(true);
+    expect(room.players.find(p => p.id === 'p1').left).toBe(false);
   });
 
   it('结算后必须所有在线玩家都发 game:ready-next，才会推进到下一局', async () => {

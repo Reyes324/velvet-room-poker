@@ -38,8 +38,11 @@ function sbFirstOrder(players) {
   return [...players.slice(start), ...players.slice(0, start)];
 }
 
-const DEAL_STEP = 0.07; // seconds between each card landing
-const DEAL_CARD_DURATION = 0.35; // matches .card-deal's animation-duration
+// Both bumped up from 0.07/0.35 per user feedback ("发牌和翻牌的动画都可以
+// 稍微慢一点，让用户有临场感") — cards landing a little more deliberately
+// reads as more "dealt by a person" than machine-gunned onto the table.
+const DEAL_STEP = 0.09; // seconds between each card landing
+const DEAL_CARD_DURATION = 0.48; // matches .card-deal's animation-duration
 const COMMUNITY_COUNT = 5; // flop(3) + turn(1) + river(1), all dealt face-down up front
 
 // Column layout constants — reference canvas is TABLE_REF_W×TABLE_REF_H
