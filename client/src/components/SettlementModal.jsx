@@ -5,7 +5,6 @@ function colorForId(id) {
   return h;
 }
 function amtText(delta) {
-  if (delta == null) return '弃牌';
   return (delta > 0 ? '+¥' : '−¥') + Math.abs(delta).toLocaleString();
 }
 

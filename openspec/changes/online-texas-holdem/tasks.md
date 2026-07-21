@@ -328,3 +328,14 @@
 - [x] 35.7 `.table-canvas` 背景纹理提亮：斜纹高光 .025→.045、噪点 .06→.1、径向渐变外圈 `#030A04`→`#061808`
 - [x] 35.8 `.avatar-card`/`.seat` 50px→56px（密集桌 40px→44px），`.seat-name-row`/`.pos-badge` 尺寸联动调整
 - [x] 35.9 Playwright 复现用户截图的确切场景（2 人局对手加注）：修复前实测气泡与头像横向重叠约 40px，修复后零重叠；`?states=` 全部 fixture 自动化重叠扫描（头像/气泡/标签/公共牌两两）全部清零；poke 气泡同样验证不重叠；`getComputedStyle` 确认 `activeBreathe` 生效；服务端 103/103 全绿。验证脚本自身的坑：`newContext()` 后再给 `newPage({viewport})` 传参不生效，第一轮验证在桌面视口下跑导致误判，改成 `newContext({viewport})` 后才拿到可信结果
+
+## 36. 摊牌/结算呈现重新设计：弃牌结束 vs 真摊牌分开，结算弹窗不再挡手牌（用户反馈，2026-07-21）
+
+- [x] 36.1 `GameEngine._endHand()` 新增显式 `foldWin: contenders.length === 1` 字段（不复用 `handName` 文案做控制流判断），透传到 `server/index.js` 的 `game:showdown` emit
+- [x] 36.2 新增 `client/src/components/FoldWinBanner.jsx`：弃牌结束专用的轻量居中小卡片，不是底部抽屉
+- [x] 36.3 `RoomPage.jsx` 按 `foldWin` 分流渲染 `FoldWinBanner` 或 `SettlementModal`；新增 `SHOWDOWN_REVEAL_DELAY_MS=1400`，真摊牌时延迟这么久才 `setSettlement`（把这段时间留给桌面揭示牌），弃牌结束立即显示；`game:state`/`game:ended` 里 `clearTimeout` 挂起的定时器，避免上一手的结算在下一手开始后才姗姗来迟
+- [x] 36.4 `.settlement-sheet` 从底部抽屉（`bottom:0, max-height:62%`）改成顶部锚定（`top:64px`，跟 `.fold-win-banner` 同一套定位哲学），`max-height` 收紧到 38% 靠内部滚动兜底人数多的桌；英雄手牌固定在画布底部，顶部锚定后结构上不可能再被结算弹窗盖住
+- [x] 36.5 `.modal-hand`（赢的牌型描述）从纯灰色小字改成金色描边强调 pill，突出"靠什么牌赢"
+- [x] 36.6 清理：`SettlementModal.jsx` 的 `amtText()` 里确认永远不触发的 `delta==null→'弃牌'` 死分支删掉；修正 `StatesGallery.jsx`"结算弹窗"fixture 传参仍是旧版 `winner`/`results` 单数签名（跟组件现在的 `winners`/`settle` 数组签名对不上，导致预览页静默渲染不出东西）；新增"弃牌结束横幅"fixture 覆盖 `FoldWinBanner`
+- [x] 36.7 **踩坑（跟 35.3 同一类根因）**：`.fold-win-banner` 的居中 `transform:translateX(-50%)` 被共用的 `slideUp` 入场动画（`fill-mode:both`，硬编码 `transform:translateY(...)`）顶掉，实测横幅整个偏出屏幕右侧；修复方式同 35.3——`slideUp` 关键帧改用独立的 `translate` 属性
+- [x] 36.8 Playwright 复现两条真实路径：两人局一方弃牌（验证 `FoldWinBanner` 立即出现、居中、不挡英雄手牌/头像，`.settlement-sheet` 计数 0）；两人局过牌/跟注到河牌真摊牌（验证揭示牌先出现、结算弹窗延迟约 1.3 秒、不挡英雄手牌、`.modal-hand` 正确显示牌型）；`?states=` 修好的结算 fixture + 新增弃牌横幅 fixture 都跑了自动化重叠扫描；服务端 103/103 全绿。**环境坑**：编辑 `server/*.js` 后本地跑着的 `node server/index.js` 进程不会自动 reload（不像客户端有 `vite build`），第一轮验证 `foldWin` 死活收不到，重启服务端进程后才正常

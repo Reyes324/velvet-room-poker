@@ -100,6 +100,7 @@ function createServer() {
         winners: result.winners,
         pot: result.pot,
         settle: result.settle,
+        foldWin: result.foldWin,
       });
 
       room.beginSettlementWait();

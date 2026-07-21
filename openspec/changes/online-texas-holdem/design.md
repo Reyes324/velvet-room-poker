@@ -695,6 +695,27 @@ GameState {
 
 ---
 
+### 摊牌/结算呈现重新设计：弃牌结束 vs 真摊牌分开、结算弹窗不再挡住手牌（用户反馈，2026-07-21）
+
+**背景**：用户反馈摊牌体验一直有问题——"总是看不到各家的牌""弹窗好像会挡住自己的牌"；同时提出结算总结应该突出"赢家靠什么牌赢的"，并且弃牌结束（没有真实摊牌）跟真摊牌应该在样式和内容上区分开来，不能用同一套呈现。这是一次"怎么设计"的探讨，我先给了方向性建议（弃牌结束用轻量提示、真摊牌给桌面留时间+挪开弹窗位置），用户确认后动手实现。
+
+**根因排查**（读代码确认，非猜测）：
+1. `.settlement-sheet` 是从底部升起、`max-height:62%` 的常驻底部抽屉，`game:showdown` 事件一到就跟摊牌揭示牌同时出现——高度直接盖过了英雄自己固定在画布底部（`bottom:28px`）的手牌，以及下半区好几排对手的揭示牌，用户根本来不及看。
+2. 服务端其实已经在区分"弃牌结束"（`handName:'对手全部弃牌'`，`contenders.length===1`）和"真摊牌"（`handName: 手牌类型描述`），只是客户端两种情况用的是同一套 `SettlementModal`，没把这个区分体现在呈现上。
+
+**决策**：
+1. **拆成两个组件**：`_endHand()` 新增显式的 `foldWin: contenders.length === 1` 字段（不复用 `handName` 文案做判断逻辑，避免文案和控制流耦合），一路透传到 `game:showdown` socket 事件。客户端按这个字段分流：`foldWin===true` 渲染新的轻量组件 `FoldWinBanner`（居中小卡片，贴近屏幕上方，不挡桌面），否则渲染改造后的 `SettlementModal`（真摊牌专用，强调"赢的牌型"）。
+2. **真摊牌延迟出现**：`RoomPage.jsx` 新增 `SHOWDOWN_REVEAL_DELAY_MS=1400`，真摊牌时 `setSettlement` 延迟 1.4 秒执行，把这段时间纯粹留给桌面上的揭示牌，弃牌结束没有牌可看、不需要延迟，`setSettlement` 照常立即执行。需要在 `game:state`/`game:ended` 里 `clearTimeout` 这个挂起的定时器，否则上一手的结算有可能在下一手已经开始后才姗姗来迟地弹出，说的是过期的信息。
+3. **结算弹窗从底部抽屉改成顶部锚定**：光缩小高度（62%→42%）并不够——实测发现英雄手牌固定在画布底部，只要弹窗还是从底部升起、且高度够放得下结算内容，迟早会盖到；改成跟 `.fold-win-banner` 同样的定位哲学（顶部锚定，`top:64px`），英雄的手牌无论多少人在场都不会再被挡住。代价：为了不让结算内容随玩家数量无限变高，`max-height` 收紧到 38%（超出部分靠 `overflow-y:auto` 内部滚动）——这样一来人数较多的桌（比如本轮 fixture 用的 6 人局）结算弹窗仍会盖住第 0/1 排对手座位的头像；但用户明确抱怨的是"挡住自己的手牌"，这个已经彻底解决，且延迟出现的 1.4 秒已经给了所有人（含对手）一次完整无遮挡的观牌窗口——这个残留的权衡已知且可接受，未继续深挖。
+4. **强调赢的牌型**：`.modal-hand`（"两对，A和K"这类描述）从纯灰色小字改成金色描边的强调 pill，视觉上从"次要说明"变成"赢的理由"这个核心信息。
+5. **清理顺手发现的死代码/过期 fixture**：`SettlementModal.jsx` 的 `amtText()` 里 `delta==null→'弃牌'` 分支确认永远不会被触发（`settle[].net` 服务端恒为数字），删掉；`StatesGallery.jsx` 里"结算弹窗"(fixture 7) 传给 `SettlementModal` 的 props 还是旧版 `winner`/`results` 单数签名，跟组件现在的 `winners`/`settle` 数组签名对不上，导致这个预览页早就静默渲染不出东西——一并修正 fixture 数据和调用签名，顺带新增一个"弃牌结束横幅"(fixture 8) 覆盖新组件。
+
+**踩坑记录（跟本轮"气泡遮挡"是同一类根因，第二次踩到）**：`.fold-win-banner` 用 `left:50%; transform:translateX(-50%)` 做居中，但共用的 `slideUp` 入场动画关键帧硬编码了 `transform:translateY(...)`（`fill-mode:both`），一样会把居中位移顶掉——实测第一版横幅整个偏出屏幕右侧。修复方式与 `actionBubbleIn` 相同：把 `slideUp` 的位移也改成用独立的 `translate` CSS 属性，不再跟 `transform` 抢同一个属性。`.action-bar`/`.settlement-sheet` 这两个同样用 `slideUp` 的地方本身没有自己的定位 `transform`，不受影响。
+
+**验证**：Playwright 复现两条真实路径——两人局一方弃牌（验证 `FoldWinBanner` 立即出现、居中、不挡英雄手牌/头像，且 `.settlement-sheet` 计数为 0）；两人局过牌/跟注打到河牌真摊牌（验证揭示牌先出现、结算弹窗延迟约 1.3 秒后才出现、且不挡英雄手牌、`.modal-hand` 正确显示牌型描述）。`?states=` 修好的结算 fixture + 新增的弃牌横幅 fixture 都跑了自动化重叠扫描；服务端 103/103 测试全绿。**踩坑记录（环境）**：编辑 `server/GameEngine.js`/`server/index.js` 后，本地跑着的 `node server/index.js` 进程不会自动 reload（不像客户端有 `vite build` 重新产出静态文件）——第一轮验证 `foldWin` 字段死活收不到，查了半天才想起要重启服务端进程。
+
+---
+
 ## Open Questions（待决策）
 
 ### Q2：初始筹码 / 盲注可配置

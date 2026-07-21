@@ -291,6 +291,11 @@ class GameEngine {
     return {
       state: this.getPublicState(),
       showdown: true,
+      // Client needs this to tell "everyone else folded, no real showdown to
+      // look at" apart from an actual multi-way card comparison — they call
+      // for very different presentations (a quick banner vs. giving players
+      // a beat to see the revealed hands before covering the table).
+      foldWin: contenders.length === 1,
       pot: potWon,
       winners: winners.map(w => ({
         id: w.id,

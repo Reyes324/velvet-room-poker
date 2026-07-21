@@ -113,14 +113,24 @@ STATES.push({
   name: '结算弹窗', myId: 'me', roomCode: '4827',
   gameState: STATES[3].gameState,
   settlement: {
-    winner: { id: 'chen', name: '陈美玲', amount: 1780, hand: '两对 Q 和 5' },
-    results: [
-      { name: '陈美玲', delta: 1780 },
-      { name: '王建国', delta: -500 },
-      { name: 'Augustine（我）', delta: -650, isMe: true },
-      { name: '张伟 / 李大明 / 赵军', delta: null },
+    winners: [{ id: 'chen', name: '陈美玲', won: 1780, handName: '两对，Q 和 5' }],
+    settle: [
+      { id: 'chen', name: '陈美玲', net: 1780 },
+      { id: 'wang', name: '王建国', net: -500 },
+      { id: 'me', name: 'Augustine', net: -650 },
+      { id: 'zhang', name: '张伟', net: 0 },
+      { id: 'li', name: '李大明', net: 0 },
+      { id: 'zhao', name: '赵军', net: 0 },
     ],
   },
+});
+
+// Fold-win banner — deliberately not over a showdown table (nothing was
+// revealed), just a live in-progress-looking table behind it.
+STATES.push({
+  name: '弃牌结束横幅', myId: 'me', roomCode: '4827',
+  gameState: STATES[1].gameState,
+  foldWinPreview: { winner: { id: 'wang', name: '王建国', won: 200 } },
 });
 
 // 筹码归零决策弹窗 — over a live (still amPlaying) table just so there's

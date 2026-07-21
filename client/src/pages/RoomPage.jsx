@@ -3,8 +3,16 @@ import { useSocket } from '../hooks/useSocket';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
+import FoldWinBanner from '../components/FoldWinBanner';
 import BustDecisionModal from '../components/BustDecisionModal';
 import LedgerModal from '../components/LedgerModal';
+
+// Real showdowns give the table this long to actually show the revealed
+// hands before the settlement sheet appears — the sheet used to appear in
+// the same instant as the reveal, covering hero's own cards and most of the
+// seat rail before anyone had a chance to look (confirmed via real-device
+// feedback). A fold-win has nothing to reveal, so it skips the wait.
+const SHOWDOWN_REVEAL_DELAY_MS = 1400;
 
 export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [roomState, setRoomState] = useState(null);
@@ -19,6 +27,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [showBustModal, setShowBustModal] = useState(false);
   const [showLedger, setShowLedger] = useState(false);
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
+  const settlementTimerRef = useRef(null);
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ msg, type });
@@ -34,17 +43,28 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setIAmReady(false);
       setSettlementProgress(null);
       setActionDisabled(false);
+      // A previous hand's delayed settlement sheet (see game:showdown below)
+      // may still be pending when the next hand's state already arrived —
+      // without this it would fire late and resurrect a stale settlement
+      // for a hand that's already moved on.
+      clearTimeout(settlementTimerRef.current);
     },
-    'game:showdown': ({ winners, pot, settle }) => {
+    'game:showdown': ({ winners, pot, settle, foldWin }) => {
       setShowdown(winners);
-      setSettlement({ winners, pot, settle });
-      // Real per-player ack count arrives via game:settlement-progress; this is
-      // just a reasonable first paint before that first event lands.
-      setSettlementProgress({ readyCount: 0, totalCount: (roomState?.players ?? []).length });
+      const showSettlement = () => {
+        setSettlement({ winners, pot, settle, foldWin });
+        // Real per-player ack count arrives via game:settlement-progress; this is
+        // just a reasonable first paint before that first event lands.
+        setSettlementProgress({ readyCount: 0, totalCount: (roomState?.players ?? []).length });
+      };
+      clearTimeout(settlementTimerRef.current);
+      if (foldWin) showSettlement();
+      else settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
     },
     'game:settlement-progress': (progress) => setSettlementProgress(progress),
     'game:ended': ({ reason }) => {
       showToast(reason ?? '游戏结束', 'info');
+      clearTimeout(settlementTimerRef.current);
       setGameState(null);
       setSettlement(null);
       setIAmReady(false);
@@ -203,15 +223,26 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         />
       )}
       {settlement && settlement.winners?.length > 0 && (
-        <SettlementModal
-          winners={settlement.winners}
-          settle={(settlement.settle ?? []).map(s => ({ ...s }))}
-          myId={playerId}
-          iAmReady={iAmReady}
-          readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
-          totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
-          onReady={handleReady}
-        />
+        settlement.foldWin ? (
+          <FoldWinBanner
+            winner={settlement.winners[0]}
+            myId={playerId}
+            iAmReady={iAmReady}
+            readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
+            totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
+            onReady={handleReady}
+          />
+        ) : (
+          <SettlementModal
+            winners={settlement.winners}
+            settle={(settlement.settle ?? []).map(s => ({ ...s }))}
+            myId={playerId}
+            iAmReady={iAmReady}
+            readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
+            totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
+            onReady={handleReady}
+          />
+        )
       )}
       {stuckPlayer && (
         <div className="toast toast--info">

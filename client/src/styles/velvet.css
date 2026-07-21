@@ -240,9 +240,16 @@
   80%  { transform:rotateY(7deg) scale(1.04); }
   100% { transform:rotateY(0deg) scale(1); opacity:1; }
 }
+/* Uses the standalone `translate` property, not `transform` — same reason as
+   actionBubbleIn above: this animation runs with fill-mode:both, so whatever
+   it puts in `transform` would permanently win over any other transform an
+   element needs for its own purposes (e.g. .fold-win-banner's centering
+   translateX(-50%), confirmed broken by this exact conflict on a real
+   render before the fix). `translate` composes with `transform` instead of
+   replacing it. */
 @keyframes slideUp {
-  from { transform:translateY(110%); opacity:0; }
-  to   { transform:translateY(0); opacity:1; }
+  from { translate:0 110%; opacity:0; }
+  to   { translate:0 0; opacity:1; }
 }
 @keyframes potBurst {
   0%,100% { filter:brightness(1); }
@@ -295,17 +302,32 @@
    real-device feedback. */
 .waiting-text { font-family:var(--font-mono); font-size:11px; color:#9FB0AC; letter-spacing:2px; }
 
-/* ── SETTLEMENT MODAL ─────────────────────────────────────── */
+/* ── SETTLEMENT MODAL (real showdown only) ───────────────────
+   Used to be a bottom sheet at 62% of the screen height, appearing the
+   instant the reveal cards did — real-device feedback: that covered hero's
+   own cards and most of the seat rail before anyone had a chance to
+   actually look. Shrinking the bottom sheet wasn't enough on its own either
+   (confirmed empirically — hero's cards sit fixed near the bottom of the
+   canvas, so *any* reasonably-sized bottom-anchored sheet eventually
+   reaches them). Anchored from the top instead, same positioning
+   philosophy as .fold-win-banner below, so the whole table — hero's cards
+   included, regardless of player count — stays visible underneath it.
+   Also paired with a delay before this even mounts (see RoomPage's
+   SHOWDOWN_REVEAL_DELAY_MS), giving the reveal a beat before the summary
+   shows up at all. Fold-wins never reach this component — see
+   .fold-win-banner, a deliberately lighter presentation for "nothing to
+   reveal, just tell me who won". */
 .settlement-sheet {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 50;
-  background: linear-gradient(to top, #050D06 78%, rgba(5,13,6,.94));
-  border-top: 1px solid rgba(212,175,55,.3);
-  border-radius: 20px 20px 0 0;
-  padding: 18px 20px calc(20px + env(safe-area-inset-bottom, 0px));
-  max-height: 62%;
+  position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 50;
+  width: 310px; max-width: calc(100% - 32px);
+  background: linear-gradient(145deg, #0C1E0E, #060C07);
+  border: 1px solid rgba(212,175,55,.3);
+  border-radius: 18px;
+  padding: 16px 18px;
+  max-height: 38%;
   overflow-y: auto;
   animation: slideUp .35s cubic-bezier(.34,1.56,.64,1) both;
-  box-shadow: 0 -10px 40px rgba(0,0,0,.5);
+  box-shadow: 0 16px 50px rgba(0,0,0,.6);
 }
 .settlement-winners { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
 .settlement-winner-row { display: flex; align-items: center; gap: 12px; }
@@ -318,11 +340,38 @@
 .modal-winner-av { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--text-primary); border:2px solid #D4AF37; box-shadow:0 0 0 5px rgba(212,175,55,.2), 0 0 40px rgba(212,175,55,.7); }
 .modal-winner-name { font-family:var(--font-display); font-size:14px; color:var(--text-primary); }
 .modal-win-amt { font-family:var(--font-amount); font-size:26px; font-weight:700; letter-spacing:.2px; color:#D4AF37; }
-.modal-hand { font-family:var(--font-body); font-size:13px; color:var(--text-secondary); margin-top:-4px; }
+/* The winning hand ("两对，A和K") is the actual answer to "why did they
+   win" — a real showdown's whole point — so it gets its own accent pill
+   instead of reading as secondary caption text underneath the amount. */
+.modal-hand { display:inline-block; font-family:var(--font-body); font-size:13px; font-weight:700; color:#FFF3C4; background:rgba(212,175,55,.14); border:1px solid rgba(212,175,55,.4); border-radius:8px; padding:2px 8px; margin-top:2px; }
 .modal-divider { width:100%; height:1px; background:rgba(212,175,55,.1); }
 .settle-list { width:100%; display:flex; flex-direction:column; gap:6px; }
 .settle-row { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:rgba(212,175,55,.04); border-radius:8px; }
 .settle-row.hero { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.1); }
+
+/* ── FOLD-WIN BANNER (no real showdown) ───────────────────────
+   Deliberately not a bottom sheet — there's nothing on the table to protect
+   the view of, so this is a small card that sits near the top, well clear
+   of hero's own cards and the seat rail, instead of covering the table. */
+.fold-win-banner {
+  position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50;
+  width: 240px; background: linear-gradient(145deg,#0C1E0E,#060C07);
+  border: 1px solid rgba(212,175,55,.32); border-radius: 16px;
+  padding: 14px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+  animation: slideUp .35s cubic-bezier(.34,1.56,.64,1) both;
+}
+.fwb-line { display: flex; align-items: baseline; gap: 8px; }
+.fwb-name { font-family: var(--font-display); font-size: 14px; color: var(--text-primary); }
+.fwb-amt { font-family: var(--font-amount); font-size: 16px; font-weight: 700; color: #D4AF37; }
+.fwb-reason { font-family: var(--font-body); font-size: 12px; color: var(--text-secondary); }
+.fwb-btn {
+  margin-top: 4px; width: 100%; height: 34px; border-radius: 10px;
+  background: rgba(212,175,55,.14); border: 1px solid rgba(212,175,55,.3); color: #E8C24A;
+  font-family: var(--font-display); font-size: 12px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.fwb-btn--waiting { opacity: .55; cursor: default; }
 .sr-name { font-family:var(--font-body); font-size:13px; color:#C8BC9E; }
 .sr-amt { font-family:var(--font-amount); font-size:12px; }
 .sr-win { color:var(--state-safe); } .sr-lose { color:var(--state-danger); } .sr-neutral { color:#5A6E5C; }
