@@ -24,7 +24,7 @@ function colorForId(id) {
   return h;
 }
 
-const BET_CHIP_OFFSET = 92; // px toward the pot, from the seat center — raised from 40 so the chip clears the (now side-rendered, every row) reveal cards instead of overlapping them, per real-device feedback; value tuned empirically against real rendered bounding boxes, not hand-computed
+const BET_CHIP_OFFSET = 58; // px toward the pot, from the seat center — was raised to 92 to clear the opponent reveal cards, but those were removed entirely afterward (see design.md), so that reason no longer applies; brought back down closer to the seat for visual intimacy, per real-device feedback. Value tuned empirically against real rendered bounding boxes, not hand-computed.
 
 // The bet-chip (a chip icon + amount, no tail — see .bet-chip in velvet.css)
 // is offset from its seat toward the pot center by (dx,dy).
