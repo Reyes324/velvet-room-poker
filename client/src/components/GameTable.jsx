@@ -104,7 +104,7 @@ function spectatorSeatPositions(n) {
   return seats;
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onPoke, pokedSeat }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onPoke, pokedSeat, settlementOpen = false }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const tableZoneRef = useRef(null);
@@ -388,7 +388,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       })}
 
       {amPlaying && (
-        <div className="hero-section">
+        <div className={`hero-section${settlementOpen ? ' hero-section--lifted' : ''}`}>
           <div className="hero-cards">
             {me.holeCards?.length === 2
               ? (heroRevealed

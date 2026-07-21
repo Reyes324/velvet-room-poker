@@ -339,3 +339,13 @@
 - [x] 36.6 清理：`SettlementModal.jsx` 的 `amtText()` 里确认永远不触发的 `delta==null→'弃牌'` 死分支删掉；修正 `StatesGallery.jsx`"结算弹窗"fixture 传参仍是旧版 `winner`/`results` 单数签名（跟组件现在的 `winners`/`settle` 数组签名对不上，导致预览页静默渲染不出东西）；新增"弃牌结束横幅"fixture 覆盖 `FoldWinBanner`
 - [x] 36.7 **踩坑（跟 35.3 同一类根因）**：`.fold-win-banner` 的居中 `transform:translateX(-50%)` 被共用的 `slideUp` 入场动画（`fill-mode:both`，硬编码 `transform:translateY(...)`）顶掉，实测横幅整个偏出屏幕右侧；修复方式同 35.3——`slideUp` 关键帧改用独立的 `translate` 属性
 - [x] 36.8 Playwright 复现两条真实路径：两人局一方弃牌（验证 `FoldWinBanner` 立即出现、居中、不挡英雄手牌/头像，`.settlement-sheet` 计数 0）；两人局过牌/跟注到河牌真摊牌（验证揭示牌先出现、结算弹窗延迟约 1.3 秒、不挡英雄手牌、`.modal-hand` 正确显示牌型）；`?states=` 修好的结算 fixture + 新增弃牌横幅 fixture 都跑了自动化重叠扫描；服务端 103/103 全绿。**环境坑**：编辑 `server/*.js` 后本地跑着的 `node server/index.js` 进程不会自动 reload（不像客户端有 `vite build`），第一轮验证 `foldWin` 死活收不到，重启服务端进程后才正常
+
+## 37. 结算弹窗返工：撤回顶部锚定/独立组件，改回底部弹窗+精简信息+按需上挖（用户反馈，2026-07-22）
+
+- [x] 37.1 用户反馈"改动复杂化了，应该先确认方案再动手"——记入 Claude 侧 feedback 记忆；本任务先用文字复述理解、用户确认后再写代码
+- [x] 37.2 撤回 36 号任务的顶部锚定/独立组件方案：删除 `FoldWinBanner.jsx`；`RoomPage.jsx` 回到只渲染一个 `SettlementModal`，`foldWin` 只保留控制"是否延迟出现"这一个用途；`.settlement-sheet` CSS 定位改回最初的底部弹窗（`bottom:0`，从下往上滑出）
+- [x] 37.3 `SettlementModal.jsx` 删掉逐人结算列表（`settle`/`settle-list`/`settle-row`/`amtText` 全部移除），只保留赢家头像+姓名+金额+牌型 pill+确认按钮；`.settlement-sheet` 内边距/间距收紧（padding 18→14px，`.settlement-winners` margin 10→6px）
+- [x] 37.4 英雄手牌"按需上挖"而非永久上移：先用 AskUserQuestion 确认用户要临时（仅结算弹窗打开时）还是永久上移，用户选临时；`GameTable` 新增 `settlementOpen` prop（`RoomPage` 传 `!!settlement`），`.hero-section` 加 `.hero-section--lifted` 修饰类（`bottom` 28px→135px，配 `transition:bottom .3s ease`），只在弹窗打开时生效，平时打牌布局不受影响
+- [x] 37.5 弃牌结束文案从"对手全部弃牌"改成"其他人全部弃牌"——原文案有视角歧义（"对手"相对谁而言不明确），新文案相对界面上紧邻显式命名的赢家而言，任何视角看都唯一确定
+- [x] 37.6 牌型 pill 右对齐（用户追加反馈）：`.settlement-winner-row` 改三段式 flex（头像固定宽 + `.modal-winner-info`(flex:1，姓名+金额) + `.modal-hand`(靠右，`max-width:42%`，允许换行兜底超长描述）
+- [x] 37.7 Playwright 验证：先测算英雄手牌上挖量时手算搞反参照边（拿弹窗顶边错误对比了手牌顶边），实测发现仍有 ~41px 重叠，改用手牌底边重新计算后（135px）才彻底清零；真机复现弃牌（+93ms 立即弹窗，不挡手牌）和真摊牌（延迟~1.3秒，不挡手牌）两条路径；`?states=` 结算 fixture（真摊牌+弃牌结束两个变体）+ 牌型 pill 右对齐后行右边缘对齐验证；服务端 103/103 全绿

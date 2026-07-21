@@ -1,6 +1,5 @@
 import GameTable from './components/GameTable';
 import SettlementModal from './components/SettlementModal';
-import FoldWinBanner from './components/FoldWinBanner';
 import Lobby from './components/Lobby';
 import BustDecisionModal from './components/BustDecisionModal';
 import LedgerModal from './components/LedgerModal';
@@ -41,21 +40,11 @@ export default function StatesGallery({ index = 0 }) {
         myChips={s.myChips ?? 0}
         onRebuy={() => {}}
         onOpenLedger={() => {}}
+        settlementOpen={!!s.settlement}
       />
       {s.settlement && (
         <SettlementModal
           winners={s.settlement.winners}
-          settle={s.settlement.settle}
-          myId={s.myId}
-          iAmReady={false}
-          readyCount={0}
-          totalCount={s.settlement.settle?.length ?? 0}
-          onReady={() => {}}
-        />
-      )}
-      {s.foldWinPreview && (
-        <FoldWinBanner
-          winner={s.foldWinPreview.winner}
           myId={s.myId}
           iAmReady={false}
           readyCount={0}

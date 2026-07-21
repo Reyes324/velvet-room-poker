@@ -302,35 +302,32 @@
    real-device feedback. */
 .waiting-text { font-family:var(--font-mono); font-size:11px; color:#9FB0AC; letter-spacing:2px; }
 
-/* ── SETTLEMENT MODAL (real showdown only) ───────────────────
-   Used to be a bottom sheet at 62% of the screen height, appearing the
-   instant the reveal cards did — real-device feedback: that covered hero's
-   own cards and most of the seat rail before anyone had a chance to
-   actually look. Shrinking the bottom sheet wasn't enough on its own either
-   (confirmed empirically — hero's cards sit fixed near the bottom of the
-   canvas, so *any* reasonably-sized bottom-anchored sheet eventually
-   reaches them). Anchored from the top instead, same positioning
-   philosophy as .fold-win-banner below, so the whole table — hero's cards
-   included, regardless of player count — stays visible underneath it.
-   Also paired with a delay before this even mounts (see RoomPage's
-   SHOWDOWN_REVEAL_DELAY_MS), giving the reveal a beat before the summary
-   shows up at all. Fold-wins never reach this component — see
-   .fold-win-banner, a deliberately lighter presentation for "nothing to
-   reveal, just tell me who won". */
+/* ── SETTLEMENT MODAL (real showdown AND fold-win, same component) ───
+   Bottom drawer, same positioning as the original design — content is now
+   just "who won, how much, what beat it" (no per-player breakdown; the
+   running ledger already covers who's up/down overall, this doesn't need
+   to repeat it every hand). With that much less content, the sheet is
+   naturally short enough to clear hero's own cards near the canvas bottom
+   without needing to relocate it. Also paired with a delay before this
+   even mounts for real showdowns (see RoomPage's SHOWDOWN_REVEAL_DELAY_MS),
+   giving the table reveal a beat before the summary covers anything.
+   Fold-wins (nothing to reveal) skip that delay — same component, the
+   wording alone tells the two apart ("其他人全部弃牌" instead of a real
+   hand description in .modal-hand). */
 .settlement-sheet {
-  position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 50;
-  width: 310px; max-width: calc(100% - 32px);
-  background: linear-gradient(145deg, #0C1E0E, #060C07);
-  border: 1px solid rgba(212,175,55,.3);
-  border-radius: 18px;
-  padding: 16px 18px;
-  max-height: 38%;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 50;
+  background: linear-gradient(to top, #050D06 78%, rgba(5,13,6,.94));
+  border-top: 1px solid rgba(212,175,55,.3);
+  border-radius: 20px 20px 0 0;
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+  max-height: 42%;
   overflow-y: auto;
   animation: slideUp .35s cubic-bezier(.34,1.56,.64,1) both;
-  box-shadow: 0 16px 50px rgba(0,0,0,.6);
+  box-shadow: 0 -10px 40px rgba(0,0,0,.5);
 }
-.settlement-winners { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+.settlement-winners { display: flex; flex-direction: column; gap: 10px; margin: 6px 0; }
 .settlement-winner-row { display: flex; align-items: center; gap: 12px; }
+.modal-winner-info { flex: 1; min-width: 0; }
 .modal-btn--waiting { opacity: .55; cursor: default; }
 .modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,.68); backdrop-filter:blur(5px); display:flex; align-items:center; justify-content:center; z-index:60; animation:overlayFade .3s ease; }
 @keyframes overlayFade { from{opacity:0;} to{opacity:1;} }
@@ -340,41 +337,12 @@
 .modal-winner-av { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--text-primary); border:2px solid #D4AF37; box-shadow:0 0 0 5px rgba(212,175,55,.2), 0 0 40px rgba(212,175,55,.7); }
 .modal-winner-name { font-family:var(--font-display); font-size:14px; color:var(--text-primary); }
 .modal-win-amt { font-family:var(--font-amount); font-size:26px; font-weight:700; letter-spacing:.2px; color:#D4AF37; }
-/* The winning hand ("两对，A和K") is the actual answer to "why did they
-   win" — a real showdown's whole point — so it gets its own accent pill
-   instead of reading as secondary caption text underneath the amount. */
-.modal-hand { display:inline-block; font-family:var(--font-body); font-size:13px; font-weight:700; color:#FFF3C4; background:rgba(212,175,55,.14); border:1px solid rgba(212,175,55,.4); border-radius:8px; padding:2px 8px; margin-top:2px; }
-.modal-divider { width:100%; height:1px; background:rgba(212,175,55,.1); }
-.settle-list { width:100%; display:flex; flex-direction:column; gap:6px; }
-.settle-row { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:rgba(212,175,55,.04); border-radius:8px; }
-.settle-row.hero { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.1); }
-
-/* ── FOLD-WIN BANNER (no real showdown) ───────────────────────
-   Deliberately not a bottom sheet — there's nothing on the table to protect
-   the view of, so this is a small card that sits near the top, well clear
-   of hero's own cards and the seat rail, instead of covering the table. */
-.fold-win-banner {
-  position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50;
-  width: 240px; background: linear-gradient(145deg,#0C1E0E,#060C07);
-  border: 1px solid rgba(212,175,55,.32); border-radius: 16px;
-  padding: 14px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px;
-  box-shadow: 0 12px 40px rgba(0,0,0,.6);
-  animation: slideUp .35s cubic-bezier(.34,1.56,.64,1) both;
-}
-.fwb-line { display: flex; align-items: baseline; gap: 8px; }
-.fwb-name { font-family: var(--font-display); font-size: 14px; color: var(--text-primary); }
-.fwb-amt { font-family: var(--font-amount); font-size: 16px; font-weight: 700; color: #D4AF37; }
-.fwb-reason { font-family: var(--font-body); font-size: 12px; color: var(--text-secondary); }
-.fwb-btn {
-  margin-top: 4px; width: 100%; height: 34px; border-radius: 10px;
-  background: rgba(212,175,55,.14); border: 1px solid rgba(212,175,55,.3); color: #E8C24A;
-  font-family: var(--font-display); font-size: 12px; display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-}
-.fwb-btn--waiting { opacity: .55; cursor: default; }
-.sr-name { font-family:var(--font-body); font-size:13px; color:#C8BC9E; }
-.sr-amt { font-family:var(--font-amount); font-size:12px; }
-.sr-win { color:var(--state-safe); } .sr-lose { color:var(--state-danger); } .sr-neutral { color:#5A6E5C; }
+/* The winning hand ("两对，A和K") — or, for a fold-win, "其他人全部弃牌" —
+   is the actual answer to "why did they win". Right-aligned on its own,
+   next to (not underneath) the name/amount block — .modal-winner-info
+   above is flex:1, which pushes this to the row's trailing edge and saves
+   the vertical space the stacked layout used to cost. */
+.modal-hand { flex: 0 1 auto; align-self: center; text-align: right; font-family:var(--font-body); font-size:13px; font-weight:700; color:#FFF3C4; background:rgba(212,175,55,.14); border:1px solid rgba(212,175,55,.4); border-radius:8px; padding:4px 10px; max-width: 42%; }
 .modal-btn { width:100%; height:48px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:24px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:#050D06; letter-spacing:1px; cursor:pointer; box-shadow:0 4px 20px rgba(212,175,55,.25); margin-top:4px; }
 .modal-body { font-family:var(--font-body); font-size:14px; color:#8A8A7A; text-align:center; line-height:1.5; }
 .modal-btns { display:flex; gap:9px; width:100%; }
@@ -477,7 +445,14 @@
    now a separate flex sibling outside .table-canvas entirely, so opening the raise
    panel shrinks .table-zone (and therefore the whole table-canvas scale) instead of
    ever overlapping the hero-info pill; no more manual pixel budgeting needed here. */
-.table-canvas .hero-section { position:absolute; bottom:28px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; transform:scale(var(--csx,1), var(--csy,1)); }
+.table-canvas .hero-section { position:absolute; bottom:28px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; transform:scale(var(--csx,1), var(--csy,1)); transition:bottom .3s ease; }
+/* .settlement-sheet (bottom-anchored) reaches roughly this far up the
+   canvas even after trimming its content down to just the winner — hero's
+   cards sit fixed near the very bottom, so without this they'd end up
+   underneath it (confirmed empirically: ~76px of real overlap at 42%
+   sheet max-height). Only applied while the sheet is actually open — normal
+   gameplay layout is untouched — via GameTable's settlementOpen prop. */
+.table-canvas .hero-section.hero-section--lifted { bottom: 135px; }
 .game-stage .action-bar { position:relative; flex:0 0 auto; padding-bottom:calc(12px + env(safe-area-inset-bottom,0px)); z-index:40; }
 .game-stage .waiting-bar { position:relative; flex:0 0 auto; padding:10px 14px calc(16px + env(safe-area-inset-bottom,0px)); background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
 /* Persistent rebuy escape hatch for a busted spectator who picked "旁观留下" —

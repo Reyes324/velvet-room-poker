@@ -3,7 +3,6 @@ import { useSocket } from '../hooks/useSocket';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
-import FoldWinBanner from '../components/FoldWinBanner';
 import BustDecisionModal from '../components/BustDecisionModal';
 import LedgerModal from '../components/LedgerModal';
 
@@ -49,15 +48,18 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       // for a hand that's already moved on.
       clearTimeout(settlementTimerRef.current);
     },
-    'game:showdown': ({ winners, pot, settle, foldWin }) => {
+    'game:showdown': ({ winners, foldWin }) => {
       setShowdown(winners);
       const showSettlement = () => {
-        setSettlement({ winners, pot, settle, foldWin });
+        setSettlement({ winners });
         // Real per-player ack count arrives via game:settlement-progress; this is
         // just a reasonable first paint before that first event lands.
         setSettlementProgress({ readyCount: 0, totalCount: (roomState?.players ?? []).length });
       };
       clearTimeout(settlementTimerRef.current);
+      // Fold-wins have nothing on the table to reveal, so they skip the wait;
+      // real showdowns get SHOWDOWN_REVEAL_DELAY_MS to actually look at the
+      // revealed hands before the settlement summary appears.
       if (foldWin) showSettlement();
       else settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
     },
@@ -206,6 +208,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         onOpenLedger={() => setShowLedger(true)}
         onPoke={poke}
         pokedSeat={pokedSeat}
+        settlementOpen={!!settlement}
       />
       {showBustModal && !amPlaying && myRoomChips === 0 && (
         <BustDecisionModal
@@ -223,26 +226,14 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         />
       )}
       {settlement && settlement.winners?.length > 0 && (
-        settlement.foldWin ? (
-          <FoldWinBanner
-            winner={settlement.winners[0]}
-            myId={playerId}
-            iAmReady={iAmReady}
-            readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
-            totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
-            onReady={handleReady}
-          />
-        ) : (
-          <SettlementModal
-            winners={settlement.winners}
-            settle={(settlement.settle ?? []).map(s => ({ ...s }))}
-            myId={playerId}
-            iAmReady={iAmReady}
-            readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
-            totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
-            onReady={handleReady}
-          />
-        )
+        <SettlementModal
+          winners={settlement.winners}
+          myId={playerId}
+          iAmReady={iAmReady}
+          readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
+          totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
+          onReady={handleReady}
+        />
       )}
       {stuckPlayer && (
         <div className="toast toast--info">

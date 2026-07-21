@@ -108,29 +108,24 @@ STATES.push({
   },
 });
 
-// Settlement modal over the (dimmed) showdown table
+// Settlement modal over the (dimmed) showdown table — real showdown, hand
+// description shown.
 STATES.push({
-  name: '结算弹窗', myId: 'me', roomCode: '4827',
+  name: '结算弹窗·真摊牌', myId: 'me', roomCode: '4827',
   gameState: STATES[3].gameState,
   settlement: {
     winners: [{ id: 'chen', name: '陈美玲', won: 1780, handName: '两对，Q 和 5' }],
-    settle: [
-      { id: 'chen', name: '陈美玲', net: 1780 },
-      { id: 'wang', name: '王建国', net: -500 },
-      { id: 'me', name: 'Augustine', net: -650 },
-      { id: 'zhang', name: '张伟', net: 0 },
-      { id: 'li', name: '李大明', net: 0 },
-      { id: 'zhao', name: '赵军', net: 0 },
-    ],
   },
 });
 
-// Fold-win banner — deliberately not over a showdown table (nothing was
-// revealed), just a live in-progress-looking table behind it.
+// Same component, fold-win case — no real hand to describe, wording alone
+// ("其他人全部弃牌") tells it apart from the real-showdown fixture above.
 STATES.push({
-  name: '弃牌结束横幅', myId: 'me', roomCode: '4827',
+  name: '结算弹窗·弃牌结束', myId: 'me', roomCode: '4827',
   gameState: STATES[1].gameState,
-  foldWinPreview: { winner: { id: 'wang', name: '王建国', won: 200 } },
+  settlement: {
+    winners: [{ id: 'wang', name: '王建国', won: 200, handName: '其他人全部弃牌' }],
+  },
 });
 
 // 筹码归零决策弹窗 — over a live (still amPlaying) table just so there's

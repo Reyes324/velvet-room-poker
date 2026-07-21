@@ -316,7 +316,14 @@ class GameEngine {
 
   _determineWinners(contenders) {
     if (contenders.length === 1) {
-      contenders[0].handName = contenders[0].handName || '对手全部弃牌';
+      // Not "对手全部弃牌" ("the opponent(s) folded") — that phrasing is
+      // relative to whoever's reading it, so it reads differently (and
+      // ambiguously) for the winner, the folder, and any other player at
+      // the table (confirmed by user feedback on a real render). Anchored
+      // to the winner instead ("everyone else folded"), which the client
+      // always displays right next to the winner's own name — unambiguous
+      // regardless of who's looking at it.
+      contenders[0].handName = contenders[0].handName || '其他人全部弃牌';
       return contenders;
     }
     const hands = contenders.map(p => ({
