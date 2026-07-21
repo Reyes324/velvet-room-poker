@@ -93,14 +93,14 @@
    circular-avatar-plus-floating-text treatment — the chip count now lives
    INSIDE the card's own footer strip, sharing one outer border with the
    photo zone above it, matching the reference layout's card construction. */
-.seat { position:relative; width:42px; }
+.seat { position:relative; width:50px; }
 .seat-name {
   font-family:var(--font-body); font-size:10px; color:var(--text-secondary);
   text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  max-width:56px; margin:0 auto 3px; margin-left:-7px; margin-right:-7px;
+  max-width:64px; margin:0 auto 3px; margin-left:-7px; margin-right:-7px;
 }
 .avatar-card {
-  width:42px; border-radius:10px; position:relative;
+  width:50px; border-radius:10px; position:relative;
   border:2px solid rgba(212,175,55,.18); background:#0A1A0E;
   display:flex; flex-direction:column;
 }
@@ -117,7 +117,7 @@
 .think-overlay {
   position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   background:rgba(4,10,6,.6); color:#F5E6A0; font-family:var(--font-mono);
-  font-size:15px; font-weight:700; border-radius:8px 8px 0 0;
+  font-size:19px; font-weight:700; border-radius:8px 8px 0 0;
   text-shadow:0 1px 3px rgba(0,0,0,.9);
 }
 .av-green  .avatar-photo { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
@@ -431,9 +431,11 @@
    persistent reveal cards too — at 9-max, adjacent seats sit close enough
    along the rail that the normal-size reveal pair from one seat can run
    into its neighbor's. */
-.game-stage--dense .seat { width:34px; }
-.game-stage--dense .seat-name { font-size:8px; max-width:44px; }
+.game-stage--dense .seat { width:40px; }
+.game-stage--dense .seat-name { font-size:8px; max-width:52px; }
+.game-stage--dense .avatar-card { width:40px; }
 .game-stage--dense .avatar-photo { height:34px; font-size:13px; }
+.game-stage--dense .think-overlay { font-size:15px; }
 .game-stage--dense .stack-chip-footer { font-size:9px; padding:2px 0; }
 .game-stage--dense .pos-badge { font-size:7px; height:13px; line-height:13px; min-width:19px; padding:0 3px; }
 .game-stage--dense .reveal { gap:2px; }
