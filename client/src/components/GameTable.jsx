@@ -355,13 +355,15 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         // is the one direction with real room to spare, for every row, not
         // just the topmost one.
         const cardsSide = s.side === 'left' ? 'right' : 'left';
-        // The action bubble instead defaults to sitting right above the seat
-        // (closest to the avatar, per real-device feedback) — except row 0
-        // (y===COL_TOP_Y exactly), where "above" would clip past the
-        // canvas's own top edge the same way reveal cards used to; only
-        // that row falls back to the side, like the showdown reveal always
-        // does.
-        const bubbleSide = s.y === COL_TOP_Y ? cardsSide : null;
+        // The action bubble always sits toward the center strip, same
+        // direction as the showdown reveal — never "above" the seat. It used
+        // to default to "above" for every row except row 0, but real-device
+        // feedback showed that still clips a neighboring seat's name/avatar
+        // whenever two rows sit close together (76px pitch on dense tables),
+        // not just at the canvas's own top edge — the center strip is the
+        // one direction with real room to spare for every row, not just the
+        // topmost one.
+        const bubbleSide = cardsSide;
         return (
           <div
             key={p.id}
@@ -409,11 +411,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                       />
                     )))
               : [<Card key={0} size="sm" faceDown />, <Card key={1} size="sm" faceDown />]}
-          </div>
-          <div className="hero-info">
-            {/* 筹码量已经在上面小头像座位的 footer 显示（跟其他玩家卡片样式保持一致），
-                这里不再重复展示，只留姓名。 */}
-            <div className="hero-name">{me.name}（我）</div>
           </div>
         </div>
       )}

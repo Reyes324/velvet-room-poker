@@ -316,3 +316,15 @@
 - [x] 34.4 `.action-bubble` 尺寸/字重加强：`padding` 4px 10px→5px 12px，字号 11px→13px，字重 600→700
 - [x] 34.5 **CSS 根因修复**：`sideStyle()`（贴边定位，服务第 0 排座位）原来每个分支只设置自己关心的定位属性，跟 `.action-bubble` 基础类自带的 `left:50%`/`bottom:...` 同时生效时会互相冲突、把气泡宽度挤扁成 26px（`.reveal` 用同一个函数从未出问题，因为它的基础类本身没声明冲突属性）。修复为每个分支显式写全 `left`/`right`/`top`/`bottom` 四个属性（用不到的设 `auto`），不再依赖调用方 CSS 类当前是否留有冲突默认值
 - [x] 34.6 Playwright 实测：两人局翻牌前盲注气泡文字/位置、加注气泡贴近头像、ALL IN 气泡带金额且不裁切；`?states=` 全部 fixture 逐个截图+`getComputedStyle`核对第 0 排座位气泡不再挤扁；确认 `.bet-chip` 元素计数为 0；服务端 103/103 测试全绿
+
+## 35. 真机截图追加反馈：气泡遮挡头像 + 标签挪到名字旁 + 英雄结构统一 + 可读性细节（用户反馈，2026-07-21）
+
+- [x] 35.1 AskUserQuestion 确认英雄名字位置：跟对手一致，名字在上、头像在下；取消 `.player-slot--hero .seat-name{display:none}`，删除 `.hero-section` 里重复的姓名展示，姓名后缀"（我）"改为拼在 `PlayerSeat` 的 name 文本里
+- [x] 35.2 `bubbleSide` 从"只有第 0 排"改为**所有座位一律贴边定位**（`bubbleSide = cardsSide`），不再区分排数
+- [x] 35.3 **真正根因（比 Task 34.5 更深一层）**：`actionBubbleIn`/`actionBubbleOut` 关键帧硬编码了 `transform:translate(-50%,...)`（历史遗留，早年气泡永远居中贴上方时顺带用关键帧提供居中位移）；CSS 动画只要生效（`fill-mode:both` 结束后也永久生效）就会接管整个 `transform` 属性，贴边定位需要的 `translateY(-50%)` 内联样式完全不起作用。修复：入场/退场动画的位移+缩放改用独立的 `scale`/`translate` CSS 属性（与 `transform` 天然叠加不冲突），`.action-bubble` 基础类补回静态 `transform:translateX(-50%)` 保证默认居中气泡不受影响
+- [x] 35.4 `.pos-badge` 从"贴头像右下角的绝对定位角标"改成跟名字同一行的行内 pill；新增 `.seat-name-row` flex 容器
+- [x] 35.5 `.action-bubble` 对比度提升：文字色 `#F5E6A0`→`#FFF3C4`，边框透明度 .5→.75，加淡金色外发光
+- [x] 35.6 `.think-overlay` 读秒配色金色→橙红 `#FF7A45`；新增 `.is-active .avatar-card` 的 `activeBreathe` 1s 周期呼吸动画
+- [x] 35.7 `.table-canvas` 背景纹理提亮：斜纹高光 .025→.045、噪点 .06→.1、径向渐变外圈 `#030A04`→`#061808`
+- [x] 35.8 `.avatar-card`/`.seat` 50px→56px（密集桌 40px→44px），`.seat-name-row`/`.pos-badge` 尺寸联动调整
+- [x] 35.9 Playwright 复现用户截图的确切场景（2 人局对手加注）：修复前实测气泡与头像横向重叠约 40px，修复后零重叠；`?states=` 全部 fixture 自动化重叠扫描（头像/气泡/标签/公共牌两两）全部清零；poke 气泡同样验证不重叠；`getComputedStyle` 确认 `activeBreathe` 生效；服务端 103/103 全绿。验证脚本自身的坑：`newContext()` 后再给 `newPage({viewport})` 传参不生效，第一轮验证在桌面视口下跑导致误判，改成 `newContext({viewport})` 后才拿到可信结果

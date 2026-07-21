@@ -32,11 +32,10 @@ function sideStyle(cardsSide) {
   return { position: 'absolute', left: '50%', right: 'auto', bottom: 'calc(100% + 4px)', top: 'auto', transform: 'translateX(-50%)' };
 }
 
-// The action bubble defaults to sitting right above the seat (closest to
-// the avatar) via .action-bubble's own CSS — except row-0 seats, where
-// GameTable passes a non-null `bubbleSide`: "above" there would clip past
-// the canvas's own top edge, so it falls back to the same side placement
-// the showdown reveal always uses.
+// Hero's own bubble is the one case that still defaults to "above" (no
+// bubbleSide passed) — hero sits centered at the bottom of the canvas with
+// clear room above toward the community cards, confirmed via a real render;
+// every other seat always gets an explicit side from GameTable now.
 function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
@@ -60,11 +59,13 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
 
   return (
     <div className={seatClass}>
-      <div className="seat-name">{player.name}</div>
+      <div className="seat-name-row">
+        <div className="seat-name">{player.name}{isMe && '（我）'}</div>
+        {badge && <span className="pos-badge">{badge}</span>}
+      </div>
       <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>
         <div className="avatar-photo">
           {player.name[0].toUpperCase()}
-          {badge && <span className="pos-badge">{badge}</span>}
           {isAction && (
             <div className="think-overlay">{thinkSeconds}s</div>
           )}
