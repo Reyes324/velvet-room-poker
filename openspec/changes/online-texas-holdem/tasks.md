@@ -307,3 +307,12 @@
 - [x] 33.9 大厅玩家列表里断线玩家名字后追加"（断线中）"文字角标
 - [x] 33.10 Playwright e2e：用页面调试钩子 `window.__vrSocket.disconnect()`/`.connect()` 模拟牌局进行中真实断线再重连，覆盖玩家自己重连、房主"帮TA弃牌"两条路径；同时修正 Task 4 打破的那条服务端集成测试，并新增 5 分钟安全超时的假定时器测试
 - [x] 33.11 SDD 收尾 + 全量验证：`npm test`（server，101/101）、`npm run build`（client，构建通过）、`npx playwright test`（31/31，含既有回归）全绿——过程中两次遇到同一进程内反复起停测试服务器导致的偶发 `ERR_CONNECTION_REFUSED`，清掉残留进程后重跑即恢复全绿，判断为本次沙盒会话的环境噪音，非代码回归
+
+## 34. 下注显示统一为"分类+金额"气泡，去掉筹码 icon 样式（用户反馈，2026-07-21）
+
+- [x] 34.1 删除 `.bet-chip` 全部相关代码（`GameTable.jsx` 的 `BET_CHIP_OFFSET`/`betChipStyle`/`heroBetStyle`/两处渲染块；`velvet.css` 的 `.bet-chip`/`.bet-chip::before`/`chipPop` 动画），下注提示只保留 `.action-bubble` 一条路径，包括英雄自己
+- [x] 34.2 新增"进入新一手翻牌前"专属 effect，按 `isSB`/`isBB` 直接给对应玩家种上"小盲 ¥X`"/"大盲 ¥X`" 气泡——原有 diff-based 气泡逻辑捕捉不到盲注（服务端在任何 `actionPlayerId` 切换前就已下好盲注），谁先真正行动会用自己的动作气泡覆盖种子气泡
+- [x] 34.3 独立复核用户提出的分类列表（用户明确要求不要照抄，自行判断）：小盲/大盲/加注/跟注/过牌/弃牌/ALL IN 七类已覆盖全部合法动作，无遗漏；发现并修复一处不一致——`ALL IN` 原来不带金额，改成 `ALL IN ¥{当前下注额}`，跟其余分类"分类+金额"格式统一
+- [x] 34.4 `.action-bubble` 尺寸/字重加强：`padding` 4px 10px→5px 12px，字号 11px→13px，字重 600→700
+- [x] 34.5 **CSS 根因修复**：`sideStyle()`（贴边定位，服务第 0 排座位）原来每个分支只设置自己关心的定位属性，跟 `.action-bubble` 基础类自带的 `left:50%`/`bottom:...` 同时生效时会互相冲突、把气泡宽度挤扁成 26px（`.reveal` 用同一个函数从未出问题，因为它的基础类本身没声明冲突属性）。修复为每个分支显式写全 `left`/`right`/`top`/`bottom` 四个属性（用不到的设 `auto`），不再依赖调用方 CSS 类当前是否留有冲突默认值
+- [x] 34.6 Playwright 实测：两人局翻牌前盲注气泡文字/位置、加注气泡贴近头像、ALL IN 气泡带金额且不裁切；`?states=` 全部 fixture 逐个截图+`getComputedStyle`核对第 0 排座位气泡不再挤扁；确认 `.bet-chip` 元素计数为 0；服务端 103/103 测试全绿

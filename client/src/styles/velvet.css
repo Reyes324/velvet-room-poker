@@ -161,26 +161,16 @@
   overflow:hidden; white-space:nowrap; text-overflow:ellipsis; /* large stacks (¥15,989+) must not spill past the card's rounded edge */
 }
 
-/* bet chip — pill badge (speech-bubble style, visually prominent). Offset from
-   its seat toward the pot by GameTable.jsx's betChipStyle(); the tail below
-   rotates via --tail-deg (same helper) to always point back at that seat,
-   whichever direction around the oval it sits in — not just straight down. */
-.bet-chip { position:relative; display:inline-flex; align-items:center; gap:5px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#F5E6A0; white-space:nowrap; letter-spacing:.3px; text-shadow:0 1px 5px rgba(0,0,0,.95), 0 0 10px rgba(0,0,0,.7); animation:chipPop .3s cubic-bezier(.34,1.56,.64,1) both; }
-/* Real casino-chip icon (edge dashes + inset ring + center disc) instead of
-   the old text-pill-with-a-tail — the tail direction/shape had already gone
-   through three redesign rounds chasing "does this read as a bubble" (see
-   design.md 第十五/十六/十八轮); an icon+amount sidesteps that entirely, per
-   user request to match the reference app's floating-chip treatment. */
-.bet-chip::before {
-  content: '';
-  width: 18px; height: 18px; flex-shrink: 0;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='18.5' fill='%230F2410' stroke='%23D4AF37' stroke-width='2.5'/%3E%3Ccircle cx='20' cy='20' r='18.5' fill='none' stroke='%23D4AF37' stroke-width='3' stroke-dasharray='4.5 5.5'/%3E%3Ccircle cx='20' cy='20' r='12.5' fill='none' stroke='%23D4AF37' stroke-width='1.4' stroke-opacity='.75'/%3E%3Ccircle cx='20' cy='20' r='7' fill='%23D4AF37'/%3E%3C/svg%3E") no-repeat center / contain;
-  filter: drop-shadow(0 2px 5px rgba(0,0,0,.7));
-}
-@keyframes chipPop { from{opacity:0;scale:.55;} to{opacity:1;scale:1;} }
-
-/* action feedback bubble — pops from the avatar when a player acts (check/call/raise/fold/all-in) */
-.action-bubble { position:absolute; bottom:calc(100% + 6px); left:50%; padding:4px 10px; background:rgba(8,18,10,.95); border:1px solid rgba(212,175,55,.5); border-radius:14px; font-family:var(--font-amount); font-size:11px; font-weight:600; color:#F5E6A0; white-space:nowrap; box-shadow:0 2px 10px rgba(0,0,0,.6); z-index:8; animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both; pointer-events:none; }
+/* action feedback bubble — pops from the avatar when a player acts
+   (check/call/raise/fold/all-in/small-blind/big-blind) and, unlike a plain
+   bet-chip amount, always carries a category label ("加注 ¥40"/"小盲 ¥10"/
+   "ALL IN") so the amount alone never has to answer "why". This used to be
+   a separate element from the bare-number .bet-chip (icon + amount, no
+   label) — the two stacked on top of each other showing the same
+   information twice, once labeled and once not (confirmed on a real
+   device); .bet-chip is retired, this is now the single source of "what
+   did this player put in, and why" for every seat including hero's own. */
+.action-bubble { position:absolute; bottom:calc(100% + 6px); left:50%; padding:5px 12px; background:rgba(8,18,10,.95); border:1px solid rgba(212,175,55,.5); border-radius:14px; font-family:var(--font-amount); font-size:13px; font-weight:700; color:#F5E6A0; white-space:nowrap; box-shadow:0 2px 10px rgba(0,0,0,.6); z-index:8; animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both; pointer-events:none; }
 @keyframes actionBubbleIn {
   0%   { opacity:0; transform:translate(-50%, 6px) scale(.75); }
   60%  { opacity:1; transform:translate(-50%, 0) scale(1.06); }
@@ -395,10 +385,9 @@
 .table-oval-content { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; transform:scale(var(--csx,1), var(--csy,1)); }
 /* Seat rail position (left/top) still stretches non-uniformly with the
    canvas so seats spread across the widened table; the seat's own content
-   (avatar, cards, badges, bet-chip) counters that stretch the same way as
-   .table-oval-content above. */
+   (avatar, cards, badges, action bubble) counters that stretch the same way
+   as .table-oval-content above. */
 .table-canvas .player-slot { position:absolute; transform:translate(-50%,-50%) scale(var(--csx,1), var(--csy,1)); z-index:5; }
-.table-canvas .player-slot .bet-chip { position:absolute; top:50%; left:50%; z-index:6; }
 .player-slot--hero { z-index: 4; }
 /* 英雄小头像卡片跟其他玩家保持同一个"长框"样式（头像+筹码 footer 同一张卡片），
    不再单独砍掉 footer，这是用户明确要求的视觉一致性（"我的头像布局要跟其他玩家的布局

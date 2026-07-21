@@ -24,17 +24,6 @@ function colorForId(id) {
   return h;
 }
 
-const BET_CHIP_OFFSET = 58; // px toward the pot, from the seat center — was raised to 92 to clear the opponent reveal cards, but those were removed entirely afterward (see design.md), so that reason no longer applies; brought back down closer to the seat for visual intimacy, per real-device feedback. Value tuned empirically against real rendered bounding boxes, not hand-computed.
-
-// The bet-chip (a chip icon + amount, no tail — see .bet-chip in velvet.css)
-// is offset from its seat toward the pot center by (dx,dy).
-function betChipStyle(dx, dy) {
-  const len = Math.hypot(dx, dy) || 1;
-  return {
-    transform: `translate(calc(-50% + ${(dx / len) * BET_CHIP_OFFSET}px), calc(-50% + ${(dy / len) * BET_CHIP_OFFSET}px))`,
-  };
-}
-
 function getOrderedPlayers(players, myId) {
   const idx = players.findIndex(p => p.id === myId);
   if (idx === -1) return players;
@@ -141,9 +130,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const { hero: heroSeatPos, opponents: pos } = amPlaying
     ? seatPositions(opponents.length)
     : { hero: null, opponents: spectatorSeatPositions(opponents.length) };
-  // Same "toward the pot center" bet-chip fly-in direction as the opponents.map loop
-  // below, just for the hero's fixed bottom-vertex seat.
-  const heroBetStyle = heroSeatPos && betChipStyle(0, 187.5 - heroSeatPos.y); // straight up, toward the pot
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled;
@@ -216,7 +202,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       if (prevP && currP) {
         let text = null;
         if (currP.status === 'folded' && prevP.status !== 'folded') text = '弃牌';
-        else if (currP.status === 'allin' && prevP.status !== 'allin') text = 'ALL IN';
+        else if (currP.status === 'allin' && prevP.status !== 'allin') text = `ALL IN ¥${currP.bet.toLocaleString()}`;
         else if (currP.bet > prevP.bet) {
           text = currP.bet > prevSnap.currentBet
             ? `加注 ¥${currP.bet.toLocaleString()}`
@@ -242,8 +228,22 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // Persistent action bubbles represent "what happened this street" — clear
   // them all when the street (or the whole hand) advances, otherwise a
   // "跟注 ¥20" from preflop would still be sitting there during the flop.
+  // Entering a fresh preflop is the one exception: the blinds are posted
+  // server-side before any actionPlayerId transition ever fires, so the
+  // diff-based effect above has nothing to compare against and would never
+  // otherwise label them — seed SB/BB's bubbles directly here instead.
+  // Whoever acts first naturally overwrites their own seeded bubble the
+  // moment they take a real action.
   useEffect(() => {
-    setActionBubbles({});
+    if (gameState.phase !== 'preflop') { setActionBubbles({}); return; }
+    const seeded = {};
+    const key = Date.now();
+    for (const p of gameState.players) {
+      if (p.bet <= 0) continue;
+      if (p.isSB) seeded[p.id] = { text: `小盲 ¥${p.bet.toLocaleString()}`, key };
+      else if (p.isBB) seeded[p.id] = { text: `大盲 ¥${p.bet.toLocaleString()}`, key };
+    }
+    setActionBubbles(seeded);
   }, [gameState.phase]);
 
   return (
@@ -341,28 +341,27 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             bubble={actionBubbles[me.id]}
             poked={pokedSeat?.targetId === me.id}
           />
-          {/* Same persistent chip-bubble every opponent gets below — hero's own bet
-              used to only flash as fading action text, never sat on the felt like
-              everyone else's, which read as inconsistent from hero's own viewpoint. */}
-          {me.bet > 0 && <div className="bet-chip" style={heroBetStyle}>¥{me.bet.toLocaleString()}</div>}
         </div>
       )}
 
       {opponents.map((p, i) => {
         const s = pos[i];
-        // Column layout: always fly straight toward the center strip (x=187.5),
-        // never vertically — the center strip is where the pot/community cards
-        // live, directly between the two columns at every row.
-        const betStyle = betChipStyle(187.5 - s.x, 0);
         const dealDelay = i * 0.1;
-        // Reveal cards / action bubble always render toward the center strip,
-        // never above/below the seat — with rows only COL_ROW_PITCH (76px)
-        // apart, anything rendered above a seat overlaps the row above it
-        // (its footer/avatar), and anything below overlaps the row below
+        // Showdown reveal always renders toward the center strip, never
+        // above/below the seat — with rows only COL_ROW_PITCH (76px) apart,
+        // anything rendered above a seat overlaps the row above it (its
+        // footer/avatar), and anything below overlaps the row below
         // (confirmed on a real device, not hand-computed). The center strip
         // is the one direction with real room to spare, for every row, not
         // just the topmost one.
         const cardsSide = s.side === 'left' ? 'right' : 'left';
+        // The action bubble instead defaults to sitting right above the seat
+        // (closest to the avatar, per real-device feedback) — except row 0
+        // (y===COL_TOP_Y exactly), where "above" would clip past the
+        // canvas's own top edge the same way reveal cards used to; only
+        // that row falls back to the side, like the showdown reveal always
+        // does.
+        const bubbleSide = s.y === COL_TOP_Y ? cardsSide : null;
         return (
           <div
             key={p.id}
@@ -378,10 +377,10 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               color={colorForId(p.id)}
               bubble={actionBubbles[p.id]}
               cardsSide={cardsSide}
+              bubbleSide={bubbleSide}
               onPoke={() => onPoke?.(p.id)}
               poked={pokedSeat?.targetId === p.id}
             />
-            {p.bet > 0 && <div className="bet-chip" style={betStyle}>¥{p.bet.toLocaleString()}</div>}
           </div>
         );
       })}
