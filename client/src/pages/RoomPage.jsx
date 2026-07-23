@@ -26,6 +26,8 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [settlementProgress, setSettlementProgress] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
+  const [revealedPlayers, setRevealedPlayers] = useState({});
+  // { [playerId]: { playerName, holeCards } }
   const settlementTimerRef = useRef(null);
 
   const showToast = useCallback((msg, type = 'info') => {
@@ -42,6 +44,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setIAmReady(false);
       setSettlementProgress(null);
       setActionDisabled(false);
+      setRevealedPlayers({});
       // A previous hand's delayed settlement sheet (see game:showdown below)
       // may still be pending when the next hand's state already arrived —
       // without this it would fire late and resurrect a stale settlement
@@ -71,6 +74,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setSettlement(null);
       setIAmReady(false);
       setSettlementProgress(null);
+      setRevealedPlayers({});
     },
     'room:kicked': () => {
       showToast('你已被房主移出房间', 'danger');
@@ -87,6 +91,9 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setTimeout(() => {
         setPokedSeat(p => (p?.key === key ? null : p));
       }, 700);
+    },
+    'game:cards-revealed': ({ playerId, playerName, holeCards }) => {
+      setRevealedPlayers(prev => ({ ...prev, [playerId]: { playerName, holeCards } }));
     },
   });
 
@@ -151,6 +158,10 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   function handleReady() {
     setIAmReady(true);
     emit('game:ready-next', { playerId });
+  }
+
+  function handleReveal() {
+    emit('game:reveal-cards', { playerId });
   }
 
   function copyInvite() {
@@ -234,6 +245,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         onPoke={poke}
         pokedSeat={pokedSeat}
         settlementOpen={!!settlement}
+        revealedPlayers={revealedPlayers}
       />
       {myBust && (
         <BustDecisionModal onRebuy={rebuy} onLeave={leaveRoom} />
@@ -263,16 +275,25 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           onClose={() => setShowLedger(false)}
         />
       )}
-      {settlement && settlement.winners?.length > 0 && (
-        <SettlementModal
-          winners={settlement.winners}
-          myId={playerId}
-          iAmReady={iAmReady}
-          readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
-          totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
-          onReady={handleReady}
-        />
-      )}
+      {settlement && settlement.winners?.length > 0 && (() => {
+        const isFoldWin = settlement.winners.length === 1 && settlement.winners[0].handName === '其他人全部弃牌';
+        const iAmWinner = isFoldWin && settlement.winners[0].id === playerId;
+        const myCardsRevealed = !!revealedPlayers[playerId];
+        return (
+          <SettlementModal
+            winners={settlement.winners}
+            myId={playerId}
+            iAmReady={iAmReady}
+            readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
+            totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
+            onReady={handleReady}
+            isFoldWin={isFoldWin}
+            iAmWinner={iAmWinner}
+            myCardsRevealed={myCardsRevealed}
+            onReveal={handleReveal}
+          />
+        );
+      })()}
       {stuckPlayer && (
         <div className="toast toast--info">
           {stuckPlayer.name} 断线中，等待重连…
