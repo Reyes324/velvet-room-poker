@@ -246,7 +246,7 @@ describe('集成测试 — 游戏流程', () => {
     expect(state.phase).toBe('preflop');
   });
 
-  it('结算等待期内，导致本局结束的那位玩家断线 → 不应重入 _endHand（回归：actionIndex 未推进导致弃牌者断线时重复弃牌）', async () => {
+  it('结算等待期内断线 → 不再自动推进，掉线玩家仍在待确认列表中（回归：actionIndex 未推进导致弃牌者断线时重复弃牌 + Bug3 修复验证）', async () => {
     const { c1, c2 } = await setupRoom();
     const gs1 = waitFor(c1, 'game:state');
     c1.emit('room:start', { playerId: 'p1' });
@@ -261,7 +261,7 @@ describe('集成测试 — 游戏流程', () => {
     await Promise.all([showdown1, showdown2]);
 
     // 结算等待期开始后，持续监听存活玩家 c1 是否再收到第二次 game:showdown
-    // （若 bug 未修复：p2 断线会被误判为"轮到 p2 时弃牌"，重新执行一次 fold →
+    // （若旧 bug 未修复：p2 断线会被误判为"轮到 p2 时弃牌"，重新执行一次 fold →
     // _advance → _endHand，广播一个 pot=0 的伪造 showdown）。
     let extraShowdowns = 0;
     c1.on('game:showdown', () => { extraShowdowns += 1; });
@@ -273,16 +273,20 @@ describe('集成测试 — 游戏流程', () => {
     await new Promise((r) => setTimeout(r, 400));
     expect(extraShowdowns).toBe(0);
 
-    // p2 断线时已从 eligiblePlayerIds 中移除，但不再被整体移出房间——现在断线
-    // 只标记 connected:false，玩家本人（含筹码）仍留在座位上，等待重连。
-    // 此时只需 p1 确认，房间即可正确推进 —— 由于 nextRound() 只把 connected
-    // 的玩家算作 active，此刻只剩 p1 一名 active 玩家，应触发 game:ended。
-    const ended = waitFor(c1, 'game:ended', 3000);
-    c1.emit('game:ready-next', { playerId: 'p1' });
-    const endedResult = await ended;
-    expect(endedResult.ended).toBe(true);
-
+    // p2 断线后仍留在 eligiblePlayerIds 中（不再立即 drop），p1 单独确认不应推进
     const room = rooms.getRoomByPlayer('p1');
+    expect(room.isAwaitingSettlementAck()).toBe(true);
+    expect(room.ackReady('p1')).toBe(false);
+
+    // 模拟结算超时：手动 drop 掉线的 p2
+    // dropFromSettlementWait 返回 true 表示剩余待确认者（只有 p1）都已确认
+    expect(room.dropFromSettlementWait('p2')).toBe(true);
+    expect(room.isAwaitingSettlementAck()).toBe(true); // advanceRoom 还没被调用
+
+    // 模拟 advanceRoom 的剩余逻辑
+    room.clearSettlementWait();
+    const nr = room.nextRound();
+    expect(nr.ended).toBe(true);
     expect(room.status).toBe('waiting');
     expect(room.players).toHaveLength(2);
     const p2 = room.players.find((p) => p.id === 'p2');

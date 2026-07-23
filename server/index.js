@@ -29,6 +29,13 @@ function createServer() {
   // "stuck" at a time per room. See maybeArmPauseTimer below.
   const pauseTimers = new Map();
   const PAUSE_TIMEOUT_MS = 5 * 60 * 1000;
+  // Settlement safety-timeout: if an eligible player disconnects during
+  // settlement wait and never returns, auto-drop them after 10 minutes so
+  // the remaining connected players can advance instead of being stuck
+  // forever. Analogous to maybeArmPauseTimer but for the settlement phase
+  // — the action-phase timer fires fold, this one fires dropFromSettlementWait.
+  const settlementTimers = new Map();
+  const SETTLEMENT_TIMEOUT_MS = 10 * 60 * 1000;
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
@@ -78,6 +85,43 @@ function createServer() {
     pauseTimers.set(room.code, { playerId: actionPlayerId, timer });
   }
 
+  // Arms a safety-timeout for the settlement-wait phase: if any eligible
+  // (not-yet-acked) player is disconnected, starts a 10-minute timer. At
+  // fire time, all disconnected eligible players are dropped so the room
+  // can advance. Clears + rearms on each call (lives alongside the pause
+  // timer for the action phase, which is a different concern).
+  function armSettlementTimer(room) {
+    clearSettlementTimer(room);
+    if (!room.isAwaitingSettlementAck()) return;
+    const eligible = room.settlementWait.eligiblePlayerIds;
+    const anyDisconnected = room.players.some(p => eligible.has(p.id) && p.connected === false);
+    if (!anyDisconnected) return;
+
+    const timer = setTimeout(() => {
+      settlementTimers.delete(room.code);
+      if (!room.isAwaitingSettlementAck()) return;
+      for (const p of room.players) {
+        if (p.connected === false && eligible.has(p.id)) {
+          if (room.dropFromSettlementWait(p.id)) {
+            advanceRoom(room);
+            return;
+          }
+        }
+      }
+      // Dropped all disconnected players but still didn't fire advanceRoom
+      // (not all remaining eligible have acked yet). Broadcast the updated
+      // progress so the stuck players know something changed.
+      io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
+    }, SETTLEMENT_TIMEOUT_MS);
+    settlementTimers.set(room.code, timer);
+  }
+
+  function clearSettlementTimer(room) {
+    const existing = settlementTimers.get(room.code);
+    if (existing) clearTimeout(existing);
+    settlementTimers.delete(room.code);
+  }
+
   // Advances a room past its post-showdown settlement wait: clears the
   // room's ready-tracking state and moves the game on. This is the single
   // place that does so — either trigger (all acks in, or a departing player
@@ -85,6 +129,8 @@ function createServer() {
   // — the room waits for every seated player to actually click "我知道了"
   // before the next hand deals, full stop.
   function advanceRoom(room) {
+    room.lastShowdown = null;
+    clearSettlementTimer(room);
     room.clearSettlementWait();
     const nr = room.nextRound();
     if (nr.ended) io.to(room.code).emit('game:ended', nr);
@@ -96,12 +142,13 @@ function createServer() {
     broadcastRoom(room);
 
     if (result.showdown) {
-      io.to(room.code).emit('game:showdown', {
+      const showdownData = {
         winners: result.winners,
         pot: result.pot,
         settle: result.settle,
-      });
-
+      };
+      io.to(room.code).emit('game:showdown', showdownData);
+      room.lastShowdown = showdownData;
       room.beginSettlementWait();
     }
   }
@@ -208,8 +255,23 @@ function createServer() {
       // else's "XXX 断线中" indicator clears too, and — once a game is in
       // progress — so maybeArmPauseTimer (Task 7) re-evaluates whether the
       // safety timeout should still be ticking.
-      if (room.game) broadcastRoom(room);
-      else io.to(room.code).emit('room:state', room.getLobbyState());
+      if (room.isAwaitingSettlementAck() && room.game) {
+        // Reconnection during settlement wait: send room:state to everyone
+        // (connected markers), then send game:state + showdown data +
+        // settlement progress to the reconnecting socket only. We avoid
+        // broadcastRoom here because it sends game:state to all players,
+        // which the client handler uses to clear settlement modals.
+        io.to(room.code).emit('room:state', room.getLobbyState());
+        socket.emit('game:state', room.getStateForPlayer(playerId));
+        if (room.lastShowdown) socket.emit('game:showdown', room.lastShowdown);
+        socket.emit('game:settlement-progress', room.getSettlementProgress());
+        // Clear the settlement timer since this player reconnected
+        clearSettlementTimer(room);
+      } else if (room.game) {
+        broadcastRoom(room);
+      } else {
+        io.to(room.code).emit('room:state', room.getLobbyState());
+      }
     });
 
     socket.on('room:kick', ({ hostId, targetId }) => {
@@ -219,8 +281,18 @@ function createServer() {
       if (target?.socketId) {
         io.to(target.socketId).emit('room:kicked');
       }
+      const wasAwaitingSettlement = room.isAwaitingSettlementAck();
       rooms.leave(targetId);
       io.to(room.code).emit('room:state', room.getLobbyState());
+      // If settlement was blocked by the kicked player (who was removed
+      // from eligiblePlayerIds by Room.removePlayer), check if all
+      // remaining eligible players have now acked. dropFromSettlementWait
+      // is idempotent on an already-removed ID: Set.delete returns false
+      // (no-op) but still returns _allSettlementAcksIn().
+      if (wasAwaitingSettlement && room.isAwaitingSettlementAck() &&
+          room.dropFromSettlementWait(targetId)) {
+        advanceRoom(room);
+      }
     });
 
     socket.on('game:fold-disconnected', ({ hostId, targetId }) => {
@@ -246,12 +318,18 @@ function createServer() {
       room.setConnected(myPlayerId, false);
 
       if (room.isAwaitingSettlementAck()) {
-        // Unchanged: settlement-ack disconnects still drop the player from
-        // the "must ack" set immediately rather than pausing — this is a
-        // lower-stakes confirmation click, not an in-hand decision, and is
-        // explicitly out of scope for the pause-and-wait behavior below.
-        if (room.dropFromSettlementWait(myPlayerId)) advanceRoom(room);
-        else io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
+        // Settlement-wait disconnect: unlike the old behavior, we do NOT
+        // drop the player from settlement wait or auto-advance (which was
+        // the root cause of Bug 3 — in heads-up, the brief disconnect
+        // would trigger advanceRoom → nextRound → only 1 active player →
+        // game ends). Instead, treat it like any other mid-game disconnect:
+        // just mark connected:false and let the settlement safety timeout
+        // handle the "never came back" case. We broadcast room:state and
+        // settlement-progress (but NOT game:state, which would clear other
+        // players' settlement modals via the client's game:state handler).
+        io.to(room.code).emit('room:state', room.getLobbyState());
+        io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
+        armSettlementTimer(room);
       } else if (room.game) {
         // Mid-hand disconnect: no auto-fold, no removal. broadcastRoom lets
         // everyone see the "connected:false" flag immediately, and (once

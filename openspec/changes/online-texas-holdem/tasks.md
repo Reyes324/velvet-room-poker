@@ -271,3 +271,16 @@
 - [x] 29.9 大厅玩家列表里断线玩家名字后追加"（断线中）"文字角标
 - [x] 29.10 Playwright e2e：用页面调试钩子 `window.__vrSocket.disconnect()`/`.connect()` 模拟牌局进行中真实断线再重连，覆盖玩家自己重连、房主"帮TA弃牌"两条路径；同时修正 Task 4 打破的那条服务端集成测试，并新增 5 分钟安全超时的假定时器测试
 - [x] 29.11 SDD 收尾 + 全量验证：`npm test`（server，101/101）、`npm run build`（client，构建通过）、`npx playwright test`（31/31，含既有回归）全绿——过程中两次遇到同一进程内反复起停测试服务器导致的偶发 `ERR_CONNECTION_REFUSED`，清掉残留进程后重跑即恢复全绿，判断为本次沙盒会话的环境噪音，非代码回归
+
+## 30. 修复结算等待期断线导致游戏意外结束（Bug 3 结构性修复，2026-07-23）
+
+- [x] 30.1 设计决策记录：已在 design.md 新增「结算等待期断线不应自动推进」决策节
+- [x] 30.2 `RoomManager.js`：构造函数新增 `lastShowdown` 字段用于重连恢复；`removePlayer` 增加结算期待确认列表清理
+- [x] 30.3 `server/index.js` 的 `disconnect` handler 移除 settlement wait 特殊推进逻辑，改为仅广播 `room:state` + `game:settlement-progress`（不广播 `game:state` 以保持其他玩家结算弹窗不被清掉）
+- [x] 30.4 `server/index.js` 的 `handleActionResult` 存储 `lastShowdown` 到房间对象
+- [x] 30.5 `server/index.js` 的 `room:sync` 增加结算等待期重连路径：向重连 socket 发 `game:state` + `game:showdown` + `game:settlement-progress`，不广播 full state 给所有人
+- [x] 30.6 `server/index.js` 的 `advanceRoom` 清空 `lastShowdown` + 清空结算超时定时器
+- [x] 30.7 `server/index.js` 新增结算等待期安全超时（10 分钟），断线的待确认玩家到点后自动 drop 以解锁房间
+- [x] 30.8 `server/index.js` 的 `room:kick` 踢人后检查是否解锁 settlement
+- [x] 30.9 更新集成测试：原测试断言断线后自动 advance 改为断言不自动 advance，新增超时模拟验证
+- [x] 30.10 回归验证：`npm test`（server，101/101）全绿

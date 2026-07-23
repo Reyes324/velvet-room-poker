@@ -24,6 +24,7 @@ class Room {
     this.dealerId = hostId;
     this.status = 'waiting'; // waiting | playing
     this.settlementWait = null; // { eligiblePlayerIds, readyPlayerIds } while waiting for post-showdown acks
+    this.lastShowdown = null; // Last showdown data, stored for reconnection during settlement wait
     this.pokeCooldowns = new Map(); // `${fromId}→${targetId}` -> last-poke timestamp (ms)
   }
 
@@ -50,6 +51,9 @@ class Room {
     this.players = this.players.filter(p => p.id !== id);
     if (this.hostId === id && this.players.length > 0) {
       this.hostId = this.players[0].id;
+    }
+    if (this.settlementWait) {
+      this.settlementWait.eligiblePlayerIds.delete(id);
     }
   }
 
