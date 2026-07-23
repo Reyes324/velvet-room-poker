@@ -30,6 +30,7 @@ class Room {
     // deliberately not called, so the room stays on the table instead of
     // snapping back to the lobby the instant someone busts.
     this.awaitingBustResolution = false;
+    this.lastShowdown = null; // Last showdown data, stored for reconnection during settlement wait
     this.pokeCooldowns = new Map(); // `${fromId}→${targetId}` -> last-poke timestamp (ms)
   }
 
@@ -74,6 +75,9 @@ class Room {
     if (this.hostId === id) {
       const next = this.players.find(p => !p.left);
       if (next) this.hostId = next.id;
+    }
+    if (this.settlementWait) {
+      this.settlementWait.eligiblePlayerIds.delete(id);
     }
   }
 

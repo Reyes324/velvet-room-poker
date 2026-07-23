@@ -790,6 +790,44 @@ GameState {
 
 **验证**：Bug A 新增服务端回归测试——构造一个真实的 3 人不等额全下场景（A 全下 1000、B 短码全下 300、C 弃牌），让 A 在没人对该层弃牌、纯粹因为筹码额度独占的边池层里赢下真实牌型而非弃牌标签；Bug B 新增两条测试，分别验证"本手已弃牌的 viewer 在摊牌阶段看不到任何人的底牌"和"没弃牌的 viewer 摊牌阶段仍能正常看到"。服务端 112/112 全绿（含一个跟本次改动无关、已确认是随机发牌偶发平局导致的既有 flaky 测试，重跑三次稳定通过）。
 
+## 结算等待期断线不应自动推进（Bug3 结构性修复，2026-07-23）
+
+**背景**：用户持续反馈一个 bug（前两个 session 未能复现），第三条线索"只有单挑时才会出现，房主每次弃牌都要退出"。逐一排查代码所有路径后定位到根因。
+
+**根因**：`server/index.js` 的 `disconnect` handler 在 settlement wait（筹码结算等待全员确认）期间存在一段特殊的处理逻辑——`dropFromSettlementWait()` 立即把断线玩家从"需要确认"名单里移除，如果因此导致剩余玩家都已确认，则立即调用 `advanceRoom()` 推进到下一手。这是整个断线处理体系里**唯一不符合"断线只标记 connected:false，不推动游戏状态"这个设计原则的地方**。
+
+手机上的完整触发链：
+1. 房主弃牌 → 单挑手牌结束 → `beginSettlementWait()`（双方都要点"我知道了"）
+2. 对手先点了"我知道了"
+3. 房主的手机端 WebSocket 短暂断开（iOS Safari 切后台/网络切换——手机上极其常见）
+4. 服务端 `disconnect` handler → `dropFromSettlementWait(房主Id)` → 所有人"确认"了 → `advanceRoom`
+5. `advanceRoom` → `nextRound()` → `active = players.filter(p => chips > 0 && connected !== false)` → 房主 `connected = false` → 只有 1 人活跃 → **游戏结束！**
+6. 房主 socket 重连后收到 `game:ended` → 回到了大厅
+
+**决策（结构性修复，不是打补丁）**：
+
+把 settlement wait 阶段的断线处理拉回统一的"断线只标记 connected:false，不推动游戏状态"规则：
+
+1. **删掉** `disconnect` handler 里 settlement wait 的 `dropFromSettlementWait` + `advanceRoom` 特殊处理。断线仅广播最新 connected 状态给全房间，不推进游戏。
+2. **重连恢复**：`room:sync` 检测到房间处于 settlement wait 时，向重连的 socket 重新下发 `game:showdown` 事件，让结算弹窗重新出现。
+3. **存储 showdown 数据**：`Room` 新增 `lastShowdown` 字段存储最近一次 showdown 结果，以便重连时恢复。
+4. **踢人可解锁**：`room:kick` 踢人后若 settlement wait 被解除了，自动推进。
+
+**为何这是结构性修复，不是打补丁**：
+
+| 方案 | 做法 | 问题 |
+|---|---|---|
+| Patch 式 | 在 settlement wait 里判断 heads-up 特殊处理 | 加 if，其他人数下同样问题不改 |
+| 结构性（本决策） | 删掉 settlement wait 这条特殊分支，和其他 mid-game 断线统一对待 | 一个规则管全场，一致性 |
+
+这个修复的意义是：当前代码已经有了一套完善的"mid-game 断线 ≠ 离开"的规则（第九轮之前修的），settlement wait 阶段的断线是这套规则唯一的例外。去掉这个例外，把整个游戏生命周期的断线统一成一个规则，不需要任何特殊判断。
+
+**受影响代码**：
+- `server/index.js`：`disconnect` handler、`room:sync` handler、`handleActionResult`、`advanceRoom`
+- `RoomManager.js`：新增 `lastShowdown` 字段
+
+**验证方法**：用集成测试验证 settlement wait 期间断线不会导致 advanceRoom（当前测试 `integration.test.js` 里有相关的断言，需更新预期行为）。
+
 ---
 
 ## Open Questions（待决策）
