@@ -356,7 +356,7 @@ describe('集成测试 — 游戏流程', () => {
     expect(state.phase).toBe('preflop');
   });
 
-  it('结算等待期内，导致本局结束的那位玩家断线 → 不应重入 _endHand（回归：actionIndex 未推进导致弃牌者断线时重复弃牌）', async () => {
+  it('结算等待期内断线 → 不再自动推进，掉线玩家仍在待确认列表中（回归：actionIndex 未推进导致弃牌者断线时重复弃牌 + Bug3 修复验证）', async () => {
     const { c1, c2 } = await setupRoom();
     const gs1 = waitFor(c1, 'game:state');
     c1.emit('room:start', { playerId: 'p1' });
@@ -383,16 +383,21 @@ describe('集成测试 — 游戏流程', () => {
     await new Promise((r) => setTimeout(r, 400));
     expect(extraShowdowns).toBe(0);
 
-    // p1 断线时已从 eligiblePlayerIds 中移除，但不再被整体移出房间——现在断线
-    // 只标记 connected:false，玩家本人（含筹码）仍留在座位上，等待重连。
-    // 此时只需 p2 确认，房间即可正确推进 —— 由于 nextRound() 只把 connected
-    // 的玩家算作 active，此刻只剩 p2 一名 active 玩家，应触发 game:ended。
-    const ended = waitFor(c2, 'game:ended', 3000);
-    c2.emit('game:ready-next', { playerId: 'p2' });
-    const endedResult = await ended;
-    expect(endedResult.ended).toBe(true);
-
+    // p1 断线后不再立即 drop 出 eligiblePlayerIds（Bug3 修复），
+    // p2 单独确认不应推进
     const room = rooms.getRoomByPlayer('p2');
+    expect(room.isAwaitingSettlementAck()).toBe(true);
+    expect(room.ackReady('p2')).toBe(false);
+
+    // 模拟结算超时：手动 drop 掉线的 p1
+    // dropFromSettlementWait 返回 true 表示剩余待确认者（只有 p2）都已确认
+    expect(room.dropFromSettlementWait('p1')).toBe(true);
+    expect(room.isAwaitingSettlementAck()).toBe(true); // advanceRoom 还没被调用
+
+    // 模拟 advanceRoom 的剩余逻辑
+    room.clearSettlementWait();
+    const nr = room.nextRound();
+    expect(nr.ended).toBe(true);
     expect(room.status).toBe('waiting');
     expect(room.players).toHaveLength(2);
     const p1 = room.players.find((p) => p.id === 'p1');
