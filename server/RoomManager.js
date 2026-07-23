@@ -207,6 +207,7 @@ class Room {
 
   clearSettlementWait() {
     this.settlementWait = null;
+    this.revealedPlayerIds = null;
   }
 
   // Real per-player ack progress for the settlement modal's "等待其他人确认

@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const { RoomManager } = require('./RoomManager');
+const { parseCard } = require('./GameEngine');
 
 function createServer() {
   const app = express();
@@ -330,6 +331,26 @@ function createServer() {
       if (!room?.isAwaitingSettlementAck()) return;
       if (room.ackReady(playerId)) advanceRoom(room);
       else io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
+    });
+
+    socket.on('game:reveal-cards', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room?.isAwaitingSettlementAck() || !room.game) return;
+
+      const player = room.game.players.find(p => p.id === playerId);
+      // Must be a fold-win: this player didn't fold, and is the ONLY non-folded player
+      const activePlayers = room.game.players.filter(p => p.status !== 'folded');
+      if (!player || player.status === 'folded' || activePlayers.length !== 1) return;
+      // No double-reveal
+      if (!room.revealedPlayerIds) room.revealedPlayerIds = new Set();
+      if (room.revealedPlayerIds.has(playerId)) return;
+      room.revealedPlayerIds.add(playerId);
+
+      io.to(room.code).emit('game:cards-revealed', {
+        playerId,
+        playerName: player.name,
+        holeCards: player.holeCards.map(parseCard),
+      });
     });
 
     socket.on('disconnect', () => {
