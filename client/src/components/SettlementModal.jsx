@@ -5,17 +5,10 @@ function colorForId(id) {
   return h;
 }
 
-// Settlement sheet — bottom drawer (not a full-screen overlay), so the
-// showdown reveal on the table stays visible behind it. Only dismissed
-// when the server actually advances to the next hand (see RoomPage).
-// Deliberately just "who won, how much, what beat it" — no per-player
-// breakdown (that used to make this tall enough to reach hero's own cards
-// near the bottom of the canvas; the running ledger already covers
-// who's up/down overall, this doesn't need to repeat it every hand). Also
-// shared by the fold-win case (`handName` reads "其他人全部弃牌" instead of
-// a real hand description then) rather than a separate component — the
-// wording difference alone is enough to tell the two apart.
-export default function SettlementModal({ winners = [], myId, readyCount, totalCount, iAmReady, onReady }) {
+export default function SettlementModal({
+  winners = [], myId, readyCount, totalCount, iAmReady, onReady,
+  isFoldWin = false, iAmWinner = false, myCardsRevealed = false, onReveal,
+}) {
   if (winners.length === 0) return null;
 
   return (
@@ -41,6 +34,15 @@ export default function SettlementModal({ winners = [], myId, readyCount, totalC
           );
         })}
       </div>
+
+      {isFoldWin && iAmWinner && (
+        <div
+          className={`modal-btn modal-btn--secondary${myCardsRevealed ? ' modal-btn--revealed' : ''}`}
+          onClick={myCardsRevealed ? undefined : onReveal}
+        >
+          {myCardsRevealed ? '已亮牌 ✓' : '🃏 亮牌'}
+        </div>
+      )}
 
       <div className={`modal-btn${iAmReady ? ' modal-btn--waiting' : ''}`} onClick={iAmReady ? undefined : onReady}>
         {iAmReady ? `等待其他人确认…（${readyCount}/${totalCount}）` : '我知道了'}
