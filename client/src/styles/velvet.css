@@ -221,6 +221,11 @@
 .poke-bubble { animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both, actionBubbleOut .3s ease-in .4s forwards; }
 @keyframes actionBubbleOut { to { opacity:0; scale:.9; translate:0 -8px; } }
 
+@keyframes revealGlow {
+  0%, 100% { box-shadow: 0 0 6px rgba(212, 175, 55, 0.25); }
+  50%      { box-shadow: 0 0 22px rgba(212, 175, 55, 0.65); }
+}
+
 /* showdown reveal */
 /* Used to be a bespoke mini-card (one rank + one centered suit glyph, no
    corner pair, no real card layout) — read as visually incomplete next to
@@ -229,10 +234,17 @@
    real render: "牌本身显示不完全"). Now just wraps real Card elements at the
    new c-xs size instead of maintaining a second, simpler card look. */
 .reveal { display:flex; gap:3px; }
+.reveal-fold-show { display:flex; gap:3px; animation:revealGlow 1.5s ease-in-out infinite; }
+.reveal-fold-show .card { border: 2px solid #D4AF37; border-radius: 5px; }
 .hand-rank { font-family:var(--font-mono); font-size:8px; color:#C8B888; white-space:nowrap; }
 
 /* ── HERO INFO ────────────────────────────────────────────── */
 .hero-cards { display:flex; gap:10px; }
+.hero-cards--revealed {
+  transform: scale(1.15);
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1), box-shadow .3s ease;
+  animation: revealGlow 1.5s ease-in-out infinite;
+}
 
 /* ── TOP BAR ──────────────────────────────────────────────── */
 .menu-btn { width:44px; height:44px; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.14); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; color:var(--text-secondary); cursor:pointer; }
@@ -357,6 +369,19 @@
    the vertical space the stacked layout used to cost. */
 .modal-hand { flex: 0 1 auto; align-self: center; text-align: right; font-family:var(--font-body); font-size:13px; font-weight:700; color:#FFF3C4; background:rgba(212,175,55,.14); border:1px solid rgba(212,175,55,.4); border-radius:8px; padding:4px 10px; max-width: 42%; }
 .modal-btn { width:100%; height:48px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:24px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:#050D06; letter-spacing:1px; cursor:pointer; box-shadow:0 4px 20px rgba(212,175,55,.25); margin-top:4px; }
+/* Secondary outline button — used for "亮牌" alongside the primary "我知道了" */
+.modal-btn--secondary {
+  background: transparent;
+  border: 1.5px solid rgba(212, 175, 55, .4);
+  color: #D4AF37;
+  box-shadow: none;
+  margin-bottom: 0;
+}
+.modal-btn--revealed {
+  opacity: .45;
+  border-color: rgba(212, 175, 55, .18);
+  cursor: default;
+}
 /* Paired side-by-side with .modal-btn-danger inside .modal-btns — matches
    its height/size instead of .modal-btn's own full-width dimensions. */
 .modal-btn--paired { width:auto; flex:1; height:46px; font-size:13px; margin-top:0; }
