@@ -107,7 +107,7 @@ function spectatorSeatPositions(n) {
   return seats;
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onPoke, pokedSeat, settlementOpen = false }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {} }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const tableZoneRef = useRef(null);
@@ -385,6 +385,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               bubbleSide={bubbleSide}
               onPoke={() => onPoke?.(p.id)}
               poked={pokedSeat?.targetId === p.id}
+              revealedCards={revealedPlayers[p.id]?.holeCards ?? null}
             />
           </div>
         );
@@ -392,7 +393,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
       {amPlaying && (
         <div className={`hero-section${settlementOpen ? ' hero-section--lifted' : ''}`}>
-          <div className="hero-cards">
+          <div className={`hero-cards${revealedPlayers[myId] ? ' hero-cards--revealed' : ''}`}>
             {me.holeCards?.length === 2
               ? (heroRevealed
                   ? me.holeCards.map((c, i) => (

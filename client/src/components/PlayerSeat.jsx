@@ -41,7 +41,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -81,6 +81,14 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         <div className="reveal" style={sideStyle(cardsSide)}>
           {player.holeCards.map((c, i) => (
             <Card key={i} card={c} size="xs" />
+          ))}
+        </div>
+      )}
+
+      {revealedCards && revealedCards.length === 2 && (
+        <div className="reveal-fold-show" style={sideStyle(cardsSide)}>
+          {revealedCards.map((c, i) => (
+            <Card key={i} card={c} size="xs" animate="flip-reveal" delay={i * 0.1} />
           ))}
         </div>
       )}
