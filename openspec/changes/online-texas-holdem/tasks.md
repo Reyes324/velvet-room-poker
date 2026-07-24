@@ -669,3 +669,20 @@
 - [x] 43.3 `RoomPage.jsx` 的 `game:ended` 处理器：`hostEnded` 时额外自动 `setShowLedger(true)`
 - [x] 43.4 `GameTable.jsx` 菜单新增 host-only"结束游戏"行 + 确认弹窗（复用退出游戏那套 UI），`isHost`/`onEndGame` 新增 prop 一路传下去
 - [x] 43.5 服务端新增两条回归测试（房主结束→双方收到 `hostEnded` 且筹码不清零、非房主调用被拒绝），114/114 全绿；Playwright 双人真机验证：房主点结束游戏确认后双方都回到大厅、账本自动弹出且两边数字一致（¥990/¥980，对应结束前那手已下的盲注）、非房主菜单里没有"结束游戏"项，截图确认
+
+## 44. 大厅/账本对比度修复 + 建房一步到位 + 账本已借显负号（用户反馈，2026-07-24）
+
+- [x] 44.1 大厅"重新开始"按钮实际可点，但复用了 `.lobby-restart` 基础色 `#2A4A2C`（本来是给非房主"等待房主开始游戏…"这个禁用态文案准备的），几乎跟背景同色，看起来像失效——连同 `.lobby-blind`/`.lobby-sec`/`.pr-chips`/`.es-dot`/`.es-txt`/`.modal-btn-cancel`/`.ledger-head-row`/`.ledger-note` 一批同样硬编码了 `#2A4A2C`/`#1E3820`/`#5A6E5C` 的文字（实测对比度普遍在 2:1～3.5:1，远低于正文 4.5:1 门槛）统一换成设计系统已有的 `--text-secondary`（~6.5:1），不再发明新的一次性颜色
+- [x] 44.2 大厅玩家列表滚动条隐藏（`scrollbar-width:none` + `::-webkit-scrollbar{display:none}`），滚动功能保留
+- [x] 44.3 创建房间从"填名字→点创建房间→再点一次创建"两步精简成一步：昵称输入框其实从一开始就在，`mode==='create'` 这个多余的确认态直接删掉，点"创建房间"直接 `handleCreate()`；加入房间因为还要填房间码，流程不变
+- [x] 44.4 账本"已借"列从纯数字（¥200）改成带负号（−¥200），跟"盈亏"列的正负号视觉语言保持一致
+- [x] 44.5 Playwright 真机验证（390×780）：大厅盲注/玩家计数/空位提示/重新开始按钮、账本表头/说明文字，改动前后截图对比确认清晰可读；建房单击直达房间验证；服务端 114/114 不受影响（本轮纯前端）
+
+## 45. 新增"牌局记录"功能：每手结果摘要，不含逐动作回放（用户反馈，2026-07-24）
+
+- [x] 45.1 设计决策已用 AskUserQuestion 逐项确认（记录范围/存储方式/入口位置），记入 design.md
+- [x] 45.2 `GameEngine._endHand()` 返回值新增 `showdownReveal`：`foldWin` 时为空数组，真实摊牌时是 `contenders`（本手没弃牌的所有人）的 `{id, name, holeCards}`——只记录本来就已经在摊牌阶段广播给全桌的信息，不新增泄漏
+- [x] 45.3 `RoomManager.js`：`Room` 新增 `handHistory` 数组，`restart()` 清空（新的一晚），host 主动"结束游戏"不清空
+- [x] 45.4 `server/index.js`：`handleActionResult` 在 `result.showdown` 时往 `handHistory` push 一条记录（手数序号/时间戳/公共牌/`foldWin`/`winners`/`settle`/`reveals`）；`game:reveal-cards` 成功广播后，顺手把同一手在 `handHistory` 里的 `reveals` 补上赢家手牌；新增 `room:get-hand-history` 请求/`room:hand-history` 响应，按需拉取而不是塞进高频的 `room:state` 广播
+- [x] 45.5 新增 `client/src/components/HandHistoryModal.jsx`：最新一手在最上面，点开一行展开公共牌/双方手牌（按可见性规则）/每人这手净输赢；`GameTable.jsx`/`Lobby.jsx` 菜单都新增"牌局记录"入口（不分房主，随时可查）
+- [x] 45.6 服务端新增回归测试：弃牌获胜一手结束后 `room:get-hand-history` 能拿到摘要（`reveals` 为空）；亮牌炫耀后同一手记录补上赢家手牌，115/115 全绿；Playwright 双人真机跑一手弃牌获胜（含亮牌炫耀）+ 一手真摊牌，打开牌局记录验证列表/展开/公共牌/手牌可见性/净输赢全部正确，截图确认

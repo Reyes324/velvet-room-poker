@@ -28,7 +28,7 @@ export default function LedgerModal({ players, startingChips, myId, onClose }) {
                   {p.left && <span className="ledger-left-tag">已离开</span>}
                 </div>
                 <div className="ledger-cell">¥{startingChips.toLocaleString()}</div>
-                <div className="ledger-cell ledger-cell--debt">{p.debt > 0 ? `¥${p.debt.toLocaleString()}` : '—'}</div>
+                <div className="ledger-cell ledger-cell--debt">{p.debt > 0 ? `−¥${p.debt.toLocaleString()}` : '—'}</div>
                 <div className="ledger-cell">¥{p.chips.toLocaleString()}</div>
                 <div className={`ledger-cell ledger-cell--net ${net === 0 ? 'net-neutral' : net > 0 ? 'net-win' : 'net-lose'}`}>
                   {net === 0 ? '¥0' : (net > 0 ? '+¥' : '−¥') + Math.abs(net).toLocaleString()}

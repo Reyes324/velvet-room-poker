@@ -169,6 +169,46 @@ describe('集成测试 — 游戏流程', () => {
     expect(msg).toBeDefined();
   });
 
+  it('弃牌获胜一手结束后，room:get-hand-history 能拿到结果摘要；亮牌炫耀后该手记录补上赢家手牌', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    const gs2 = waitFor(c2, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    const [state1] = await Promise.all([gs1, gs2]);
+
+    const actor = state1.actionPlayerId === 'p1' ? c1 : c2;
+    const actorId = state1.actionPlayerId;
+    const winnerId = actorId === 'p1' ? 'p2' : 'p1';
+    const winnerClient = actorId === 'p1' ? c2 : c1;
+
+    const settled = waitFor(actor === c1 ? c2 : c1, 'game:showdown');
+    actor.emit('game:action', { playerId: actorId, action: 'fold' });
+    await settled;
+
+    const historyResp = waitFor(winnerClient, 'room:hand-history');
+    winnerClient.emit('room:get-hand-history', { playerId: winnerId });
+    const history = await historyResp;
+
+    expect(history).toHaveLength(1);
+    expect(history[0].handNumber).toBe(1);
+    expect(history[0].foldWin).toBe(true);
+    expect(history[0].winners[0].id).toBe(winnerId);
+    expect(history[0].reveals).toEqual([]);
+    // Every player's net for the hand is present, winner and folder alike.
+    expect(history[0].settle.map(s => s.id).sort()).toEqual(['p1', 'p2']);
+
+    const revealed = waitFor(winnerClient, 'game:cards-revealed');
+    winnerClient.emit('game:reveal-cards', { playerId: winnerId });
+    await revealed;
+
+    const historyResp2 = waitFor(winnerClient, 'room:hand-history');
+    winnerClient.emit('room:get-hand-history', { playerId: winnerId });
+    const history2 = await historyResp2;
+    expect(history2[0].reveals).toHaveLength(1);
+    expect(history2[0].reveals[0].id).toBe(winnerId);
+    expect(history2[0].reveals[0].holeCards).toHaveLength(2);
+  });
+
   it('房主踢人 → 目标玩家收到 room:kicked，且被标记 left（账本仍保留这一行）', async () => {
     const { c1, c2 } = await setupRoom();
     const kicked = waitFor(c2, 'room:kicked');

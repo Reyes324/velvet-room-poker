@@ -211,6 +211,16 @@ function createServer() {
       io.to(room.code).emit('game:showdown', showdownData);
       room.lastShowdown = showdownData;
       room.beginSettlementWait();
+
+      room.handHistory.push({
+        handNumber: room.handHistory.length + 1,
+        timestamp: Date.now(),
+        communityCards: result.state.communityCards,
+        foldWin: result.foldWin,
+        winners: result.winners.map(w => ({ id: w.id, name: w.name, won: w.won, handName: w.handName })),
+        settle: result.settle,
+        reveals: result.showdownReveal,
+      });
     }
   }
 
@@ -344,6 +354,16 @@ function createServer() {
       io.to(room.code).emit('game:ended', { ended: true, reason: '房主结束了本局对局', hostEnded: true });
     });
 
+    // On-demand only (not folded into the high-frequency room:state
+    // broadcast every action already triggers) — the history can grow to
+    // dozens of hands across a night, no need to ship all of it on every
+    // single check/call.
+    socket.on('room:get-hand-history', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      socket.emit('room:hand-history', room.handHistory);
+    });
+
     socket.on('room:sync', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) {
@@ -435,11 +455,22 @@ function createServer() {
       if (room.revealedPlayerIds.has(playerId)) return;
       room.revealedPlayerIds.add(playerId);
 
+      const revealedHoleCards = player.holeCards.map(parseCard);
       io.to(room.code).emit('game:cards-revealed', {
         playerId,
         playerName: player.name,
-        holeCards: player.holeCards.map(parseCard),
+        holeCards: revealedHoleCards,
       });
+
+      // Same settlement-wait invariant room.lastShowdown already relies on:
+      // no new hand can start until this one's wait resolves, so the most
+      // recent handHistory entry is still this hand — patch its reveals in
+      // now that the winner opted in, instead of it staying permanently
+      // empty for a fold-win hand they later chose to show off.
+      const lastHand = room.handHistory[room.handHistory.length - 1];
+      if (lastHand && lastHand.foldWin) {
+        lastHand.reveals.push({ id: playerId, name: player.name, holeCards: revealedHoleCards });
+      }
     });
 
     socket.on('disconnect', () => {

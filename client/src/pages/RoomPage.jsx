@@ -6,6 +6,7 @@ import SettlementModal from '../components/SettlementModal';
 import BustDecisionModal from '../components/BustDecisionModal';
 import BustWaitModal from '../components/BustWaitModal';
 import LedgerModal from '../components/LedgerModal';
+import HandHistoryModal from '../components/HandHistoryModal';
 
 // Real showdowns give the table this long to actually show the revealed
 // hands before the settlement sheet appears — the sheet used to appear in
@@ -25,6 +26,8 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
   const [iAmReady, setIAmReady] = useState(false);
   const [settlementProgress, setSettlementProgress] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
+  const [showHandHistory, setShowHandHistory] = useState(false);
+  const [handHistory, setHandHistory] = useState([]);
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
   const [revealedPlayers, setRevealedPlayers] = useState({});
   // { [playerId]: { playerName, holeCards } }
@@ -89,6 +92,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setTimeout(onLeave, 2500);
     },
     'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
+    'room:hand-history': (hands) => setHandHistory(hands),
     'player:poked': ({ targetId }) => {
       const key = Date.now();
       setPokedSeat({ targetId, key });
@@ -216,6 +220,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           onRebuy={rebuy}
           onExit={leaveRoom}
           onOpenLedger={() => setShowLedger(true)}
+          onOpenHandHistory={() => { emit('room:get-hand-history', { playerId }); setShowHandHistory(true); }}
           copied={copied}
         />
         {showLedger && (
@@ -224,6 +229,13 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
             startingChips={roomState?.startingChips ?? 1000}
             myId={playerId}
             onClose={() => setShowLedger(false)}
+          />
+        )}
+        {showHandHistory && (
+          <HandHistoryModal
+            hands={handHistory}
+            myId={playerId}
+            onClose={() => setShowHandHistory(false)}
           />
         )}
         {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
@@ -246,6 +258,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         myChips={myRoomChips}
         onRebuy={rebuy}
         onOpenLedger={() => setShowLedger(true)}
+        onOpenHandHistory={() => { emit('room:get-hand-history', { playerId }); setShowHandHistory(true); }}
         onPoke={poke}
         pokedSeat={pokedSeat}
         settlementOpen={!!settlement}
@@ -253,6 +266,13 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         isHost={isHost}
         onEndGame={() => emit('room:end-game', { playerId })}
       />
+      {showHandHistory && (
+        <HandHistoryModal
+          hands={handHistory}
+          myId={playerId}
+          onClose={() => setShowHandHistory(false)}
+        />
+      )}
       {myBust && (
         <BustDecisionModal onRebuy={rebuy} onLeave={leaveRoom} />
       )}

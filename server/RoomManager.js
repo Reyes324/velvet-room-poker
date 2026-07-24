@@ -32,6 +32,12 @@ class Room {
     this.awaitingBustResolution = false;
     this.lastShowdown = null; // Last showdown data, stored for reconnection during settlement wait
     this.pokeCooldowns = new Map(); // `${fromId}→${targetId}` -> last-poke timestamp (ms)
+    // Per-hand result log for this session ("牌局记录") — result summary
+    // only (community cards, who won what, how), not a full action replay.
+    // In-memory like everything else in Room; cleared by restart() along
+    // with chips/debt (a fresh night), but NOT by the host's "结束游戏"
+    // (which deliberately keeps the session's numbers intact).
+    this.handHistory = [];
   }
 
   addPlayer(id, name, socketId) {
@@ -172,6 +178,7 @@ class Room {
     this.status = 'waiting';
     this.game = null;
     this.awaitingBustResolution = false;
+    this.handHistory = [];
     this.dealerId = this.players.find(p => !p.left)?.id ?? null;
   }
 

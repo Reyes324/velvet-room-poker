@@ -96,15 +96,8 @@ export default function HomePage({ onJoined, initialCode }) {
 
           {mode === null && (
             <div className="home-buttons">
-              <button className="btn-primary" onClick={() => setMode('create')}>创建房间</button>
+              <button className="btn-primary" onClick={handleCreate}>创建房间</button>
               <button className="btn-secondary" onClick={() => setMode('join')}>加入房间</button>
-            </div>
-          )}
-
-          {mode === 'create' && (
-            <div className="home-buttons">
-              <button className="btn-primary" onClick={handleCreate}>创建</button>
-              <button className="btn-ghost" onClick={() => setMode(null)}>返回</button>
             </div>
           )}
 

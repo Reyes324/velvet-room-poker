@@ -361,6 +361,18 @@ class GameEngine {
         status: p.status,
         net: (won[p.id] || 0) - p.totalBet,
       })),
+      // For hand-history logging only — deliberately NOT everyone's cards.
+      // A fold-win winner never had to prove their hand, so nothing goes in
+      // here until (if ever) they opt into 亮牌炫耀 later; a real showdown's
+      // `contenders` (everyone who didn't fold) already had their cards
+      // shown to the whole table live (see getStateForPlayer), so recording
+      // them in history isn't a new leak, just a durable copy of what was
+      // already public.
+      showdownReveal: isFoldWin ? [] : contenders.map(p => ({
+        id: p.id,
+        name: p.name,
+        holeCards: p.holeCards.map(parseCard),
+      })),
     };
   }
 

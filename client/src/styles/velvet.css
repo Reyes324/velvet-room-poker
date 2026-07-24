@@ -120,7 +120,7 @@
   max-width:70px; margin:0 auto 3px; margin-left:-10px; margin-right:-10px;
 }
 .seat-name {
-  font-family:var(--font-body); font-size:10px; color:var(--text-secondary);
+  font-family:var(--font-body); font-size:12px; font-weight:600; color:var(--text-primary);
   text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   min-width:0; flex:0 1 auto;
 }
@@ -421,7 +421,7 @@
 .modal-btn--paired { width:auto; flex:1; height:46px; font-size:13px; margin-top:0; }
 .modal-body { font-family:var(--font-body); font-size:14px; color:#8A8A7A; text-align:center; line-height:1.5; }
 .modal-btns { display:flex; gap:9px; width:100%; }
-.modal-btn-cancel { flex:1; height:46px; border-radius:23px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); font-family:var(--font-display); font-size:13px; color:#5A6E5C; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.modal-btn-cancel { flex:1; height:46px; border-radius:23px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); font-family:var(--font-display); font-size:13px; color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .modal-btn-danger { flex:1; height:46px; border-radius:23px; background:linear-gradient(135deg,#7A1E1E,#C0392B); font-family:var(--font-display); font-size:13px; font-weight:700; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 16px rgba(192,57,43,.3); }
 .cd { display:inline-block; width:18px; text-align:center; }
 
@@ -435,7 +435,7 @@
 .ledger-modal { width:356px; }
 .ledger-table { width:100%; display:flex; flex-direction:column; gap:6px; }
 .ledger-head-row, .ledger-row { display:grid; grid-template-columns:1.35fr 0.7fr 0.7fr 0.85fr 0.9fr; gap:4px; align-items:center; }
-.ledger-head-row { font-family:var(--font-mono); font-size:7px; color:#5A6E5C; letter-spacing:1px; padding:0 8px; }
+.ledger-head-row { font-family:var(--font-mono); font-size:8px; color:var(--text-secondary); letter-spacing:1px; padding:0 8px; }
 .ledger-row { padding:8px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:9px; }
 .ledger-row.hero { background:rgba(212,175,55,.08); border-color:rgba(212,175,55,.16); }
 .ledger-name { font-family:var(--font-body); font-size:12px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -446,20 +446,50 @@
 .ledger-cell--net.net-win { color:var(--state-safe); }
 .ledger-cell--net.net-lose { color:var(--state-danger); }
 .ledger-cell--net.net-neutral { color:#8A9C8C; }
-.ledger-note { font-family:var(--font-body); font-size:10px; color:#5A6E5C; text-align:center; line-height:1.5; }
+.ledger-note { font-family:var(--font-body); font-size:10px; color:var(--text-secondary); text-align:center; line-height:1.5; }
+
+/* ── HAND HISTORY MODAL（牌局记录 — 结果摘要，不是逐动作回放） ── */
+.hand-history-modal { width:356px; }
+.hh-empty { font-family:var(--font-body); font-size:13px; color:var(--text-secondary); text-align:center; padding:24px 0; }
+.hh-list { width:100%; display:flex; flex-direction:column; gap:6px; max-height:52vh; overflow-y:auto; scrollbar-width:none; -ms-overflow-style:none; }
+.hh-list::-webkit-scrollbar { display:none; }
+.hh-hand { background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:9px; overflow:hidden; }
+.hh-hand-row { display:flex; align-items:center; gap:8px; padding:10px 11px; cursor:pointer; }
+.hh-hand-num { font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); flex-shrink:0; }
+.hh-hand-summary { flex:1; min-width:0; font-family:var(--font-body); font-size:12px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hh-hand-amt { color:var(--state-safe); font-weight:700; }
+.hh-hand-tag { font-family:var(--font-mono); font-size:9px; color:#D4AF37; background:rgba(212,175,55,.12); border-radius:6px; padding:3px 7px; flex-shrink:0; }
+.hh-hand-tag--foldwin { color:#CFF0D8; background:rgba(42,128,64,.18); }
+.hh-hand-detail { padding:0 11px 11px; display:flex; flex-direction:column; gap:8px; }
+.hh-community { display:flex; gap:3px; }
+.hh-players { display:flex; flex-direction:column; gap:5px; }
+.hh-player-row { display:flex; align-items:center; gap:8px; }
+.hh-player-name { flex:1; min-width:0; font-family:var(--font-body); font-size:12px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hh-folded-tag { margin-left:6px; font-family:var(--font-mono); font-size:8px; color:var(--text-secondary); }
+.hh-player-cards { display:flex; gap:2px; flex-shrink:0; }
+.hh-player-net { font-family:var(--font-amount); font-size:11px; font-weight:700; flex-shrink:0; }
+.hh-player-net.net-win { color:var(--state-safe); }
+.hh-player-net.net-lose { color:var(--state-danger); }
+.hh-player-net.net-neutral { color:#8A9C8C; }
 
 /* ── LOBBY ────────────────────────────────────────────────── */
+/* Contrast fix (user feedback: "整个页面很多文字看不清"): several lobby
+   labels (blind text, section header, chip count, empty-seat placeholder)
+   were hardcoded to #2A4A2C/#1E3820 — near-black greens that measure
+   ~2:1 contrast against the page background, well under the ~4.5:1 floor
+   for body text. Replaced with the existing --text-secondary token
+   (~6.5:1) instead of inventing new one-off colors. */
 .lobby-room-name { font-family:var(--font-display); font-size:19px; color:var(--text-primary); }
-.lobby-blind { font-family:var(--font-mono); font-size:9px; color:#2A4A2C; margin-top:3px; letter-spacing:1px; }
+.lobby-blind { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); margin-top:3px; letter-spacing:1px; }
 .room-code { font-family:var(--font-display); font-size:22px; font-weight:700; color:#D4AF37; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:10px; padding:6px 14px; letter-spacing:4px; }
 .share-invite-btn { display:flex; align-items:center; justify-content:center; gap:8px; height:44px; background:rgba(212,175,55,.09); border:1px solid rgba(212,175,55,.28); border-radius:12px; color:#D4AF37; font-family:var(--font-body); font-size:13px; cursor:pointer; margin-bottom:14px; transition:background .15s; }
 .share-invite-btn:active { background:rgba(212,175,55,.18); }
 .share-icon { font-size:14px; }
-.lobby-sec { font-family:var(--font-mono); font-size:8px; color:#2A4A2C; letter-spacing:3px; padding-bottom:8px; border-bottom:1px solid rgba(212,175,55,.07); margin-bottom:9px; }
+.lobby-sec { font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); letter-spacing:3px; padding-bottom:8px; border-bottom:1px solid rgba(212,175,55,.07); margin-bottom:9px; }
 .pl-row { display:flex; align-items:center; gap:11px; padding:9px 11px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:11px; }
 .pr-av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--text-primary); flex-shrink:0; }
 .pr-name { font-family:var(--font-body); font-size:14px; color:var(--text-primary); }
-.pr-chips { font-family:var(--font-amount); font-size:11px; color:#8A7850; }
+.pr-chips { font-family:var(--font-amount); font-size:11px; color:var(--text-secondary); }
 .pr-badge { font-family:var(--font-mono); font-size:8px; background:rgba(212,175,55,.12); color:#D4AF37; border-radius:7px; padding:2px 7px; }
 .debt-badge { background:rgba(192,100,43,.15); color:#E08A4A; border:1px solid rgba(192,100,43,.3); }
 /* +借一底/移出 are tappable actions, not passive info tags like 房主/借¥X —
@@ -562,7 +592,7 @@
    into its neighbor's. */
 .game-stage--dense .seat { width:44px; }
 .game-stage--dense .seat-name-row { max-width:58px; }
-.game-stage--dense .seat-name { font-size:8px; }
+.game-stage--dense .seat-name { font-size:9px; }
 .game-stage--dense .avatar-card { width:44px; }
 .game-stage--dense .avatar-photo { height:34px; font-size:13px; }
 .game-stage--dense .think-overlay { font-size:15px; }
@@ -574,15 +604,22 @@
 .game-stage .lobby { position:relative; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:14px; padding-bottom:calc(14px + env(safe-area-inset-bottom,0px)); z-index:5; }
 .lobby-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
 .pr-info { flex:1; min-width:0; }
-.lobby-scroll { flex:1; overflow-y:auto; min-height:0; }
+.lobby-scroll { flex:1; overflow-y:auto; min-height:0; scrollbar-width:none; -ms-overflow-style:none; }
+.lobby-scroll::-webkit-scrollbar { display:none; }
 .pl-row { margin-bottom:7px; }
 .empty-slot { display:flex; align-items:center; gap:11px; padding:9px 11px; border:1px dashed rgba(28,48,30,.28); border-radius:11px; margin-bottom:7px; }
-.es-dot { width:36px; height:36px; border-radius:50%; border:1px dashed rgba(28,48,30,.4); display:flex; align-items:center; justify-content:center; color:#1E3820; font-size:18px; flex-shrink:0; }
-.es-txt { font-family:var(--font-body); font-size:14px; color:#1E3820; }
+.es-dot { width:36px; height:36px; border-radius:50%; border:1px dashed rgba(28,48,30,.4); display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-size:18px; flex-shrink:0; }
+.es-txt { font-family:var(--font-body); font-size:14px; color:var(--text-secondary); }
 .lobby-footer { flex-shrink:0; padding-top:12px; }
 .lobby-btn { margin-bottom:12px; }
-.lobby-restart { text-align:center; font-family:var(--font-mono); font-size:9px; color:#2A4A2C; letter-spacing:2px; cursor:pointer; padding:4px 0 8px; opacity:.8; }
-.lobby-restart:active { opacity:.5; }
+/* Base is the ENABLED look (host's actual clickable "重新开始") — was
+   accidentally sharing the dim near-invisible color meant only for the
+   non-host "等待房主开始游戏…" waiting label below, which already
+   overrides back to that dim color inline where it's actually meant to
+   look disabled (see Lobby.jsx). Bumped size too — 9px read as "broken",
+   not just quiet. */
+.lobby-restart { text-align:center; font-family:var(--font-mono); font-size:13px; font-weight:600; color:var(--text-secondary); letter-spacing:1.5px; cursor:pointer; padding:6px 0 8px; }
+.lobby-restart:active { opacity:.6; }
 .room-code { cursor:pointer; }
 
 /* ── TOAST (position:fixed — outside .game-stage, relative to viewport) ─ */

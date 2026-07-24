@@ -107,7 +107,7 @@ function spectatorSeatPositions(n) {
   return seats;
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -260,6 +260,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         <div className="modal-overlay" onClick={() => setShowMenu(false)}>
           <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
             <div className="menu-row" onClick={() => { setShowMenu(false); onOpenLedger?.(); }}>账本</div>
+            <div className="menu-row" onClick={() => { setShowMenu(false); onOpenHandHistory?.(); }}>牌局记录</div>
             {isHost && (
               <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
             )}
