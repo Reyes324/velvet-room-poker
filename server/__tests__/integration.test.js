@@ -139,6 +139,36 @@ describe('集成测试 — 游戏流程', () => {
     expect(msg).toBeDefined();
   });
 
+  it('房主发送 room:end-game → 双方收到 hostEnded 的 game:ended，且筹码不清零（跟 restart 区分）', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    const gs2 = waitFor(c2, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await Promise.all([gs1, gs2]);
+
+    const ended1 = waitFor(c1, 'game:ended');
+    const ended2 = waitFor(c2, 'game:ended');
+    const rs1 = waitFor(c1, 'room:state');
+    c1.emit('room:end-game', { playerId: 'p1' });
+    const [end1, end2, state1] = await Promise.all([ended1, ended2, rs1]);
+
+    expect(end1.hostEnded).toBe(true);
+    expect(end2.hostEnded).toBe(true);
+    expect(state1.status).toBe('waiting');
+    // Blinds were already posted this hand — chips reflect the in-progress
+    // hand's state (via syncChipsFromGame), not reset to the 1000 starting
+    // amount the way room:restart does.
+    expect(state1.players.every(p => p.chips === 1000)).toBe(false);
+  });
+
+  it('非房主发送 room:end-game → 收到 game:error', async () => {
+    const { c2 } = await setupRoom();
+    const errMsg = waitFor(c2, 'game:error');
+    c2.emit('room:end-game', { playerId: 'p2' });
+    const msg = await errMsg;
+    expect(msg).toBeDefined();
+  });
+
   it('房主踢人 → 目标玩家收到 room:kicked，且被标记 left（账本仍保留这一行）', async () => {
     const { c1, c2 } = await setupRoom();
     const kicked = waitFor(c2, 'room:kicked');

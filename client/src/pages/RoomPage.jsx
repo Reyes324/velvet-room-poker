@@ -54,7 +54,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     'game:showdown': ({ winners, foldWin }) => {
       setShowdown(winners);
       const showSettlement = () => {
-        setSettlement({ winners });
+        setSettlement({ winners, foldWin });
         // Real per-player ack count arrives via game:settlement-progress; this is
         // just a reasonable first paint before that first event lands.
         setSettlementProgress({ readyCount: 0, totalCount: (roomState?.players ?? []).length });
@@ -67,7 +67,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       else settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
     },
     'game:settlement-progress': (progress) => setSettlementProgress(progress),
-    'game:ended': ({ reason }) => {
+    'game:ended': ({ reason, hostEnded }) => {
       showToast(reason ?? '游戏结束', 'info');
       clearTimeout(settlementTimerRef.current);
       setGameState(null);
@@ -75,6 +75,10 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       setIAmReady(false);
       setSettlementProgress(null);
       setRevealedPlayers({});
+      // Host deliberately ending the night, not the chips-ran-out auto-pause
+      // — surface the final tally immediately instead of leaving everyone to
+      // dig for it in the menu after the fact.
+      if (hostEnded) setShowLedger(true);
     },
     'room:kicked': () => {
       showToast('你已被房主移出房间', 'danger');
@@ -246,6 +250,8 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         pokedSeat={pokedSeat}
         settlementOpen={!!settlement}
         revealedPlayers={revealedPlayers}
+        isHost={isHost}
+        onEndGame={() => emit('room:end-game', { playerId })}
       />
       {myBust && (
         <BustDecisionModal onRebuy={rebuy} onLeave={leaveRoom} />
@@ -255,7 +261,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
       )}
       {!myBust && othersBust.length > 0 && isHost && (
         <div className="toast toast--info">
-          等待 {othersBust.map(p => p.name).join('、')} 决策中…
+          {othersBust.map(p => p.name).join('、')}筹码清空，等待{othersBust.length > 1 ? '他们' : '他'}决策是否再借一底
           {othersBust.map(p => (
             <span
               key={p.id}
@@ -276,7 +282,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         />
       )}
       {settlement && settlement.winners?.length > 0 && (() => {
-        const isFoldWin = settlement.winners.length === 1 && settlement.winners[0].handName === '其他人全部弃牌';
+        const isFoldWin = !!settlement.foldWin;
         const iAmWinner = isFoldWin && settlement.winners[0].id === playerId;
         const myCardsRevealed = !!revealedPlayers[playerId];
         return (

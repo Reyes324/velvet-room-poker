@@ -394,7 +394,7 @@ describe('边池 — 三人不等额 All-In', () => {
     const aWinner = result.winners.find(w => w.id === 'A');
     expect(aWinner).toBeDefined();
     expect(aWinner.handName).not.toBe('其他人全部弃牌');
-    expect(aWinner.handName).toMatch(/Pair/i); // pokersolver 对一对K的真实描述，例如 "Pair, K's"
+    expect(aWinner.handName).toMatch(/一对|三条|两对/); // 已翻译为中文，pokersolver 原始描述例如 "Pair, K's"
     expect(byId('A').chips).toBe(1320); // 三层边池全部拿下：60+560+700
 
     assertPotConservation(game, 2300);

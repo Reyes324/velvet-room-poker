@@ -87,9 +87,12 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
 
       {revealedCards && revealedCards.length === 2 && (
         <div className="reveal-fold-show" style={sideStyle(cardsSide)}>
-          {revealedCards.map((c, i) => (
-            <Card key={i} card={c} size="xs" animate="flip-reveal" delay={i * 0.1} />
-          ))}
+          <div className="reveal-showoff-tag">亮牌炫耀</div>
+          <div className="reveal-showoff-cards">
+            {revealedCards.map((c, i) => (
+              <Card key={i} card={c} size="xs" animate="flip-reveal" delay={i * 0.1} />
+            ))}
+          </div>
         </div>
       )}
     </div>

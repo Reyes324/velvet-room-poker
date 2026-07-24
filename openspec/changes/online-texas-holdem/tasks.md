@@ -651,3 +651,21 @@
 - [x] 41.8 `server/index.js` 的 `room:kick` 踢人后检查是否解锁 settlement
 - [x] 41.9 更新集成测试：原测试断言断线后自动 advance 改为断言不自动 advance，新增超时模拟验证
 - [x] 41.10 回归验证：`npm test`（server, 112/112 → 112/112）全绿
+
+## 42. 结算弹窗打磨：亮牌炫耀按钮 + 中文化 + 弃牌获胜配色区分（用户反馈，2026-07-24）
+
+- [x] 42.1 "亮牌"按钮从独占一行改成跟"我知道了"并排（复用既有 `.modal-btns`/`.modal-btn--paired` 样式，`BustDecisionModal` 已用过同一套），去掉图标，文案改成"亮牌炫耀"
+- [x] 42.2 弃牌方看到的揭示动画：新增独立于 `.hero-cards--revealed` 的 `showoffPop`/`showoffGlow` 动效（原来两者共用 `revealGlow`，视觉上"主动亮牌炫耀"和"游戏常规摊牌展示"分不出区别），加"亮牌炫耀"金色标签；Playwright 实测跟公共牌区/相邻座位不重叠
+- [x] 42.3 结算弹窗牌型描述改中文：`server/GameEngine.js` 新增 `translateHandDescr()`，在读取 pokersolver 的 `.descr` 源头就翻译成中文（"Two Pair, 9's & 5's" → "两对，对9和对5"），不在前端拼字符串补丁；服务端回归测试同步改成断言中文
+- [x] 42.4 结构性修正：`RoomPage.jsx` 判断 `isFoldWin` 原来靠 `handName==='其他人全部弃牌'` 字符串匹配重新猜一遍，服务端其实已经算好并广播了准确的 `settlement.foldWin` 字段（40 号任务修过的边池误判 bug 就是为了这个字段）却没被用上——改成直接读 `settlement.foldWin`
+- [x] 42.5 弃牌获胜（无需比牌）的结算样式跟真实摊牌区分开：`.modal-hand--foldwin`/`.modal-winner-av--foldwin` 改用设计系统既有的翡翠色系（`--felt-200`），不是金色（金色代表"真实比出来的最大牌"）；`StatesGallery.jsx`/`fixtures.js` 补上 `isFoldWin`/`foldWin` 传参，之前预览页看不出这个状态
+- [x] 42.6 筹码清零等待弹窗文案从"等待 X 决策中……"（看不出在等什么决策）改成"X筹码清空，等待他决策是否再借一底"，`BustWaitModal.jsx` 和 `RoomPage.jsx` 里房主看到的 toast 一并修正
+- [x] 42.7 验证：服务端 112/112 全绿；Playwright 真实双人对局跑通弃牌获胜全流程（结算弹窗配色/文案/按钮布局、弃牌方视角的亮牌炫耀动画与公共牌区无重叠），截图确认
+
+## 43. 新增"结束对局"功能：房主可主动结束 + 自动展示账本（用户反馈，2026-07-24）
+
+- [x] 43.1 设计决策已用 AskUserQuestion 跟用户确认，记入 design.md
+- [x] 43.2 服务端新增 `room:end-game`（host-only）：落盘当前筹码、清空 `game`、`status` 回 `waiting`，广播 `room:state` + 带 `hostEnded:true` 的 `game:ended`
+- [x] 43.3 `RoomPage.jsx` 的 `game:ended` 处理器：`hostEnded` 时额外自动 `setShowLedger(true)`
+- [x] 43.4 `GameTable.jsx` 菜单新增 host-only"结束游戏"行 + 确认弹窗（复用退出游戏那套 UI），`isHost`/`onEndGame` 新增 prop 一路传下去
+- [x] 43.5 服务端新增两条回归测试（房主结束→双方收到 `hostEnded` 且筹码不清零、非房主调用被拒绝），114/114 全绿；Playwright 双人真机验证：房主点结束游戏确认后双方都回到大厅、账本自动弹出且两边数字一致（¥990/¥980，对应结束前那手已下的盲注）、非房主菜单里没有"结束游戏"项，截图确认

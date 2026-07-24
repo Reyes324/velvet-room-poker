@@ -21,7 +21,7 @@ export default function SettlementModal({
           const avClass = isMe ? 'av-gold' : AV[colorForId(w.id)];
           return (
             <div key={w.id} className="settlement-winner-row">
-              <div className={`modal-winner-av ${avClass}`}>{w.name[0].toUpperCase()}</div>
+              <div className={`modal-winner-av ${avClass}${isFoldWin ? ' modal-winner-av--foldwin' : ''}`}>{w.name[0].toUpperCase()}</div>
               <div className="modal-winner-info">
                 <div className="modal-winner-name" style={isMe ? { color: '#D4AF37' } : undefined}>
                   {w.name}
@@ -29,24 +29,32 @@ export default function SettlementModal({
                 </div>
                 <div className="modal-win-amt">+ ¥{Number(w.won).toLocaleString()}</div>
               </div>
-              {w.handName && <div className="modal-hand">{w.handName}</div>}
+              {w.handName && <div className={`modal-hand${isFoldWin ? ' modal-hand--foldwin' : ''}`}>{w.handName}</div>}
             </div>
           );
         })}
       </div>
 
-      {isFoldWin && iAmWinner && (
-        <div
-          className={`modal-btn modal-btn--secondary${myCardsRevealed ? ' modal-btn--revealed' : ''}`}
-          onClick={myCardsRevealed ? undefined : onReveal}
-        >
-          {myCardsRevealed ? '已亮牌 ✓' : '🃏 亮牌'}
+      {isFoldWin && iAmWinner ? (
+        <div className="modal-btns">
+          <div
+            className={`modal-btn modal-btn--secondary modal-btn--paired${myCardsRevealed ? ' modal-btn--revealed' : ''}`}
+            onClick={myCardsRevealed ? undefined : onReveal}
+          >
+            {myCardsRevealed ? '已亮牌 ✓' : '亮牌炫耀'}
+          </div>
+          <div
+            className={`modal-btn modal-btn--paired${iAmReady ? ' modal-btn--waiting' : ''}`}
+            onClick={iAmReady ? undefined : onReady}
+          >
+            {iAmReady ? `等待其他人确认…（${readyCount}/${totalCount}）` : '我知道了'}
+          </div>
+        </div>
+      ) : (
+        <div className={`modal-btn${iAmReady ? ' modal-btn--waiting' : ''}`} onClick={iAmReady ? undefined : onReady}>
+          {iAmReady ? `等待其他人确认…（${readyCount}/${totalCount}）` : '我知道了'}
         </div>
       )}
-
-      <div className={`modal-btn${iAmReady ? ' modal-btn--waiting' : ''}`} onClick={iAmReady ? undefined : onReady}>
-        {iAmReady ? `等待其他人确认…（${readyCount}/${totalCount}）` : '我知道了'}
-      </div>
     </div>
   );
 }

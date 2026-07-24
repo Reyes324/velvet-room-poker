@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 
 // Measures a container's actual rendered box (via ResizeObserver, not window
 // dimensions) and returns independent x/y scale factors that stretch a
@@ -14,12 +14,25 @@ import { useEffect, useState } from 'react';
 // (avatars) render very slightly elliptical rather than perfectly round —
 // accepted in exchange for the table always using the full device width.
 export function useTableScale(containerRef, refW, refH) {
-  const [scaleX, setScaleX] = useState(1);
-  const [scaleY, setScaleY] = useState(1);
+  // Starting both at 1 (a guess unrelated to the container's real size, which
+  // is essentially never refW×refH) meant the very first paint rendered the
+  // canvas unscaled, then visibly snapped to the right scale once the async
+  // ResizeObserver callback landed — the "stretches blurry, then pops
+  // correct" flash on every table entry a real device kept showing. Reading
+  // the container synchronously in a layout effect (before the browser
+  // paints, unlike a regular effect) means the first paint already has the
+  // real scale — no default to guess, no visible jump.
+  const [scaleX, setScaleX] = useState(0);
+  const [scaleY, setScaleY] = useState(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setScaleX(rect.width / refW);
+      setScaleY(rect.height / refH);
+    }
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
       if (width > 0 && height > 0) {

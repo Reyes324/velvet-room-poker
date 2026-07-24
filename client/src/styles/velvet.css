@@ -28,27 +28,38 @@
 }
 .c-face.c-red { color: var(--ink-red); }
 
-/* corner indices — top-left + bottom-right (rotated); spacing fixed so rank/suit never overlap */
-.c-tl, .c-br { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1; gap: 2px; }
-.c-tl { top: 4px; left: 5px; }
-.c-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
-.c-tl .cr, .c-br .cr { font-family: var(--font-card); font-size: 11px; font-weight: 600; letter-spacing: -.3px; line-height: 1; }
-.c-tl .cs, .c-br .cs { font-size: 8px; line-height: 1; }
-.c-xs .c-tl, .c-xs .c-br { gap: 0; }
-.c-xs .c-tl { top: 2px; left: 2px; }
-.c-xs .c-br { bottom: 2px; right: 2px; }
-.c-xs .c-tl .cr, .c-xs .c-br .cr { font-size: 9px; }
-.c-xs .c-tl .cs, .c-xs .c-br .cs { font-size: 7px; }
-.c-md .c-tl .cr, .c-md .c-br .cr { font-size: 15px; }
-.c-md .c-tl .cs, .c-md .c-br .cs { font-size: 10px; }
-.c-lg .c-tl .cr, .c-lg .c-br .cr { font-size: 18px; }
-.c-lg .c-tl .cs, .c-lg .c-br .cs { font-size: 12px; }
+/* Single top-left index (rank + small suit) — no mirrored bottom-right
+   corner. A poker hand only ever gets glanced at right-side-up on this
+   table (no seat views a card upside-down like a physical table would),
+   so the second corner was pure duplication; the space it freed goes to
+   a much larger single suit glyph instead (per user-provided reference:
+   one small suit next to the rank, one big suit doing the rest of the
+   identification work — reads faster at a glance than two small corners). */
+.c-tl { position: absolute; top: 4px; left: 5px; display: flex; flex-direction: column; align-items: center; line-height: 1; gap: 2px; }
+.c-tl .cr { font-family: var(--font-card); font-size: 15px; font-weight: 700; letter-spacing: -.3px; line-height: 1; }
+.c-tl .cs { font-size: 11px; line-height: 1; }
+.c-xs .c-tl { top: 2px; left: 2px; gap: 0; }
+.c-xs .c-tl .cr { font-size: 11px; }
+.c-xs .c-tl .cs { font-size: 8px; }
+.c-sm .c-tl .cr { font-size: 15px; }
+.c-sm .c-tl .cs { font-size: 11px; }
+.c-md .c-tl .cr { font-size: 20px; }
+.c-md .c-tl .cs { font-size: 15px; }
+.c-lg .c-tl .cr { font-size: 23px; }
+.c-lg .c-tl .cs { font-size: 17px; }
 
-/* center suit pip */
-.c-ct { font-size: 15px; line-height: 1; opacity: .9; }
-.c-xs .c-ct { font-size: 11px; }
-.c-md .c-ct { font-size: 24px; }
-.c-lg .c-ct { font-size: 30px; }
+/* Center suit pip — the dominant visual, not a subtle accent. Anchored
+   toward the bottom-right rather than dead-center: dead-center left the
+   bottom-right quadrant looking conspicuously empty next to the top-left
+   index (confirmed by user feedback on a real render) — offsetting it
+   balances the card diagonally (index top-left, glyph bottom-right),
+   which is also closer to the user's original reference image than a
+   perfectly centered glyph was. */
+.c-ct { position: absolute; right: 5px; bottom: 3px; font-size: 22px; line-height: 1; opacity: .92; }
+.c-xs .c-ct { right: 2px; bottom: 1px; font-size: 16px; }
+.c-sm .c-ct { right: 3px; bottom: 2px; font-size: 21px; }
+.c-md .c-ct { right: 5px; bottom: 3px; font-size: 36px; }
+.c-lg .c-ct { right: 6px; bottom: 3px; font-size: 44px; }
 
 /* back — classic blue lattice, like a real deck (not a felt-green reskin). No
    outer border — the rounded rect edge alone is the card boundary, same as a
@@ -226,6 +237,16 @@
   50%      { box-shadow: 0 0 22px rgba(212, 175, 55, 0.65); }
 }
 
+@keyframes showoffPop {
+  0%   { transform: scale(.4) rotate(-6deg); opacity: 0; }
+  60%  { transform: scale(1.18) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes showoffGlow {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(212, 175, 55, .5)); }
+  50%      { filter: drop-shadow(0 0 9px rgba(212, 175, 55, .95)); }
+}
+
 /* showdown reveal */
 /* Used to be a bespoke mini-card (one rank + one centered suit glyph, no
    corner pair, no real card layout) — read as visually incomplete next to
@@ -234,7 +255,13 @@
    real render: "牌本身显示不完全"). Now just wraps real Card elements at the
    new c-xs size instead of maintaining a second, simpler card look. */
 .reveal { display:flex; gap:3px; }
-.reveal-fold-show { display:flex; gap:3px; animation:revealGlow 1.5s ease-in-out infinite; }
+/* Distinct from .hero-cards--revealed's revealGlow — a fold-win reveal is a
+   player choosing to show off, not the game auto-showing hero's own cards,
+   so it needs its own one-time "pop" instead of reusing the same subtle
+   breathing glow both use (would read identically to a normal showdown). */
+.reveal-fold-show { display:flex; flex-direction:column; align-items:center; gap:2px; animation:showoffPop .5s cubic-bezier(.34,1.56,.64,1) both, showoffGlow 1.2s ease-in-out .5s infinite; }
+.reveal-showoff-tag { font-family:var(--font-display); font-size:8px; font-weight:700; color:#050D06; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:6px; padding:1px 5px; white-space:nowrap; letter-spacing:.5px; }
+.reveal-showoff-cards { display:flex; gap:3px; }
 .reveal-fold-show .card { border: 2px solid #D4AF37; border-radius: 5px; }
 .hand-rank { font-family:var(--font-mono); font-size:8px; color:#C8B888; white-space:nowrap; }
 
@@ -325,7 +352,7 @@
 .raise-bottom { display:flex; gap:9px; }
 /* Was #203820 on a near-black gradient (~#050D06) — nearly invisible,
    real-device feedback. */
-.waiting-text { font-family:var(--font-mono); font-size:11px; color:#9FB0AC; letter-spacing:2px; }
+.waiting-text { font-family:var(--font-mono); font-size:14px; font-weight:600; color:var(--gold-200); letter-spacing:1.5px; }
 
 /* ── SETTLEMENT MODAL (real showdown AND fold-win, same component) ───
    Bottom drawer, same positioning as the original design — content is now
@@ -368,6 +395,13 @@
    above is flex:1, which pushes this to the row's trailing edge and saves
    the vertical space the stacked layout used to cost. */
 .modal-hand { flex: 0 1 auto; align-self: center; text-align: right; font-family:var(--font-body); font-size:13px; font-weight:700; color:#FFF3C4; background:rgba(212,175,55,.14); border:1px solid rgba(212,175,55,.4); border-radius:8px; padding:4px 10px; max-width: 42%; }
+/* Fold-win ("其他人全部弃牌") never went through a real hand comparison —
+   gold here would visually claim "this hand was proven best", which isn't
+   true. Reuses the design system's jade felt tones (--felt-200/300 in
+   tokens.css) instead of a one-off color, so it still reads as "this app's
+   palette", just the win badge's other family. */
+.modal-hand--foldwin { color:#CFF0D8; background:rgba(42,128,64,.18); border-color:rgba(42,128,64,.55); }
+.modal-winner-av--foldwin { border-color:#2A8040; box-shadow:0 0 0 5px rgba(42,128,64,.22), 0 0 40px rgba(42,128,64,.6); }
 .modal-btn { width:100%; height:48px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:24px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:#050D06; letter-spacing:1px; cursor:pointer; box-shadow:0 4px 20px rgba(212,175,55,.25); margin-top:4px; }
 /* Secondary outline button — used for "亮牌" alongside the primary "我知道了" */
 .modal-btn--secondary {
@@ -459,13 +493,28 @@
    (confirmed on a real device, not just reasoned about — see design.md "真机
    实测：暗牌裁切..."). Matches the flat-felt reference design this column
    layout is based on. */
+/* Brighter, richer felt (user feedback: table read as too dark/flat on a
+   real phone, wanted more "designed" — closer to a lit Macau casino table
+   than a plain dark-green fill). Three changes from the old version:
+   1) the radial gradient's core/mid/edge stops all moved up the existing
+      --felt-* ramp (was crushed into #14.../#0D.../#06... near-black by
+      the edges) so there's real light-to-dark range instead of everything
+      reading as almost-black:
+   2) the single-direction diagonal stripe became a two-direction woven
+      cross-hatch (real felt has a weave, not one stripe direction), and
+   3) the gold rim went from essentially invisible (.025 alpha) to an
+      actual brass/gold table rail, the detail that reads as "casino" —
+      plus a soft warm highlight over the pot/community strip, like a
+      table lamp, rather than uniform flat lighting edge to edge. */
 .table-canvas {
   position:absolute; left:50%; top:50%;
   background:
-    repeating-linear-gradient(115deg, rgba(255,255,255,.045) 0px, rgba(255,255,255,.045) 1px, transparent 1px, transparent 3px),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)' opacity='0.1'/%3E%3C/svg%3E") repeat,
-    radial-gradient(ellipse at 50% 38%, #143C1C 0%, #0D3016 45%, #082612 72%, #061808 100%);
-  box-shadow: inset 0 6px 70px rgba(0,0,0,.75), inset 0 0 0 8px rgba(212,175,55,.025);
+    repeating-linear-gradient(115deg, rgba(255,255,255,.07) 0px, rgba(255,255,255,.07) 1px, transparent 1px, transparent 4px),
+    repeating-linear-gradient(25deg, rgba(255,255,255,.05) 0px, rgba(255,255,255,.05) 1px, transparent 1px, transparent 4px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)' opacity='0.12'/%3E%3C/svg%3E") repeat,
+    radial-gradient(ellipse at 50% 32%, rgba(212,175,55,.09) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 38%, var(--felt-300) 0%, var(--felt-400) 32%, var(--felt-600) 68%, var(--felt-800) 100%);
+  box-shadow: inset 0 6px 70px rgba(0,0,0,.6), inset 0 0 0 3px rgba(212,175,55,.22), inset 0 0 24px rgba(212,175,55,.1);
 }
 
 /* Pot + community cards center in the vertical channel between the two seat

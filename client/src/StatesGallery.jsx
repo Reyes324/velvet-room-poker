@@ -50,6 +50,10 @@ export default function StatesGallery({ index = 0 }) {
           readyCount={0}
           totalCount={2}
           onReady={() => {}}
+          isFoldWin={!!s.settlement.foldWin}
+          iAmWinner={!!s.settlement.foldWin && s.settlement.winners[0]?.id === s.myId}
+          myCardsRevealed={false}
+          onReveal={() => {}}
         />
       )}
       {s.bustPreview && <BustDecisionModal onRebuy={() => {}} onSpectate={() => {}} onLeave={() => {}} />}

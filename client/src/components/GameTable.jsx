@@ -107,8 +107,9 @@ function spectatorSeatPositions(n) {
   return seats;
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {} }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame }) {
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const tableZoneRef = useRef(null);
   const { scaleX: tableScaleX, scaleY: tableScaleY } = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
@@ -259,6 +260,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         <div className="modal-overlay" onClick={() => setShowMenu(false)}>
           <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
             <div className="menu-row" onClick={() => { setShowMenu(false); onOpenLedger?.(); }}>账本</div>
+            {isHost && (
+              <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
+            )}
             <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowExitModal(true); }}>退出游戏</div>
           </div>
         </div>
@@ -271,6 +275,18 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             <div className="modal-btns">
               <div className="modal-btn-cancel" onClick={() => setShowExitModal(false)}>取消</div>
               <div className="modal-btn-danger" onClick={onExit}>退出</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showEndGameModal && (
+        <div className="modal-overlay" onClick={() => setShowEndGameModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">结束游戏</div>
+            <div className="modal-body">结束后将回到大厅并自动显示账本，所有人当前筹码保留，之后仍可重新开始。确定结束本局对局吗？</div>
+            <div className="modal-btns">
+              <div className="modal-btn-cancel" onClick={() => setShowEndGameModal(false)}>取消</div>
+              <div className="modal-btn-danger" onClick={() => { setShowEndGameModal(false); onEndGame?.(); }}>结束游戏</div>
             </div>
           </div>
         </div>
@@ -400,7 +416,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                       <Card
                         key={`face-${i}`}
                         card={c}
-                        size="sm"
+                        size="md"
                         animate={justRevealed ? 'flip-reveal' : null}
                         delay={justRevealed ? i * 0.1 : 0}
                       />
@@ -408,13 +424,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                   : me.holeCards.map((_, i) => (
                       <Card
                         key={`back-${i}`}
-                        size="sm"
+                        size="md"
                         faceDown
                         animate={dealing ? 'card-deal' : null}
                         delay={dealing ? dealDelayFor(myId, i) : 0}
                       />
                     )))
-              : [<Card key={0} size="sm" faceDown />, <Card key={1} size="sm" faceDown />]}
+              : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]}
           </div>
         </div>
       )}

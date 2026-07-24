@@ -10,7 +10,7 @@ export default function BustWaitModal({ names, onLeave }) {
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-title">等待决策</div>
-        <div className="modal-body">等待 {names.join('、')} 决策中……</div>
+        <div className="modal-body">{names.join('、')}筹码清空，等待{names.length > 1 ? '他们' : '他'}决策是否再借一底</div>
         <div className="modal-btn-cancel" style={{ width: '100%' }} onClick={onLeave}>退出</div>
       </div>
     </div>

@@ -327,6 +327,23 @@ function createServer() {
       io.to(room.code).emit('room:state', room.getLobbyState());
     });
 
+    // Host-only "call it a night" — unlike room:restart, chips/debt are
+    // NOT reset (this is the final tally, not a fresh session), and unlike
+    // the chips-run-out auto-pause, this is a deliberate action, so the
+    // client marks it `hostEnded` to auto-open the ledger instead of just
+    // toasting a reason.
+    socket.on('room:end-game', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      if (room.hostId !== playerId) return socket.emit('game:error', '只有房主可以结束游戏');
+      room.syncChipsFromGame();
+      room.game = null;
+      room.status = 'waiting';
+      room.awaitingBustResolution = false;
+      io.to(room.code).emit('room:state', room.getLobbyState());
+      io.to(room.code).emit('game:ended', { ended: true, reason: '房主结束了本局对局', hostEnded: true });
+    });
+
     socket.on('room:sync', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) {

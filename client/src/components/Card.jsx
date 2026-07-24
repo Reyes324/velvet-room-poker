@@ -12,7 +12,6 @@ export default function Card({ card, size = 'md', faceDown = false, animate = nu
     <div className={`card c-${size} c-face${red ? ' c-red' : ''}${animClass}`} style={style}>
       <div className="c-tl"><span className="cr">{card.rank}</span><span className="cs">{card.suit}</span></div>
       <div className="c-ct">{card.suit}</div>
-      <div className="c-br"><span className="cr">{card.rank}</span><span className="cs">{card.suit}</span></div>
     </div>
   );
 }

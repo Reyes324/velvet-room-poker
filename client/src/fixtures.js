@@ -50,7 +50,7 @@ export const STATES = [
   },
   {
     name: '摊牌', myId: 'me', roomCode: '4827',
-    showdown: [{ name: '陈美玲', handName: '两对 Q & 5' }],
+    showdown: [{ name: '陈美玲', handName: '两对，对Q和对5' }],
     gameState: {
       phase: 'showdown', pot: 1780, currentBet: 0, actionPlayerId: null,
       communityCards: [c('Q', '♠'), c('3', '♥'), c('Q', '♦'), c('7', '♣'), c('2', '♥')],
@@ -114,7 +114,7 @@ STATES.push({
   name: '结算弹窗·真摊牌', myId: 'me', roomCode: '4827',
   gameState: STATES[3].gameState,
   settlement: {
-    winners: [{ id: 'chen', name: '陈美玲', won: 1780, handName: '两对，Q 和 5' }],
+    winners: [{ id: 'chen', name: '陈美玲', won: 1780, handName: '两对，对Q和对5' }],
   },
 });
 
@@ -124,6 +124,7 @@ STATES.push({
   name: '结算弹窗·弃牌结束', myId: 'me', roomCode: '4827',
   gameState: STATES[1].gameState,
   settlement: {
+    foldWin: true,
     winners: [{ id: 'wang', name: '王建国', won: 200, handName: '其他人全部弃牌' }],
   },
 });

@@ -3,6 +3,53 @@ const { Hand } = require('pokersolver');
 const SUITS = ['s', 'h', 'd', 'c']; // spades hearts diamonds clubs
 const RANKS = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'];
 
+// pokersolver only speaks English (its `descr` strings are hardcoded in the
+// library) — translate at the source, right where we read `.descr`, so
+// every consumer downstream (settlement modal, fixtures, future features)
+// always sees Chinese and never has to duplicate this parsing.
+const HAND_NAME_ZH = {
+  'Straight Flush': '同花顺',
+  'Four of a Kind': '四条',
+  'Full House': '葫芦',
+  'Flush': '同花',
+  'Straight': '顺子',
+  'Three of a Kind': '三条',
+  'Two Pair': '两对',
+  'Pair': '一对',
+};
+
+function zhRank(token) {
+  // Flush/Straight Flush high-card tokens keep the trailing suit letter
+  // (pokersolver's own `descr` template does this, e.g. "As High") — strip
+  // it before translating the rank itself.
+  const r = token.length > 1 && SUITS.includes(token.slice(-1).toLowerCase())
+    ? token.slice(0, -1)
+    : token;
+  return r === 'T' ? '10' : r;
+}
+
+function translateHandDescr(descr) {
+  if (!descr) return descr;
+  if (descr === 'Royal Flush') return '皇家同花顺';
+
+  let m = descr.match(/^Full House, (\w+)'s over (\w+)'s$/);
+  if (m) return `葫芦，${zhRank(m[1])} 带 ${zhRank(m[2])}`;
+
+  m = descr.match(/^Two Pair, (\w+)'s & (\w+)'s$/);
+  if (m) return `两对，对${zhRank(m[1])}和对${zhRank(m[2])}`;
+
+  m = descr.match(/^(.+), (\w+)'s$/);
+  if (m && HAND_NAME_ZH[m[1]]) return `${HAND_NAME_ZH[m[1]]} ${zhRank(m[2])}`;
+
+  m = descr.match(/^(.+), (\w+) High$/);
+  if (m && HAND_NAME_ZH[m[1]]) return `${HAND_NAME_ZH[m[1]]}，${zhRank(m[2])} 高`;
+
+  m = descr.match(/^(\w+) High$/);
+  if (m) return `高牌 ${zhRank(m[1])}`;
+
+  return descr; // unrecognized format (e.g. wild-card variants we don't use) — pass through rather than break
+}
+
 // pokersolver notation: 'As', 'Kh', 'Td', '2c'
 function makeDeck() {
   const deck = [];
@@ -335,7 +382,7 @@ class GameEngine {
       const w = contenders[0];
       w.handName = isFoldWin
         ? (w.handName || '其他人全部弃牌')
-        : (w.handName || Hand.solve([...w.holeCards, ...this.communityCards]).descr);
+        : (w.handName || translateHandDescr(Hand.solve([...w.holeCards, ...this.communityCards]).descr));
       return contenders;
     }
     const hands = contenders.map(p => ({
@@ -346,7 +393,7 @@ class GameEngine {
     return hands
       .filter(h => winningHands.includes(h.hand))
       .map(h => {
-        h.player.handName = h.hand.descr;
+        h.player.handName = translateHandDescr(h.hand.descr);
         return h.player;
       });
   }
