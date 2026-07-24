@@ -205,7 +205,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       const currP = gameState.players.find(p => p.id === actorId);
       if (prevP && currP) {
         let text = null;
-        if (currP.status === 'folded' && prevP.status !== 'folded') text = '弃牌';
+        let folded = false;
+        if (currP.status === 'folded' && prevP.status !== 'folded') { text = '弃牌'; folded = true; }
         else if (currP.status === 'allin' && prevP.status !== 'allin') text = `ALL IN ¥${currP.bet.toLocaleString()}`;
         else if (currP.bet > prevP.bet) {
           text = currP.bet > prevSnap.currentBet
@@ -219,7 +220,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         // and overwrites their entry) or a new street/hand clears everyone
         // (see the phase-watching effect below).
         const key = Date.now();
-        setActionBubbles(b => ({ ...b, [actorId]: { text, key } }));
+        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded } }));
       }
     }
     prevActionSnapshotRef.current = {
@@ -239,7 +240,22 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // Whoever acts first naturally overwrites their own seeded bubble the
   // moment they take a real action.
   useEffect(() => {
-    if (gameState.phase !== 'preflop') { setActionBubbles({}); return; }
+    if (gameState.phase !== 'preflop') {
+      // "弃牌" is a hand-long state, not a street-specific action like a
+      // call/raise — it used to get wiped along with everything else the
+      // moment the street advanced, so a folded player's bubble vanished
+      // even though they were still out for the rest of the hand (user
+      // feedback: looked like the fold indicator disappeared). Keep it
+      // through subsequent streets; every other bubble still clears.
+      setActionBubbles(b => {
+        const kept = {};
+        for (const p of gameState.players) {
+          if (p.status === 'folded' && b[p.id]?.folded) kept[p.id] = b[p.id];
+        }
+        return kept;
+      });
+      return;
+    }
     const seeded = {};
     const key = Date.now();
     for (const p of gameState.players) {

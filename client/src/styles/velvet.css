@@ -209,6 +209,12 @@
    bubbleSide's inline style overrides this the normal way, since inline
    always wins over a class rule. */
 .action-bubble { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); padding:5px 12px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:14px; font-family:var(--font-amount); font-size:13px; font-weight:700; color:#FFF3C4; white-space:nowrap; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:8; animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both; pointer-events:none; }
+/* Fold is a hand-long "this player is out" state, not a live bet action —
+   the shared gold/glow treatment (built for "look, they just raised") read
+   as equally urgent/active for a fold too. Muted to the same grayscale
+   family as .is-folded's avatar dimming instead, so the bubble and the
+   avatar tell one consistent story. */
+.action-bubble--folded { background:rgba(20,20,18,.9); border-color:rgba(150,145,130,.35); color:#8A8578; box-shadow:0 2px 10px rgba(0,0,0,.5); }
 /* The entrance "pop" used to bake translate(-50%, …) into `transform` itself
    — harmless for the old always-centered-above layout, but once bubbles
    started taking a per-seat positioning transform via inline style

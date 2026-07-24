@@ -74,7 +74,15 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
       </div>
 
-      {bubble && <div key={bubble.key} className="action-bubble" style={bubbleStyle(bubbleSide)}>{bubble.text}</div>}
+      {bubble && (
+        <div
+          key={bubble.key}
+          className={`action-bubble${bubble.folded ? ' action-bubble--folded' : ''}`}
+          style={bubbleStyle(bubbleSide)}
+        >
+          {bubble.text}
+        </div>
+      )}
       {poked && <div className="action-bubble poke-bubble" style={bubbleStyle(bubbleSide)}>戳了戳</div>}
 
       {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && (
