@@ -85,6 +85,81 @@ describe('集成测试 — 房间管理', () => {
     const msg = await errMsg;
     expect(msg).toBe('已在房间内');
   });
+
+  it('玩家主动退出后，用同一 playerId 重新 room:join 同一房间 → 成功恢复身份（不是新玩家）', async () => {
+    const [c1, c2] = await Promise.all([connect(), connect()]);
+
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'p1', playerName: 'Alice' });
+    const { code } = await joined1;
+
+    // Wait for BOTH sides' copy of the join broadcast to land — c1 is also
+    // in this socket.io room and gets its own copy, and if it's still
+    // in flight when the next `waitFor(c1, 'room:state')` attaches below,
+    // that .once() listener catches this stale join event instead of the
+    // leave event we actually want (confirmed via a real repro, not
+    // guessed — c1 received two room:state events in quick succession:
+    // { left:false } from the join, then { left:true } from the leave).
+    const state1FromJoin = waitFor(c1, 'room:state');
+    const state2 = waitFor(c2, 'room:state');
+    c2.emit('room:join', { code, playerId: 'p2', playerName: 'Bob' });
+    await Promise.all([state1FromJoin, state2]);
+
+    const leftState = waitFor(c1, 'room:state');
+    c2.emit('player:leave-room', { playerId: 'p2' });
+    const afterLeave = await leftState;
+    expect(afterLeave.players.find(p => p.id === 'p2').left).toBe(true);
+
+    // Same playerId, reconnecting with a fresh socket (c3), rejoins the
+    // same room code.
+    const c3 = await connect();
+    const rejoinedState = waitFor(c1, 'room:state');
+    const rejoined = waitFor(c3, 'room:joined');
+    c3.emit('room:join', { code, playerId: 'p2', playerName: 'Bob' });
+    const [joinedAck, state] = await Promise.all([rejoined, rejoinedState]);
+
+    expect(joinedAck.playerId).toBe('p2');
+    expect(state.players).toHaveLength(2); // still 2 rows, not 3
+    expect(state.players.find(p => p.id === 'p2').left).toBe(false);
+  });
+
+  it('设备断线（未显式退出）后，另一个 playerId + 同昵称加入同房间号 → 按昵称继承原身份', async () => {
+    // Simulates the WeChat-in-app-browser vs. phone's own browser case: two
+    // completely separate localStorage stores (so two different generated
+    // playerIds) for what's actually the same person, same room code, same
+    // typed name — the first one just disconnected (closed the WeChat tab),
+    // never sent an explicit player:leave-room.
+    const [c1, c2] = await Promise.all([connect(), connect()]);
+
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'host', playerName: 'Alice' });
+    const { code } = await joined1;
+
+    const state1FromJoin = waitFor(c1, 'room:state');
+    const state2 = waitFor(c2, 'room:state');
+    c2.emit('room:join', { code, playerId: 'bob-wechat', playerName: 'Bob' });
+    await Promise.all([state1FromJoin, state2]);
+
+    // c2 disconnects without leaving — same as closing the WeChat browser.
+    const disconnectedState = waitFor(c1, 'room:state');
+    c2.disconnect();
+    const afterDisconnect = await disconnectedState;
+    expect(afterDisconnect.players.find(p => p.id === 'bob-wechat').connected).toBe(false);
+    expect(afterDisconnect.players.find(p => p.id === 'bob-wechat').left).toBe(false); // NOT a leave
+
+    // A totally different playerId (Bob's own phone browser) joins the
+    // same room with the same name.
+    const c4 = await connect();
+    const rejoinedState = waitFor(c1, 'room:state');
+    const rejoined = waitFor(c4, 'room:joined');
+    c4.emit('room:join', { code, playerId: 'bob-safari', playerName: 'Bob' });
+    const [joinedAck, state] = await Promise.all([rejoined, rejoinedState]);
+
+    // Server assigns back the OLD identity, not the freshly-generated one.
+    expect(joinedAck.playerId).toBe('bob-wechat');
+    expect(state.players).toHaveLength(2); // still 2 rows — reclaimed, not a 3rd new player
+    expect(state.players.find(p => p.id === 'bob-wechat').connected).toBe(true);
+  });
 });
 
 describe('集成测试 — 游戏流程', () => {

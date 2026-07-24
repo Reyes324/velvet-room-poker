@@ -77,6 +77,130 @@ describe('RoomManager — 加入房间', () => {
     const result = rooms.join(lower, 'p2', 'Bob', 'socket2');
     expect(result.error).toBeUndefined();
   });
+
+  it('同一 playerId 退出后重新加入 → 恢复原有身份（不是被拒绝，也不是新增一行）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.players.find(p => p.id === 'p2').chips = 730; // simulate mid-session chips
+    room.players.find(p => p.id === 'p2').debt = 1000;
+    rooms.leave('p2');
+    expect(room.players.find(p => p.id === 'p2').left).toBe(true);
+
+    const result = rooms.join(room.code, 'p2', 'Bob', 'socket2-new');
+    expect(result.error).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(room.players).toHaveLength(2); // reactivated, not a new row
+    const rejoined = room.players.find(p => p.id === 'p2');
+    expect(rejoined.left).toBe(false);
+    expect(rejoined.connected).toBe(true);
+    expect(rejoined.socketId).toBe('socket2-new');
+    expect(rejoined.chips).toBe(730); // chips/debt survive the reactivation
+    expect(rejoined.debt).toBe(1000);
+    expect(rooms.getRoomByPlayer('p2')).toBe(room); // playerRoom mapping restored
+  });
+
+  it('房间已满时，仍允许已离开的玩家用同一 playerId 复位（不占用新座位）', () => {
+    const room = rooms.create('p1', 'Alice');
+    for (let i = 2; i <= 9; i++) rooms.join(room.code, `p${i}`, `Player${i}`, `socket${i}`);
+    expect(room.players).toHaveLength(9);
+    rooms.leave('p9');
+
+    const result = rooms.join(room.code, 'p9', 'Player9', 'socket9-new');
+    expect(result.error).toBeUndefined();
+    expect(room.players).toHaveLength(9);
+  });
+
+  it('真正的新玩家在房间已满时仍被拒绝加入', () => {
+    const room = rooms.create('p1', 'Alice');
+    for (let i = 2; i <= 9; i++) rooms.join(room.code, `p${i}`, `Player${i}`, `socket${i}`);
+    const result = rooms.join(room.code, 'p10', 'Newcomer', 'socket10');
+    expect(result.error).toBe('房间已满，无法加入');
+  });
+
+  it('不同 playerId + 同昵称，旧身份当前离线 → 按昵称复用旧身份（不是新增玩家）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.players.find(p => p.id === 'p2').chips = 650;
+    room.setConnected('p2', false); // e.g. WeChat browser closed/lost connection
+
+    // A different browser/app — brand-new playerId, same typed name.
+    const result = rooms.join(room.code, 'p2-new-device', 'Bob', 'socket2-fresh');
+
+    expect(result.error).toBeUndefined();
+    expect(result.playerId).toBe('p2'); // reclaimed the OLD identity, not p2-new-device
+    expect(room.players).toHaveLength(2); // reactivated the row, didn't add a 3rd
+    const reclaimed = room.players.find(p => p.id === 'p2');
+    expect(reclaimed.connected).toBe(true);
+    expect(reclaimed.chips).toBe(650); // chip history carried over
+    expect(reclaimed.socketId).toBe('socket2-fresh');
+    expect(rooms.getRoomByPlayer('p2-new-device')).toBeNull(); // the sent-in id never became a real identity
+    expect(rooms.getRoomByPlayer('p2')).toBe(room);
+  });
+
+  it('不同 playerId + 同昵称，但旧身份当前仍在线 → 不复用，两个身份并存（后来者进不去）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2'); // p2 stays connected (default true)
+
+    const result = rooms.join(room.code, 'p2-second-device', 'Bob', 'socket2-second');
+
+    expect(result.error).toBeUndefined();
+    expect(result.playerId).toBe('p2-second-device'); // did NOT reclaim the online p2
+    expect(room.players).toHaveLength(3); // p1, p2 (still online), p2-second-device (new)
+    expect(room.players.find(p => p.id === 'p2').connected).toBe(true);
+    expect(room.players.find(p => p.id === 'p2').socketId).toBe('socket2'); // untouched
+  });
+
+  it('两个不同的人先后用同一昵称加入，都不匹配任何离线记录 → 都是独立的新玩家', () => {
+    const room = rooms.create('p1', 'Alice');
+    const r1 = rooms.join(room.code, 'pA', 'Chris', 'socketA');
+    const r2 = rooms.join(room.code, 'pB', 'Chris', 'socketB');
+
+    expect(r1.playerId).toBe('pA');
+    expect(r2.playerId).toBe('pB');
+    expect(room.players).toHaveLength(3);
+  });
+});
+
+describe('RoomManager — 闲置房间自动清理（sweepIdleRooms）', () => {
+  it('全员断线/离开且超过 ttl 未活动 → 房间被清理', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.setConnected('p1', false);
+    room.setConnected('p2', false);
+    room.lastActivityAt = Date.now() - 1000; // "13 小时前"（相对 ttl=1000ms 而言足够旧）
+
+    rooms.sweepIdleRooms(500);
+
+    expect(rooms.rooms.has(room.code)).toBe(false);
+    expect(rooms.getRoomByPlayer('p1')).toBeNull();
+    expect(rooms.getRoomByPlayer('p2')).toBeNull();
+  });
+
+  it('全员断线但未超过 ttl → 不清理', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.setConnected('p1', false);
+    room.lastActivityAt = Date.now();
+
+    rooms.sweepIdleRooms(60_000);
+
+    expect(rooms.rooms.has(room.code)).toBe(true);
+  });
+
+  it('有玩家仍连接 → 不管多久没活动都不清理', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.lastActivityAt = Date.now() - 1000;
+
+    rooms.sweepIdleRooms(500);
+
+    expect(rooms.rooms.has(room.code)).toBe(true);
+  });
+
+  it('touch() 会更新 lastActivityAt', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.lastActivityAt = 0;
+    room.touch();
+    expect(room.lastActivityAt).toBeGreaterThan(0);
+  });
 });
 
 describe('RoomManager — 连接状态', () => {

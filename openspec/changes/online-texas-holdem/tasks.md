@@ -687,3 +687,24 @@
 - [x] 45.5 新增 `client/src/components/HandHistoryModal.jsx`：最新一手在最上面，点开一行展开公共牌/双方手牌（按可见性规则）/每人这手净输赢；`GameTable.jsx`/`Lobby.jsx` 菜单都新增"牌局记录"入口（不分房主，随时可查）
 - [x] 45.6 服务端新增回归测试：弃牌获胜一手结束后 `room:get-hand-history` 能拿到摘要（`reveals` 为空）；亮牌炫耀后同一手记录补上赢家手牌，115/115 全绿；Playwright 双人真机跑一手弃牌获胜（含亮牌炫耀）+ 一手真摊牌，打开牌局记录验证列表/展开/公共牌/手牌可见性/净输赢全部正确，截图确认
 - [x] 45.7 **修正（用户反馈，2026-07-24）**：牌局记录里"自己的牌"应始终可见，不该只套用摊牌公开规则——`GameEngine._endHand()` 新增私有字段 `allHoleCards`（不分弃牌与否，记录全部参与者手牌），`handHistory` 每条记录存一份服务端专用的 `_privateHoleCards`（永不整体广播），`room:get-hand-history` 改成按请求者个性化响应（公开层 ∪ 请求者自己的手牌）；服务端测试重写为验证三视角（弃牌方看自己/看不到未亮牌的赢家、赢家看自己不用等亮牌、公开亮牌后弃牌方能看到两份），115/115 全绿；Playwright 三人局验证每人只看到自己的手牌，截图确认
+
+## 46. 牌局记录改版：全屏侧滑大页 + 快速跳转导航条 + 发生时间 + 赢家牌型（用户反馈，2026-07-24）
+
+- [x] 46.1 用户反馈居中小弹窗（跟账本共用 `.modal`）装不下一晚的手数，改成从右侧滑入的全屏侧滑页（`.hh-panel-overlay`/`.hh-panel`），不再用 `.modal-overlay`/`.modal`；用 `translate` 而非 `transform` 做入场动画（沿用项目已踩过的坑——`transform` 会跟卡牌翻转等动画的 inline transform 冲突），配 `prefers-reduced-motion` 兜底
+- [x] 46.2 用户看参考截图（一个完整逐街回放工具）后确认只借鉴"结果"层面的点，不引入"过程"：加一个赢家牌型标签（`.hh-hand-type`，样式跟结算弹窗 `.modal-hand` 一致），只在真实摊牌时显示（弃牌获胜没有牌型可比）
+- [x] 46.3 新增每手"发生时间"显示（服务端 `handHistory` 本来就存了 `timestamp`，只是没往前端露出），格式化成 `HH:mm`
+- [x] 46.4 新增左侧快速跳转导航条，跟内容区各自独立滚动、双向联动：点导航条数字→内容区平滑滚动定位并展开该手；内容区滚动→导航条自动高亮对应数字并保持可见。用标准的 IntersectionObserver scrollspy 技术实现（浏览器原生 API，文档站目录导航同款做法，没有引入新依赖）
+- [x] 46.5 **踩坑**：scrollspy 判断"最后一项"的经典边界问题——跳到列表最后一手时，因为下面没有更多内容能把它推到视口顶部，最初会误高亮成前一项；标准修法是给可滚动内容区加一段跟视口等高的底部缓冲空间（`padding-bottom:60vh`），让任意一项都能被推到顶部，问题解决
+- [x] 46.6 默认展开"最上面那手"（即最新一手，因为列表是新的在最上面排序，不是手数序号=1 那手）；**踩坑**：最初用 `useState(sorted[0]?.handNumber)` 直接算初始值不生效——弹窗挂载时数据还没到（`hands=[]`），后续数据到达只是 prop 更新，`useState` 初始值只在首次挂载时计算一次，不会重新触发；改用 `useEffect` 监听 `hands` 从空变为有数据时再设置默认展开，配合 ref 保证只设置一次
+- [x] 46.7 服务端 115/115 不受影响（本轮纯前端）；Playwright 真机验证：8 手快速弃牌局下导航条双向联动两个方向都测过（点击跳转到最后一手+自动展开、手动滚动到顶部后导航条正确高亮回最新一手）、时间戳格式正确、赢家牌型标签正确显示、默认展开最新一手，全部截图确认
+
+## 47. 同设备退出后自动恢复身份 + 房间闲置 12 小时自动失效（用户反馈，2026-07-24）
+
+- [x] 47.1 设计决策已记入 design.md：昵称匹配身份被否决（无唯一性校验、有身份冒用风险），改用现有 `playerId`（浏览器本地令牌，退出时不会被清）做匹配；房间闲置超时定为 12 小时
+- [x] 47.2 `RoomManager.js`：`Room` 构造函数新增 `lastActivityAt` + `touch()` 方法；`addPlayer()` 改为先查是否有匹配 `id` 且 `left===true` 的既有行，是则复用重置（保留筹码/账本/历史关联），否则维持原有拒绝逻辑；房间已满校验只对真正的新玩家生效，不挡复用
+- [x] 47.3 `RoomManager.js` 新增 `sweepIdleRooms(ttlMs)`：`players.every(p => !p.connected || p.left)` 且超过 `ttlMs` 未活动的房间会被清理（含清理所有玩家的 `playerRoom` 映射）；只要有人仍连接就永不因为"太久没活动"被清
+- [x] 47.4 `server/index.js`：在每个成功处理房间事件的 handler 里补 `room.touch()`（`broadcastRoom` 这个大部分事件的公共出口已经加了，另外单独给 room:join/rebuy/leave-room/leave-for/poke/restart/end-game/kick/ready-next/reveal-cards/sync 这些不经过 broadcastRoom 的直接 emit 路径都补上）；`createServer()` 内新增 15 分钟一次的 `setInterval` 调用 `sweepIdleRooms(12*3600*1000)`，`.unref()` 避免阻塞进程/测试退出
+- [x] 47.5 `RoomManager` 单测新增：重新加入复用既有行（筹码/账本保留、`playerRoom` 映射恢复）、房间已满时复用仍被允许、真正新玩家在房满时仍被拒绝、`sweepIdleRooms` 三种情况（超时该清/未超时不清/有人连接不清）、`touch()` 更新时间戳；集成测试新增完整 socket 流程验证（显式退出→同 `playerId` 重新 `room:join`→成功恢复身份而不是新玩家）；**踩坑**：集成测试最初因为没等 c1 消费完"p2 加入"的 `room:state` 广播就急着监听下一个事件，捕获到了过期的 join 事件而不是 leave 事件，误判为 bug——补上 `await Promise.all([...])` 等两边都收到 join 广播后再往下走，问题解决，不是服务端 bug；123/123 全绿
+- [x] 47.6 Playwright 双人真机验证：Alice 退出（`vr_roomCode` 被清但 `vr_playerId` 保留）→ Bob 留在房间里（房间因为不是全员离开而存活）→ Alice 重新访问房间链接、重新输入昵称点"加入"→ 成功恢复原身份（不是新增一行，Bob 视角看到的玩家数还是 2 不是 3），筹码 ¥1,000 完整保留，截图确认
+- [x] 47.7 **修正（用户反馈，2026-07-24）**：`playerId` 方案覆盖不到"微信内置浏览器 vs 手机自带浏览器"这种跨 App 场景（`localStorage` 按 WebView 隔离，不是按物理设备）——补一层"仅当旧身份当前不在线（`connected===false`）才生效"的昵称兜底，加在 `playerId` 精确匹配之后：`Room.addPlayer()` 匹配不到 `id` 时，退而找"昵称一致且当前离线"的既有行复用（不改这一行的 `id`，只重置 `connected`/`left`/`socketId`），返回真实的旧 `id`；`RoomManager.join()`/`server/index.js` 的 `room:join` 处理器改用这个"实际身份"（可能跟客户端传来的不一样）去更新 `playerRoom` 映射、`updateSocket`、以及通过 `room:joined` 回传给客户端——客户端本来就是以服务端返回值为准覆盖本地 `vr_playerId`（`HomePage.jsx` 一直这么写的），不需要改客户端代码。这个设计天然排除了"同一人两台设备同时在线互相顶替"的风险：一个身份同一时刻只能被一个在线连接持有，昵称匹配严格只在旧身份离线时才生效，后来者在旧身份仍在线时永远进不去、走全新加入分支
+- [x] 47.8 `RoomManager` 单测新增 3 条：不同 id+同昵称+旧身份离线→复用成功且返回旧 id；旧身份仍在线→不复用，两个身份并存；两个不同的人都用同昵称但都不匹配离线记录→各自独立成为新玩家。集成测试新增：模拟"微信断线、Safari 用不同 playerId+同昵称加入"全链路 socket 场景，验证拿回的是旧身份、房间玩家数不变。127/127 全绿；Playwright 用两个完全隔离的浏览器 context（模拟微信 vs Safari 两套独立 localStorage）实测：房主开局→"微信"加入→关掉"微信"（context 直接关闭，模拟断线不是主动退出）→"Safari"用同昵称加入同房间号→成功以"Bob（我）"身份进入大厅，玩家数仍是 2 不是 3，截图确认

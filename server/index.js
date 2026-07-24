@@ -53,6 +53,7 @@ function createServer() {
   // ─── helpers ───────────────────────────────────────────────────────────────
 
   function broadcastRoom(room) {
+    room.touch();
     maybeArmPauseTimer(room);
     maybeArmBustTimer(room);
     for (const p of room.players) {
@@ -252,14 +253,21 @@ function createServer() {
     });
 
     socket.on('room:join', ({ code, playerId, playerName }) => {
-      myPlayerId = playerId;
       clearTimeout(pendingRemovals.get(playerId));
       pendingRemovals.delete(playerId);
       const result = rooms.join(code, playerId, playerName, socket.id);
       if (result.error) return socket.emit('game:error', result.error);
-      result.room.updateSocket(playerId, socket.id);
+      // The actual identity for this socket — may differ from the
+      // client-sent playerId if this join was reclaimed by name-fallback
+      // (different browser/app, same name, old identity currently
+      // offline; see RoomManager.addPlayer). The client always adopts
+      // whatever playerId comes back in room:joined as authoritative.
+      const actualId = result.playerId;
+      myPlayerId = actualId;
+      result.room.touch();
+      result.room.updateSocket(actualId, socket.id);
       socket.join(code.toUpperCase());
-      socket.emit('room:joined', { code: code.toUpperCase(), playerId });
+      socket.emit('room:joined', { code: code.toUpperCase(), playerId: actualId });
       io.to(code.toUpperCase()).emit('room:state', result.room.getLobbyState());
     });
 
@@ -285,6 +293,7 @@ function createServer() {
       if (!room) return socket.emit('game:error', '未找到房间');
       const result = room.rebuy(playerId);
       if (result.error) return socket.emit('game:error', result.error);
+      room.touch();
       // If the room was paused waiting on this player's bust decision,
       // rebuying is one of the two ways to resolve it — re-check whether
       // everyone's clear to deal the next hand now.
@@ -302,6 +311,7 @@ function createServer() {
     socket.on('player:leave-room', ({ playerId }) => {
       const room = rooms.leave(playerId);
       if (!room) return;
+      room.touch();
       if (room.awaitingBustResolution) tryAdvanceIfClear(room);
       else io.to(room.code).emit('room:state', room.getLobbyState());
     });
@@ -318,6 +328,7 @@ function createServer() {
       if (!target || target.chips !== 0 || target.left) return;
       const result = rooms.leave(targetId);
       if (!result) return;
+      result.touch();
       if (result.awaitingBustResolution) tryAdvanceIfClear(result);
       else io.to(result.code).emit('room:state', result.getLobbyState());
     });
@@ -327,6 +338,7 @@ function createServer() {
       if (!room) return socket.emit('game:error', '未找到房间');
       const result = room.poke(fromId, targetId);
       if (result.error) return socket.emit('game:error', result.error);
+      room.touch();
       io.to(room.code).emit('player:poked', { fromId, targetId });
     });
 
@@ -335,6 +347,7 @@ function createServer() {
       if (!room) return socket.emit('game:error', '未找到房间');
       if (room.hostId !== playerId) return socket.emit('game:error', '只有房主可以重新开始');
       room.restart();
+      room.touch();
       io.to(room.code).emit('room:state', room.getLobbyState());
     });
 
@@ -351,6 +364,7 @@ function createServer() {
       room.game = null;
       room.status = 'waiting';
       room.awaitingBustResolution = false;
+      room.touch();
       io.to(room.code).emit('room:state', room.getLobbyState());
       io.to(room.code).emit('game:ended', { ended: true, reason: '房主结束了本局对局', hostEnded: true });
     });
@@ -395,6 +409,7 @@ function createServer() {
       // socket.io room (misses future broadcasts) and this connection's own
       // future 'disconnect' wouldn't know which player it was for.
       myPlayerId = playerId;
+      room.touch();
       room.updateSocket(playerId, socket.id);
       room.setConnected(playerId, true);
       socket.join(room.code);
@@ -432,6 +447,7 @@ function createServer() {
       }
       const wasAwaitingSettlement = room.isAwaitingSettlementAck();
       rooms.leave(targetId);
+      room.touch();
       io.to(room.code).emit('room:state', room.getLobbyState());
       // If settlement was blocked by the kicked player (who was removed
       // from eligiblePlayerIds by Room.removePlayer), check if all
@@ -455,6 +471,7 @@ function createServer() {
     socket.on('game:ready-next', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room?.isAwaitingSettlementAck()) return;
+      room.touch();
       if (room.ackReady(playerId)) advanceRoom(room);
       else io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
     });
@@ -471,6 +488,7 @@ function createServer() {
       if (!room.revealedPlayerIds) room.revealedPlayerIds = new Set();
       if (room.revealedPlayerIds.has(playerId)) return;
       room.revealedPlayerIds.add(playerId);
+      room.touch();
 
       const revealedHoleCards = player.holeCards.map(parseCard);
       io.to(room.code).emit('game:cards-revealed', {
@@ -545,6 +563,15 @@ function createServer() {
       // (existing nextRound() elimination, unchanged) — see design.md.
     });
   });
+
+  // Idle-room reaper: mid-game disconnects have no per-player timeout (see
+  // the comment above), so a room abandoned mid-hand would otherwise sit in
+  // memory forever with nothing to ever clear it. Sweeps every 15 minutes;
+  // .unref() so this interval alone never keeps the Node process (or a test
+  // run) alive.
+  const ROOM_IDLE_TTL_MS = 12 * 60 * 60 * 1000;
+  const sweepInterval = setInterval(() => rooms.sweepIdleRooms(ROOM_IDLE_TTL_MS), 15 * 60 * 1000);
+  sweepInterval.unref();
 
   return { app, server, io, rooms };
 }

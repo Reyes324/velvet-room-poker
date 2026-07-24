@@ -38,13 +38,64 @@ class Room {
     // with chips/debt (a fresh night), but NOT by the host's "结束游戏"
     // (which deliberately keeps the session's numbers intact).
     this.handHistory = [];
+    // Idle-expiry bookkeeping (see RoomManager.sweepIdleRooms) — updated by
+    // touch() on essentially every successful room event. Deliberately NOT
+    // touched by a disconnect itself (that's the absence of activity, not
+    // an instance of it).
+    this.lastActivityAt = Date.now();
   }
 
+  touch() {
+    this.lastActivityAt = Date.now();
+  }
+
+  // Returns { ok: true, id } — `id` is the ACTUAL identity now associated
+  // with this socket, which may differ from the `id` passed in (see the
+  // nickname-fallback branch below). The caller (RoomManager.join) must use
+  // this returned id, not the one it was given, for the playerRoom mapping
+  // and the room:joined response — the client already treats whatever
+  // playerId comes back over the wire as authoritative and overwrites its
+  // own localStorage with it (HomePage.jsx's room:joined handler), so no
+  // client changes were needed for this.
   addPlayer(id, name, socketId) {
+    // Same playerId (browser-local token — survives an explicit "退出房间",
+    // only the room-code half of localStorage gets cleared client-side)
+    // rejoining a room they'd previously left: reactivate their existing
+    // row instead of rejecting them as a duplicate, so their chips/debt/
+    // hand-history association comes back instead of being orphaned.
+    const existing = this.players.find(p => p.id === id);
+    if (existing) {
+      if (!existing.left) return { error: '已在房间内' };
+      existing.left = false;
+      existing.connected = true;
+      existing.socketId = socketId;
+      existing.name = name;
+      return { ok: true, id: existing.id };
+    }
+    // No playerId match — most commonly a different browser/app on the
+    // same physical device (e.g. WeChat's in-app browser vs. the phone's
+    // own browser have entirely separate localStorage, so vr_playerId
+    // never carries over). Fall back to name-based reclaiming, but ONLY
+    // of a row that's currently OFFLINE (`connected === false`) — a row
+    // still connected is never touched, no matter how it got there or how
+    // long it's been idle. This is the one guard that makes name-matching
+    // safe here: an identity can only ever be held by one connected
+    // socket at a time, so a second device can never silently displace a
+    // first one that's still actually present (confirmed safe against two
+    // real people typing the same name too — Node's single-threaded event
+    // loop processes joins one at a time, so by the time a second
+    // simultaneous join is handled, the first has already flipped
+    // connected:true and this branch no longer matches it).
+    const sameName = this.players.find(p => p.name === name && p.connected === false);
+    if (sameName) {
+      sameName.left = false;
+      sameName.connected = true;
+      sameName.socketId = socketId;
+      return { ok: true, id: sameName.id };
+    }
     if (this.players.length >= 9) return { error: '房间已满，无法加入' };
-    if (this.players.find(p => p.id === id)) return { error: '已在房间内' };
     this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0, connected: true, left: false });
-    return { ok: true };
+    return { ok: true, id };
   }
 
   // Only a busted (chips === 0) player can rebuy — independent of room
@@ -312,8 +363,12 @@ class RoomManager {
     if (!room) return { error: '房间不存在' };
     const result = room.addPlayer(playerId, playerName, socketId);
     if (result.error) return result;
-    this.playerRoom.set(playerId, code.toUpperCase());
-    return { ok: true, room };
+    // result.id may differ from the playerId passed in — see addPlayer's
+    // name-based reclaim fallback. The playerRoom mapping (and whatever we
+    // hand back to the caller) must key off the REAL identity, not
+    // whatever id this particular socket happened to show up with.
+    this.playerRoom.set(result.id, code.toUpperCase());
+    return { ok: true, room, playerId: result.id };
   }
 
   leave(playerId) {
@@ -332,6 +387,24 @@ class RoomManager {
 
   getRoom(code) {
     return this.rooms.get(code?.toUpperCase());
+  }
+
+  // A mid-game disconnect deliberately has no per-player grace-period timer
+  // (see server/index.js — the only auto-leave timeout is in the LOBBY,
+  // before a game starts). Without this sweep, a room abandoned mid-game
+  // would otherwise sit in memory forever, relying on an unrelated server
+  // restart to ever clear it. Only rooms where EVERY player is currently
+  // disconnected (or already left) are eligible — a room with anyone still
+  // connected never expires here, no matter how long since real activity.
+  sweepIdleRooms(ttlMs) {
+    const now = Date.now();
+    for (const [code, room] of this.rooms) {
+      const allGone = room.players.every(p => p.connected === false || p.left);
+      if (allGone && now - room.lastActivityAt > ttlMs) {
+        for (const p of room.players) this.playerRoom.delete(p.id);
+        this.rooms.delete(code);
+      }
+    }
   }
 
   getRoomByPlayer(playerId) {
