@@ -373,6 +373,14 @@ class GameEngine {
         name: p.name,
         holeCards: p.holeCards.map(parseCard),
       })),
+      // Private per-player snapshot for hand-history — NOT for broadcast.
+      // A player can always see their own hole cards for a hand they were
+      // dealt into, win or lose, showdown or fold, same as the live table's
+      // own rule (getStateForPlayer: viewer's own cards are always visible
+      // regardless of status). showdownReveal above is the PUBLIC layer
+      // (what everyone at the table gets to see); this is the private layer
+      // the server uses to answer "what were MY cards" for whoever asks.
+      allHoleCards: this.players.map(p => ({ id: p.id, holeCards: p.holeCards.map(parseCard) })),
     };
   }
 

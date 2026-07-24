@@ -219,7 +219,8 @@ function createServer() {
         foldWin: result.foldWin,
         winners: result.winners.map(w => ({ id: w.id, name: w.name, won: w.won, handName: w.handName })),
         settle: result.settle,
-        reveals: result.showdownReveal,
+        reveals: result.showdownReveal, // public — sent to everyone as-is
+        _privateHoleCards: result.allHoleCards, // never broadcast directly — see room:get-hand-history
       });
     }
   }
@@ -361,7 +362,23 @@ function createServer() {
     socket.on('room:get-hand-history', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return socket.emit('game:error', '未找到房间');
-      socket.emit('room:hand-history', room.handHistory);
+      // Per-viewer response: everyone gets the same public `reveals`
+      // (showdown contenders, or a fold-win winner who opted into 亮牌炫耀),
+      // plus this one viewer's own hole cards for hands they were dealt
+      // into — same rule the live table already applies (own cards always
+      // visible, others' hidden unless publicly shown). Built fresh per
+      // request; `_privateHoleCards` never leaves the server directly.
+      const personalized = room.handHistory.map(h => {
+        const { _privateHoleCards, ...pub } = h;
+        const mine = _privateHoleCards?.find(c => c.id === playerId);
+        const alreadyPublic = pub.reveals.some(r => r.id === playerId);
+        const myName = h.settle.find(s => s.id === playerId)?.name;
+        const reveals = mine && !alreadyPublic
+          ? [...pub.reveals, { id: playerId, name: myName, holeCards: mine.holeCards }]
+          : pub.reveals;
+        return { ...pub, reveals };
+      });
+      socket.emit('room:hand-history', personalized);
     });
 
     socket.on('room:sync', ({ playerId }) => {

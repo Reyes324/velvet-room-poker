@@ -4,12 +4,12 @@ import Card from './Card';
 // Result-only per-hand log ("牌局记录") — community cards, who won what,
 // how (摊牌 vs 弃牌获胜), and each player's net for that hand. Deliberately
 // not a full action-by-action replay (out of scope per user request).
-// Card visibility mirrors the live game's own rule instead of a new one:
-// a real showdown already revealed every non-folded player's cards to the
-// whole table, so those are always in `reveals`; a fold-win only carries
-// cards if the winner later opted into 亮牌炫耀 — until then `reveals` is
-// empty and this hand shows no cards at all, same as nobody could see them
-// live either.
+// `hands` (fetched via room:get-hand-history) is already personalized
+// server-side per viewer: `reveals` always includes MY own hole cards for
+// any hand I was dealt into (win/lose, showdown/fold — same "own cards
+// always visible" rule the live table uses), plus whichever OTHER players'
+// cards were made public (real showdown contenders, or a fold-win winner
+// who opted into 亮牌炫耀). Never anyone else's hidden cards.
 export default function HandHistoryModal({ hands, myId, onClose }) {
   const [expanded, setExpanded] = useState(null);
   const sorted = [...hands].sort((a, b) => b.handNumber - a.handNumber);

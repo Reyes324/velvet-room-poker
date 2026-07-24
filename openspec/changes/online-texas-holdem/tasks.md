@@ -686,3 +686,4 @@
 - [x] 45.4 `server/index.js`：`handleActionResult` 在 `result.showdown` 时往 `handHistory` push 一条记录（手数序号/时间戳/公共牌/`foldWin`/`winners`/`settle`/`reveals`）；`game:reveal-cards` 成功广播后，顺手把同一手在 `handHistory` 里的 `reveals` 补上赢家手牌；新增 `room:get-hand-history` 请求/`room:hand-history` 响应，按需拉取而不是塞进高频的 `room:state` 广播
 - [x] 45.5 新增 `client/src/components/HandHistoryModal.jsx`：最新一手在最上面，点开一行展开公共牌/双方手牌（按可见性规则）/每人这手净输赢；`GameTable.jsx`/`Lobby.jsx` 菜单都新增"牌局记录"入口（不分房主，随时可查）
 - [x] 45.6 服务端新增回归测试：弃牌获胜一手结束后 `room:get-hand-history` 能拿到摘要（`reveals` 为空）；亮牌炫耀后同一手记录补上赢家手牌，115/115 全绿；Playwright 双人真机跑一手弃牌获胜（含亮牌炫耀）+ 一手真摊牌，打开牌局记录验证列表/展开/公共牌/手牌可见性/净输赢全部正确，截图确认
+- [x] 45.7 **修正（用户反馈，2026-07-24）**：牌局记录里"自己的牌"应始终可见，不该只套用摊牌公开规则——`GameEngine._endHand()` 新增私有字段 `allHoleCards`（不分弃牌与否，记录全部参与者手牌），`handHistory` 每条记录存一份服务端专用的 `_privateHoleCards`（永不整体广播），`room:get-hand-history` 改成按请求者个性化响应（公开层 ∪ 请求者自己的手牌）；服务端测试重写为验证三视角（弃牌方看自己/看不到未亮牌的赢家、赢家看自己不用等亮牌、公开亮牌后弃牌方能看到两份），115/115 全绿；Playwright 三人局验证每人只看到自己的手牌，截图确认

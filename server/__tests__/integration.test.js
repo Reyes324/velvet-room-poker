@@ -185,28 +185,42 @@ describe('集成测试 — 游戏流程', () => {
     actor.emit('game:action', { playerId: actorId, action: 'fold' });
     await settled;
 
-    const historyResp = waitFor(winnerClient, 'room:hand-history');
-    winnerClient.emit('room:get-hand-history', { playerId: winnerId });
-    const history = await historyResp;
-
-    expect(history).toHaveLength(1);
-    expect(history[0].handNumber).toBe(1);
-    expect(history[0].foldWin).toBe(true);
-    expect(history[0].winners[0].id).toBe(winnerId);
-    expect(history[0].reveals).toEqual([]);
+    // Before the winner opts into 亮牌炫耀: the FOLDER should see their own
+    // cards (dealt into the hand, just folded) but NOT the winner's — the
+    // winner never had to prove their hand.
+    const folderHistoryResp = waitFor(actor, 'room:hand-history');
+    actor.emit('room:get-hand-history', { playerId: actorId });
+    const folderHistory = await folderHistoryResp;
+    expect(folderHistory).toHaveLength(1);
+    expect(folderHistory[0].handNumber).toBe(1);
+    expect(folderHistory[0].foldWin).toBe(true);
+    expect(folderHistory[0].winners[0].id).toBe(winnerId);
+    expect(folderHistory[0].reveals).toHaveLength(1);
+    expect(folderHistory[0].reveals[0].id).toBe(actorId); // only their own
     // Every player's net for the hand is present, winner and folder alike.
-    expect(history[0].settle.map(s => s.id).sort()).toEqual(['p1', 'p2']);
+    expect(folderHistory[0].settle.map(s => s.id).sort()).toEqual(['p1', 'p2']);
+
+    // The winner, from their own view, sees their own cards too (even
+    // though they haven't publicly revealed) — same "own cards always
+    // visible" rule, just privately per-viewer instead of broadcast.
+    const winnerHistoryResp = waitFor(winnerClient, 'room:hand-history');
+    winnerClient.emit('room:get-hand-history', { playerId: winnerId });
+    const winnerHistory = await winnerHistoryResp;
+    expect(winnerHistory[0].reveals).toHaveLength(1);
+    expect(winnerHistory[0].reveals[0].id).toBe(winnerId);
 
     const revealed = waitFor(winnerClient, 'game:cards-revealed');
     winnerClient.emit('game:reveal-cards', { playerId: winnerId });
     await revealed;
 
-    const historyResp2 = waitFor(winnerClient, 'room:hand-history');
-    winnerClient.emit('room:get-hand-history', { playerId: winnerId });
-    const history2 = await historyResp2;
-    expect(history2[0].reveals).toHaveLength(1);
-    expect(history2[0].reveals[0].id).toBe(winnerId);
-    expect(history2[0].reveals[0].holeCards).toHaveLength(2);
+    // After the winner publicly reveals, the folder's next fetch should now
+    // see BOTH their own cards and the winner's (2 entries total).
+    const folderHistoryResp2 = waitFor(actor, 'room:hand-history');
+    actor.emit('room:get-hand-history', { playerId: actorId });
+    const folderHistory2 = await folderHistoryResp2;
+    expect(folderHistory2[0].reveals.map(r => r.id).sort()).toEqual([actorId, winnerId].sort());
+    const winnerReveal = folderHistory2[0].reveals.find(r => r.id === winnerId);
+    expect(winnerReveal.holeCards).toHaveLength(2);
   });
 
   it('房主踢人 → 目标玩家收到 room:kicked，且被标记 left（账本仍保留这一行）', async () => {
