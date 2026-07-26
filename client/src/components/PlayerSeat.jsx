@@ -13,7 +13,7 @@ const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue'
 
 // The showdown reveal always renders to the side of the seat (toward
 // whichever direction GameTable's cardsSide picks — the center strip, per
-// column). Rows are only COL_ROW_PITCH apart, so anything rendered
+// column). Rows sit close enough together that anything rendered
 // above/below a seat overlaps the neighboring row's card/footer — side
 // placement is the only direction with real room to spare, confirmed on a
 // real device. The "above" fallback below is unreachable in normal play
@@ -41,7 +41,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -88,7 +88,18 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
       {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && (
         <div className="reveal" style={sideStyle(cardsSide)}>
           {player.holeCards.map((c, i) => (
-            <Card key={i} card={c} size="xs" />
+            <Card
+              key={i}
+              card={c}
+              // All showdown reveals are the same size ('sm') — the winner
+              // doesn't need a bigger card too, the gold highlight already
+              // reads clearly on its own (user feedback), and keeping size
+              // uniform avoids the extra vertical clearance a bigger 'md'
+              // card would otherwise force everywhere it might land.
+              size="sm"
+              highlight={bestCardRaws ? bestCardRaws.has(c.raw) : false}
+              dim={bestCardRaws ? !bestCardRaws.has(c.raw) : false}
+            />
           ))}
         </div>
       )}

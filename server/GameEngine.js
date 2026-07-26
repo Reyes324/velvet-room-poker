@@ -50,6 +50,18 @@ function translateHandDescr(descr) {
   return descr; // unrecognized format (e.g. wild-card variants we don't use) — pass through rather than break
 }
 
+// Bare category name only ("葫芦", "两对", "一对") — no kicker/rank detail —
+// for the large on-table banner, as opposed to translateHandDescr's full
+// description ("葫芦，Q 带 8") which stays reserved for the settlement sheet.
+function translateHandDescrShort(descr) {
+  if (!descr) return descr;
+  if (descr === 'Royal Flush') return '皇家同花顺';
+  const commaIdx = descr.indexOf(',');
+  if (commaIdx === -1) return '高牌'; // no category prefix at all (e.g. "Ace High") means High Card
+  const category = descr.slice(0, commaIdx);
+  return HAND_NAME_ZH[category] || category;
+}
+
 // pokersolver notation: 'As', 'Kh', 'Td', '2c'
 function makeDeck() {
   const deck = [];
@@ -351,6 +363,12 @@ class GameEngine {
         id: w.id,
         name: w.name,
         handName: w.handName,
+        // Short category label ("葫芦") for the on-table banner and the 5
+        // cards (own hole cards + community) that make up that best hand,
+        // for highlighting — both absent on a fold-win, where there's no
+        // real hand comparison to show.
+        handNameShort: w.handNameShort || null,
+        bestCards: (w.bestCards || []).map(parseCard),
         won: won[w.id] || 0,
         holeCards: w.holeCards.map(parseCard),
       })),
@@ -400,9 +418,14 @@ class GameEngine {
   _determineWinners(contenders, isFoldWin) {
     if (contenders.length === 1) {
       const w = contenders[0];
-      w.handName = isFoldWin
-        ? (w.handName || '其他人全部弃牌')
-        : (w.handName || translateHandDescr(Hand.solve([...w.holeCards, ...this.communityCards]).descr));
+      if (isFoldWin) {
+        w.handName = w.handName || '其他人全部弃牌';
+      } else if (!w.handName) {
+        const solved = Hand.solve([...w.holeCards, ...this.communityCards]);
+        w.handName = translateHandDescr(solved.descr);
+        w.handNameShort = translateHandDescrShort(solved.descr);
+        w.bestCards = solved.cards.map(c => c.value + c.suit);
+      }
       return contenders;
     }
     const hands = contenders.map(p => ({
@@ -414,6 +437,8 @@ class GameEngine {
       .filter(h => winningHands.includes(h.hand))
       .map(h => {
         h.player.handName = translateHandDescr(h.hand.descr);
+        h.player.handNameShort = translateHandDescrShort(h.hand.descr);
+        h.player.bestCards = h.hand.cards.map(c => c.value + c.suit);
         return h.player;
       });
   }

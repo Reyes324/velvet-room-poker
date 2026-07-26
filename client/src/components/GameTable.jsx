@@ -53,58 +53,121 @@ const COMMUNITY_COUNT = 5; // flop(3) + turn(1) + river(1), all dealt face-down 
 // reads as a simple top-to-bottom zigzag instead of jumping across columns.
 const COL_LEFT_X = 40;
 const COL_RIGHT_X = 335;
-const COL_TOP_Y = 46;
 
-// Row spacing is looser with fewer players and only tightens as the table
-// fills up — a 2-handed table shouldn't be as cramped as a 9-max one just
-// because they share the same column x-positions. `rowsPerColumn` is
-// however many rows the taller of the two columns needs (opponents[0]→left
-// row 0, opponents[1]→right row 0, … so the two columns differ by at most
-// one row). Values tuned empirically against real rendered bounding boxes
-// (reveal cards must not collide with the row above/below, or with the
-// community-card zone in the center strip), not hand-computed.
-function rowPitchFor(rowsPerColumn) {
-  if (rowsPerColumn <= 2) return 130;
-  if (rowsPerColumn === 3) return 100;
-  return 76; // 4 rows — the densest supported table (7-9 handed)
+// Seats used to stack from a fixed top margin at a per-density fixed pitch,
+// only ever using the space ABOVE the community strip — real bounding
+// boxes (Playwright, not hand-computed) showed a wide unused band below
+// the community cards that this never touched, and on a dense table rows
+// got compressed enough to invade the community band itself (a real bug:
+// a bottom-row seat's showdown reveal physically overlapped it).
+//
+// Model now: two fixed zones, TOP_ZONE above the Pot/community block and
+// BOTTOM_ZONE below it, each holding up to ZONE_ROW_CAP rows per column —
+// this exact "2 above, 2 below, per side" cap is what the user asked for
+// directly (annotated a screenshot with a line through the community row:
+// "红线以上极限能放四个，左右各两个，红线以下也是"). It's a ceiling, not a
+// guarantee: `maxRowsInZone` below still checks a zone can actually fit
+// that many rows before honoring the cap.
+//
+// Every boundary constant is a real measured position (Playwright bounding
+// boxes), not computed from the other UI elements' nominal sizes — Pot's
+// own layout (padding, the street tag, flex centering) makes it cheaper to
+// just measure the rendered result than to keep every constant in sync by
+// hand. Re-measure these if Pot, community, or hero's card layout changes.
+const POT_TOP = 173;               // .pot top, after the down-shift below
+const COMMUNITY_BOTTOM = 285;      // .community bottom
+const HERO_CARDS_TOP = 511.6;      // .hero-cards top (the big face-up hand, not the small avatar seat)
+// A seat's showdown reveal card renders vertically CENTERED on the seat's
+// own y (PlayerSeat's sideStyle: translateY(-50%)), so a zone boundary
+// that only clears the neighboring element's edge still lets the card's
+// own half-height poke across it. SAFE_MARGIN = 26 (sm card half-height,
+// the only size reveal cards render at now) + 4px buffer.
+const SAFE_MARGIN = 30;
+const TOP_ZONE = { start: 46, end: POT_TOP - SAFE_MARGIN };                        // 46 – 143
+const BOTTOM_ZONE = { start: COMMUNITY_BOTTOM + SAFE_MARGIN, end: HERO_CARDS_TOP - SAFE_MARGIN }; // 315 – 481.6
+const ZONE_ROW_CAP = 2; // the user's explicit "2 above, 2 below, per side" — a ceiling, not a guarantee
+// A seat WITH a position badge (庄家/小盲/大盲) is taller than one without —
+// measured ≈88.7 vs ≈71.5 — and any seat can carry one on a given hand, so
+// the pitch has to clear the taller case or two rows' badges/avatars overlap.
+const MIN_SEAT_PITCH = 90;
+// Target spacing within a zone when there's room to spare (a zone bigger
+// than it needs stretched rows apart to fill it otherwise, reading as
+// oddly sparse rather than a natural seating cluster).
+const ROW_PITCH = 100;
+
+// k rows packed from zone.start downward at ROW_PITCH (clamped to fit if
+// the zone's too small). Both zones pack in the same direction so that
+// walking down a column in array order — which is real seat/turn order,
+// dealer→SB→BB follow it directly — always reads as one consistent
+// top-to-bottom pass. (An earlier version packed TOP_ZONE from its far end
+// instead, so a lone row would sit closer to the Pot — but that reversed
+// its internal order relative to BOTTOM_ZONE's, breaking the dealer/blind
+// badges' clockwise reading. BOTTOM_ZONE.start already being the
+// community-adjacent edge means this same simple rule still gives a lone
+// bottom-zone row the "close to the table" position on its own, with no
+// special-casing needed.)
+function spreadInZone(k, zone) {
+  if (k <= 0) return [];
+  const zoneLen = zone.end - zone.start;
+  const pitch = k > 1 ? Math.min(ROW_PITCH, zoneLen / (k - 1)) : 0;
+  return Array.from({ length: k }, (_, i) => zone.start + i * pitch);
 }
 
-function seatPositions(n) {
-  const heroPos = { x: 187.5, y: 430 };
-  if (n === 0) return { hero: heroPos, opponents: [] };
-  const pitch = rowPitchFor(Math.ceil(n / 2));
-  const opponents = [];
-  let leftRow = 0, rightRow = 0;
-  for (let i = 0; i < n; i++) {
-    if (i % 2 === 0) {
-      opponents.push({ x: COL_LEFT_X, y: COL_TOP_Y + leftRow * pitch, side: 'left' });
-      leftRow++;
-    } else {
-      opponents.push({ x: COL_RIGHT_X, y: COL_TOP_Y + rightRow * pitch, side: 'right' });
-      rightRow++;
-    }
-  }
-  return { hero: heroPos, opponents };
+// How many rows a zone can actually hold at MIN_SEAT_PITCH — a ceiling
+// this respects only when there's room, never forcing a row count the
+// zone can't fit (TOP_ZONE, with Pot fixed at its current position, only
+// ever fits 1).
+function maxRowsInZone(zone) {
+  const zoneLen = zone.end - zone.start;
+  return zoneLen >= MIN_SEAT_PITCH ? Math.floor(zoneLen / MIN_SEAT_PITCH) + 1 : 1;
+}
+const TOP_ZONE_CAP = Math.min(ZONE_ROW_CAP, maxRowsInZone(TOP_ZONE));
+
+// Fills TOP_ZONE first up to its (fit-checked) cap, spills the remainder
+// into BOTTOM_ZONE uncapped — every seat must get a position, and
+// BOTTOM_ZONE is generously sized enough in practice (see maxRowsInZone)
+// that this never needs a tighter pitch than TOP_ZONE already uses. The
+// app's max table size (9-max, 8 opponents) means a column never needs
+// more than 4 rows anyway.
+function columnYs(rows) {
+  if (rows <= 0) return [];
+  const topCount = Math.min(rows, TOP_ZONE_CAP);
+  const bottomCount = rows - topCount;
+  return [...spreadInZone(topCount, TOP_ZONE), ...spreadInZone(bottomCount, BOTTOM_ZONE)];
 }
 
-// Spectator variant: no hero seat to anchor from, so every player in
-// gameState.players fills the same two columns from the top — no reserved
-// bottom slot.
-function spectatorSeatPositions(n) {
+// Shared by both seatPositions() and spectatorSeatPositions() below — the
+// two-column zigzag fill (opponents[0]→left row 0, [1]→right row 0, …) is
+// identical either way, they only differ in whether a hero slot gets
+// reserved on top of it.
+function twoColumnPositions(n) {
   if (n === 0) return [];
-  const pitch = rowPitchFor(Math.ceil(n / 2));
+  const leftCount = Math.ceil(n / 2);
+  const rightCount = n - leftCount;
+  const leftYs = columnYs(leftCount);
+  const rightYs = columnYs(rightCount);
   const seats = [];
   let leftRow = 0, rightRow = 0;
   for (let i = 0; i < n; i++) {
     if (i % 2 === 0) {
-      seats.push({ x: COL_LEFT_X, y: COL_TOP_Y + leftRow * pitch, side: 'left' });
+      seats.push({ x: COL_LEFT_X, y: leftYs[leftRow], side: 'left' });
       leftRow++;
     } else {
-      seats.push({ x: COL_RIGHT_X, y: COL_TOP_Y + rightRow * pitch, side: 'right' });
+      seats.push({ x: COL_RIGHT_X, y: rightYs[rightRow], side: 'right' });
       rightRow++;
     }
   }
   return seats;
+}
+
+function seatPositions(n) {
+  return { hero: { x: 187.5, y: 430 }, opponents: twoColumnPositions(n) };
+}
+
+// Spectator variant: no hero seat to anchor from, so every player in
+// gameState.players fills the same two columns — no reserved bottom slot.
+function spectatorSeatPositions(n) {
+  return twoColumnPositions(n);
 }
 
 export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame }) {
@@ -136,6 +199,19 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     : { hero: null, opponents: spectatorSeatPositions(opponents.length) };
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
+  // Winning hand highlight: the 5 cards making up the best hand are unique
+  // across the whole deal (one card can't be in two different hands at
+  // once), so a flat raw-notation lookup works regardless of whose card it
+  // is — no need to track "whose bestCards" per seat. Absent entirely on a
+  // fold-win (server sends no bestCards there — nobody had to prove a hand),
+  // so `hasBestCards` doubles as "did a real showdown comparison happen".
+  const bestCardRaws = new Set((showdown || []).flatMap(w => (w.bestCards || []).map(c => c.raw)));
+  const hasBestCards = bestCardRaws.size > 0;
+  const cardEffect = (raw) => hasBestCards ? { highlight: bestCardRaws.has(raw), dim: !bestCardRaws.has(raw) } : {};
+  // Winners can differ in which hand they won with (side-pot layers can
+  // resolve to different best-hands) — de-dupe by label so a normal
+  // single-winner or matching-hand split pot still only shows it once.
+  const handNameLabels = [...new Set((showdown || []).map(w => w.handNameShort).filter(Boolean))];
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
@@ -324,6 +400,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           street={PHASE_LABEL[gameState.phase] ?? gameState.phase}
           amount={gameState.pot}
           burst={justShowdown}
+          handNameLabel={handNameLabels.length > 0 ? handNameLabels.join(' / ') : null}
         />
         <div className="community">
           {Array.from({ length: COMMUNITY_COUNT }).map((_, i) => {
@@ -337,6 +414,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                   size="sm"
                   animate={isNew ? 'flip-reveal' : null}
                   delay={isNew ? (i - newCardFrom) * 0.1 : 0}
+                  {...cardEffect(card.raw)}
                 />
               );
             }
@@ -384,7 +462,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         const s = pos[i];
         const dealDelay = i * 0.1;
         // Showdown reveal always renders toward the center strip, never
-        // above/below the seat — with rows only COL_ROW_PITCH (76px) apart,
+        // above/below the seat — rows sit close enough together that
         // anything rendered above a seat overlaps the row above it (its
         // footer/avatar), and anything below overlaps the row below
         // (confirmed on a real device, not hand-computed). The center strip
@@ -392,13 +470,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         // just the topmost one.
         const cardsSide = s.side === 'left' ? 'right' : 'left';
         // The action bubble always sits toward the center strip, same
-        // direction as the showdown reveal — never "above" the seat. It used
-        // to default to "above" for every row except row 0, but real-device
-        // feedback showed that still clips a neighboring seat's name/avatar
-        // whenever two rows sit close together (76px pitch on dense tables),
-        // not just at the canvas's own top edge — the center strip is the
-        // one direction with real room to spare for every row, not just the
-        // topmost one.
+        // direction as the showdown reveal — never "above" the seat, for
+        // the same row-spacing reason.
         const bubbleSide = cardsSide;
         return (
           <div
@@ -419,6 +492,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               onPoke={() => onPoke?.(p.id)}
               poked={pokedSeat?.targetId === p.id}
               revealedCards={revealedPlayers[p.id]?.holeCards ?? null}
+              bestCardRaws={hasBestCards ? bestCardRaws : null}
             />
           </div>
         );
@@ -436,6 +510,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                         size="md"
                         animate={justRevealed ? 'flip-reveal' : null}
                         delay={justRevealed ? i * 0.1 : 0}
+                        {...cardEffect(c.raw)}
                       />
                     ))
                   : me.holeCards.map((_, i) => (
