@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const { RoomManager } = require('./RoomManager');
 const { parseCard } = require('./GameEngine');
+const { PveSession } = require('./PveSession');
 
 function createServer() {
   const app = express();
@@ -13,6 +14,14 @@ function createServer() {
   });
 
   const rooms = new RoomManager();
+  // PVE (人机对战): keyed by socket.id, not by any playerId/room concept —
+  // see design.md「新增：单人人机对战（PVE）模式」for why this is
+  // deliberately not stored in `rooms`. No reconnect support in MVP: a
+  // socket.id is only valid for the life of one browser tab's connection,
+  // so a real disconnect just loses the session (acceptable for a "kill
+  // time while waiting for friends" feature, unlike the real-money-stakes
+  // multiplayer reconnect guarantees above).
+  const pveSessions = new Map();
   // Grace-period timers for lobby (pre-game) disconnects, keyed by playerId.
   // A disconnect while just sitting in the lobby is very often transient —
   // backgrounding the tab to paste the invite link into a messaging app,
@@ -560,7 +569,72 @@ function createServer() {
       }
     });
 
+    // ─── PVE (人机对战) ───────────────────────────────────────────────────
+
+    function pveBroadcastState(session) {
+      socket.emit('game:state', session.getStateForPlayer(session.humanId));
+    }
+
+    function pveHandleResult(session, result) {
+      if (!result || result.error) return;
+      pveBroadcastState(session);
+      if (result.showdown) {
+        socket.emit('game:showdown', {
+          winners: result.winners,
+          pot: result.pot,
+          settle: result.settle,
+          foldWin: result.foldWin,
+        });
+      }
+    }
+
+    // Drives the AI's turn(s) one at a time with a human-like delay between
+    // each — PveSession itself stays synchronous/timer-free (see its own
+    // comment) so this pacing lives entirely in the transport layer. Reads
+    // pveSessions fresh on every tick instead of closing over `session`
+    // alone so a disconnect mid-delay (session already deleted) is a no-op
+    // instead of emitting to a socket that's walked away.
+    function pveRunAiLoop() {
+      const session = pveSessions.get(socket.id);
+      if (!session || !session.isAiTurn()) return;
+      setTimeout(() => {
+        const s = pveSessions.get(socket.id);
+        if (!s || !s.isAiTurn()) return;
+        const r = s.aiAction();
+        if (r) pveHandleResult(s, r.result);
+        pveRunAiLoop();
+      }, 500 + Math.random() * 1500); // 拟人延迟 0.5-2s，见 design.md
+    }
+
+    socket.on('pve:start', ({ playerName }) => {
+      const name = (playerName || '').trim() || '玩家';
+      const session = new PveSession(socket.id, name);
+      pveSessions.set(socket.id, session);
+      pveBroadcastState(session);
+      pveRunAiLoop(); // heads-up: AI may be dealer/SB and act first
+    });
+
+    socket.on('pve:action', ({ action, amount }) => {
+      const session = pveSessions.get(socket.id);
+      if (!session) return socket.emit('game:error', '对局不存在');
+      const result = session.humanAction(action, amount);
+      if (result.error) return socket.emit('game:error', result.error);
+      pveHandleResult(session, result);
+      pveRunAiLoop();
+    });
+
+    socket.on('pve:ready-next', () => {
+      const session = pveSessions.get(socket.id);
+      if (!session) return socket.emit('game:error', '对局不存在');
+      const result = session.readyNext();
+      if (result.error) return socket.emit('game:error', result.error);
+      pveBroadcastState(session);
+      pveRunAiLoop();
+    });
+
     socket.on('disconnect', () => {
+      pveSessions.delete(socket.id);
+
       if (!myPlayerId) return;
       const room = rooms.getRoomByPlayer(myPlayerId);
       if (!room) return;
