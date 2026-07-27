@@ -211,16 +211,28 @@ class Room {
 
   nextRound() {
     this.syncChipsFromGame();
-    // Only active (chips > 0, currently connected, hasn't left) players
-    // enter the next hand — this already naturally picks up anyone who
-    // joined mid-game, just rebought, or just reconnected, since it's
-    // filtered fresh from the full room roster every time, not carried
-    // over from the previous hand's player list. Disconnected players are
-    // skipped (not dealt in) rather than force-included, so the same
-    // absent player doesn't stall every subsequent hand — they're picked
-    // back up automatically the next time nextRound() runs after they
-    // reconnect.
-    const active = this.players.filter(p => p.chips > 0 && p.connected !== false && !p.left);
+    // Only active (chips > 0, hasn't left) players enter the next hand —
+    // this already naturally picks up anyone who joined mid-game, just
+    // rebought, or just reconnected, since it's filtered fresh from the
+    // full room roster every time, not carried over from the previous
+    // hand's player list.
+    //
+    // Deliberately NOT gated on `connected` (used to be — see git history
+    // and design.md's "Bug C 确认根因并修复" for the full story). A mobile
+    // WebSocket disconnect (screen lock, backgrounding — routine on a PWA)
+    // is common enough that in a 3-handed game, two players flickering
+    // offline at exactly the moment a hand ends was enough to drop the
+    // online count below 2 and wrongly end the whole session with a
+    // misleading "筹码不足" message, even though nobody had actually
+    // busted. This was the ONE place in the codebase still treating a
+    // disconnect as equivalent to elimination — everywhere else (a
+    // disconnected player's own turn, settlement-wait acks) already
+    // follows "断线只标记 connected:false，不推动游戏状态": a disconnected
+    // player whose turn comes up just gets picked up by the existing
+    // 5-minute pause-timeout (auto-fold) or the host's manual "帮TA弃牌",
+    // the same safety net a mid-hand disconnect already relies on — there
+    // was never a need to also exclude them here.
+    const active = this.players.filter(p => p.chips > 0 && !p.left);
     if (active.length < 2) {
       this.status = 'waiting';
       this.game = null;

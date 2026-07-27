@@ -583,8 +583,8 @@ describe('RoomManager — 拍一拍', () => {
   });
 });
 
-describe('RoomManager — nextRound 跳过断线玩家', () => {
-  it('断线的玩家不会被发进下一手，即使筹码 > 0', () => {
+describe('RoomManager — nextRound 不再因断线跳过玩家（Bug C 修复）', () => {
+  it('断线的玩家筹码 > 0 时仍会被正常发进下一手（断线不等于淘汰）', () => {
     const rooms2 = new RoomManager();
     const room = rooms2.create('p1', 'Alice');
     rooms2.join(room.code, 'p2', 'Bob', 'socket2');
@@ -594,23 +594,55 @@ describe('RoomManager — nextRound 跳过断线玩家', () => {
     const result = room.nextRound();
     expect(result.ok).toBe(true);
     const dealtIds = room.game.players.map(p => p.id);
-    expect(dealtIds).not.toContain('p2');
-    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p3']));
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p2', 'p3']));
   });
 
-  it('重连后下一次 nextRound 会把玩家重新算进去', () => {
+  it('三人局中 2 人同时断线（都还有筹码）→ 游戏不会被误判"筹码不足"提前结束', () => {
     const rooms2 = new RoomManager();
     const room = rooms2.create('p1', 'Alice');
     rooms2.join(room.code, 'p2', 'Bob', 'socket2');
     rooms2.join(room.code, 'p3', 'Carol', 'socket3');
     room.startGame();
-    room.setConnected('p2', false);
-    room.nextRound();
-    room.setConnected('p2', true);
+    // Simulates two phones' PWAs both flickering offline at the exact
+    // moment a hand ends (screen lock / backgrounding) — the real-world
+    // scenario reported as "每次弃牌就被弹回大厅，提示筹码不足".
+    room.setConnected('p1', false);
+    room.setConnected('p3', false);
+    const result = room.nextRound();
+    expect(result.ok).toBe(true);
+    expect(result.ended).toBeUndefined();
+    expect(room.status).toBe('playing');
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p2', 'p3']));
+  });
+
+  it('筹码真的归零（不是断线）时，人数不足依然正确结束', () => {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    rooms2.join(room.code, 'p2', 'Bob', 'socket2');
+    room.startGame();
+    // nextRound() syncs room.players' chips FROM room.game.players — mutate
+    // the game engine's own copy, same pattern as the existing "筹码归零处理"
+    // test block above.
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+    const result = room.nextRound();
+    expect(result.ended).toBe(true);
+    expect(result.reason).toBe('筹码不足，等待玩家买入后重新开始');
+    expect(room.status).toBe('waiting');
+  });
+
+  it('主动离开（left）的玩家依然被排除在外，即使筹码 > 0', () => {
+    const rooms2 = new RoomManager();
+    const room = rooms2.create('p1', 'Alice');
+    rooms2.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms2.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame();
+    room.markLeft('p3');
     const result = room.nextRound();
     expect(result.ok).toBe(true);
     const dealtIds = room.game.players.map(p => p.id);
-    expect(dealtIds).toContain('p2');
+    expect(dealtIds).not.toContain('p3');
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p2']));
   });
 });
 

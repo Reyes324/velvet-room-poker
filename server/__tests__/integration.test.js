@@ -652,11 +652,16 @@ describe('集成测试 — 游戏流程', () => {
     // 模拟 advanceRoom 的剩余逻辑
     room.clearSettlementWait();
     const nr = room.nextRound();
-    expect(nr.ended).toBe(true);
-    expect(room.status).toBe('waiting');
+    // Bug C 修复验证：p1 只是断线（未 left、筹码充足），不该被 nextRound()
+    // 排除在外——下一手正常发出，房间维持 playing，不再被误判"筹码不足"打回大厅
+    // （这正是用户实测三人局里"每次弃牌就被弹回大厅"的根因）。
+    expect(nr.ended).toBeUndefined();
+    expect(nr.ok).toBe(true);
+    expect(room.status).toBe('playing');
     expect(room.players).toHaveLength(2);
     const p1 = room.players.find((p) => p.id === 'p1');
     expect(p1).toBeDefined();
-    expect(p1.connected).toBe(false);
+    expect(p1.connected).toBe(false); // still marked disconnected — just no longer excluded from the deal
+    expect(room.game.players.map((p) => p.id).sort()).toEqual(['p1', 'p2']);
   });
 });
