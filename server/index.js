@@ -114,9 +114,40 @@ function createServer() {
       return;
     }
     room.awaitingBustResolution = false;
+
+    // Session timer ("计时游戏") check — deliberately placed AFTER the bust
+    // check clears, and this function only ever runs at a genuine hand
+    // boundary (post-settlement-wait, or after a bust-pause resolves), so
+    // an expired timer can never interrupt a hand still in progress; it
+    // always waits for at least the current hand to finish first.
+    if (room.gameTimerEndsAt && Date.now() >= room.gameTimerEndsAt) {
+      if (!room.awaitingTimerDecision) {
+        room.awaitingTimerDecision = true;
+        io.to(room.code).emit('game:timer-expired');
+      }
+      broadcastRoom(room);
+      return;
+    }
+
     const nr = room.nextRound();
     if (nr.ended) io.to(room.code).emit('game:ended', nr);
     broadcastRoom(room);
+  }
+
+  // Shared by the host's manual "结束游戏" and the timer-expiry "结束对局"
+  // decision — same end state (chips synced, back to lobby, ledger
+  // auto-opens client-side via `hostEnded`), just a different reason
+  // string and caller.
+  function endGameNow(room, reason) {
+    room.syncChipsFromGame();
+    room.game = null;
+    room.status = 'waiting';
+    room.awaitingBustResolution = false;
+    room.gameTimerEndsAt = null;
+    room.awaitingTimerDecision = false;
+    room.touch();
+    io.to(room.code).emit('room:state', room.getLobbyState());
+    io.to(room.code).emit('game:ended', { ended: true, reason, hostEnded: true });
   }
 
   // Arms, re-arms, or clears the pause-timeout for a room, based on
@@ -271,11 +302,11 @@ function createServer() {
       io.to(code.toUpperCase()).emit('room:state', result.room.getLobbyState());
     });
 
-    socket.on('room:start', ({ playerId }) => {
+    socket.on('room:start', ({ playerId, durationMinutes }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return socket.emit('game:error', '未找到房间');
       if (room.hostId !== playerId) return socket.emit('game:error', '只有房主可以开始游戏');
-      const result = room.startGame();
+      const result = room.startGame(durationMinutes);
       if (result.error) return socket.emit('game:error', result.error);
       broadcastRoom(room);
     });
@@ -360,13 +391,34 @@ function createServer() {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return socket.emit('game:error', '未找到房间');
       if (room.hostId !== playerId) return socket.emit('game:error', '只有房主可以结束游戏');
-      room.syncChipsFromGame();
-      room.game = null;
-      room.status = 'waiting';
-      room.awaitingBustResolution = false;
+      endGameNow(room, '房主结束了本局对局');
+    });
+
+    // Resolving the "计时游戏" time's-up pause (room.awaitingTimerDecision) —
+    // only reachable once the current hand has actually finished (see
+    // tryAdvanceIfClear), never mid-hand. Host-only, same as the other
+    // room-lifecycle decisions.
+    socket.on('room:timer-end-game', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      if (room.hostId !== playerId) return socket.emit('game:error', '只有房主可以决定');
+      if (!room.awaitingTimerDecision) return;
+      endGameNow(room, '计时结束，房主结束了本局对局');
+    });
+
+    socket.on('room:timer-continue', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      if (room.hostId !== playerId) return socket.emit('game:error', '只有房主可以决定');
+      if (!room.awaitingTimerDecision) return;
+      // "忽略继续" goes untimed from here on, rather than silently
+      // restarting the same duration — an explicit "ignore" reads as
+      // "stop tracking time for this session", not "give me another 30
+      // minutes without asking".
+      room.awaitingTimerDecision = false;
+      room.gameTimerEndsAt = null;
       room.touch();
-      io.to(room.code).emit('room:state', room.getLobbyState());
-      io.to(room.code).emit('game:ended', { ended: true, reason: '房主结束了本局对局', hostEnded: true });
+      tryAdvanceIfClear(room);
     });
 
     // On-demand only (not folded into the high-frequency room:state

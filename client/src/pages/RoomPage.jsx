@@ -7,6 +7,7 @@ import BustDecisionModal from '../components/BustDecisionModal';
 import BustWaitModal from '../components/BustWaitModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
+import TimerDecisionModal from '../components/TimerDecisionModal';
 
 // Real showdowns give the table this long to actually show the revealed
 // hands before the settlement sheet appears — the sheet used to appear in
@@ -93,6 +94,13 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     },
     'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
     'room:hand-history': (hands) => setHandHistory(hands),
+    // No separate transient toast for game:timer-expired — it's redundant
+    // with (and visually overlapped, confirmed on a real render) the
+    // persistent state already driven off roomState.awaitingTimerDecision
+    // below: the host gets TimerDecisionModal, everyone else gets a
+    // persistent (not self-dismissing) banner. Both stay up until the host
+    // actually resolves it, unlike a 3.5s toast that would vanish while
+    // the host is still deciding.
     'player:poked': ({ targetId }) => {
       const key = Date.now();
       setPokedSeat({ targetId, key });
@@ -215,7 +223,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           playerId={playerId}
           onCopy={copyInvite}
           onKick={kick}
-          onStart={() => emit('room:start', { playerId })}
+          onStart={(durationMinutes) => emit('room:start', { playerId, durationMinutes })}
           onRestart={() => emit('room:restart', { playerId })}
           onRebuy={rebuy}
           onExit={leaveRoom}
@@ -265,7 +273,14 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
         revealedPlayers={revealedPlayers}
         isHost={isHost}
         onEndGame={() => emit('room:end-game', { playerId })}
+        gameTimerEndsAt={roomState?.gameTimerEndsAt ?? null}
       />
+      {roomState?.awaitingTimerDecision && isHost && (
+        <TimerDecisionModal
+          onEndGame={() => emit('room:timer-end-game', { playerId })}
+          onContinue={() => emit('room:timer-continue', { playerId })}
+        />
+      )}
       {showHandHistory && (
         <HandHistoryModal
           hands={handHistory}
@@ -292,6 +307,9 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
             </span>
           ))}
         </div>
+      )}
+      {roomState?.awaitingTimerDecision && !isHost && (
+        <div className="toast toast--info">计时已到，等待房主决定是否结束…</div>
       )}
       {showLedger && (
         <LedgerModal

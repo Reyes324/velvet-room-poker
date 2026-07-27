@@ -8,10 +8,13 @@ function colorForId(id) {
 }
 
 // Lobby / waiting room — styled by shared velvet.css (.lobby/.room-code/.pl-row/...)
+const TIMER_OPTIONS = [15, 30, 60];
+
 export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, onRebuy, onExit, onOpenLedger, onOpenHandHistory, copied, maxSeats = 9 }) {
   const [showExit, setShowExit] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [rebuying, setRebuying] = useState(false);
+  const [showTimerPicker, setShowTimerPicker] = useState(false);
   // Players who've left (voluntarily, kicked, or timed out) stay in
   // roomState.players so their final numbers survive in 账本 — but the
   // lobby's own seat list, open-seat count, and start-game eligibility
@@ -54,6 +57,26 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
               <div className="modal-btn-cancel" onClick={() => setShowExit(false)}>取消</div>
               <div className="modal-btn-danger" onClick={onExit}>退出</div>
             </div>
+          </div>
+        </div>
+      )}
+      {showTimerPicker && (
+        <div className="modal-overlay" onClick={() => setShowTimerPicker(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">计时游戏</div>
+            <div className="modal-body">选择本局时长，时间到会提醒房主决定是否结束</div>
+            <div className="timer-picker-options">
+              {TIMER_OPTIONS.map(min => (
+                <div
+                  key={min}
+                  className="timer-picker-option"
+                  onClick={() => { setShowTimerPicker(false); onStart?.(min); }}
+                >
+                  {min < 60 ? `${min} 分钟` : `${min / 60} 小时`}
+                </div>
+              ))}
+            </div>
+            <div className="modal-btn-cancel" style={{ width: '100%' }} onClick={() => setShowTimerPicker(false)}>取消</div>
           </div>
         </div>
       )}
@@ -115,9 +138,16 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
 
         {isHost ? (
           <div className="lobby-footer">
-            <div className="lobby-btn" onClick={canStart ? onStart : undefined} style={!canStart ? { opacity: .5, cursor: 'default' } : undefined}>
+            {/* Explicit () => onStart() rather than passing onStart directly
+                as the handler — onClick hands the DOM event as the first
+                arg, which would otherwise leak in as `durationMinutes` and
+                corrupt gameTimerEndsAt (an Event, coerced to NaN). */}
+            <div className="lobby-btn" onClick={canStart ? () => onStart() : undefined} style={!canStart ? { opacity: .5, cursor: 'default' } : undefined}>
               {canStart ? '开始游戏' : '等待更多玩家…'}
             </div>
+            {canStart && (
+              <div className="lobby-timed-btn" onClick={() => setShowTimerPicker(true)}>计时游戏</div>
+            )}
             <div className="lobby-restart" onClick={onRestart}>重新开始</div>
           </div>
         ) : (

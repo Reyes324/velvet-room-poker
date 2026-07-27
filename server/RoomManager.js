@@ -43,6 +43,19 @@ class Room {
     // touched by a disconnect itself (that's the absence of activity, not
     // an instance of it).
     this.lastActivityAt = Date.now();
+    // Optional session timer ("计时游戏") — null means untimed, same as
+    // plain "开始游戏". Absolute timestamp (not a duration) so every
+    // client just diffs against its own Date.now(), no server round-trip
+    // needed to keep a countdown ticking, and no clock-drift accumulation
+    // from repeatedly re-deriving "time left" from a stored duration.
+    this.gameTimerEndsAt = null;
+    // True from the moment the timer expires until the host picks 结束对局
+    // or 忽略继续 — checked in server/index.js's tryAdvanceIfClear, which
+    // only ever runs at a real hand boundary (after settlement wait
+    // resolves, or after a bust-pause clears), so this can never interrupt
+    // a hand that's still in progress — the current hand always finishes
+    // first, by construction, not by an extra timing check.
+    this.awaitingTimerDecision = false;
   }
 
   touch() {
@@ -164,7 +177,9 @@ class Room {
     if (p) p.connected = connected;
   }
 
-  startGame() {
+  // durationMinutes: null/omitted → untimed (plain "开始游戏"); a number →
+  // "计时游戏", room.gameTimerEndsAt is set to that many minutes from now.
+  startGame(durationMinutes = null) {
     const seated = this.players.filter(p => !p.left);
     if (seated.length < 2) return { error: '至少需要2名玩家' };
     if (this.status !== 'waiting') return { error: '游戏已在进行中' };
@@ -173,6 +188,8 @@ class Room {
     const dealerIndex = idx === -1 ? 0 : idx;
     this.dealerId = seated[dealerIndex].id;
     this.game = new GameEngine(seated, dealerIndex, BIG_BLIND);
+    this.gameTimerEndsAt = durationMinutes ? Date.now() + durationMinutes * 60_000 : null;
+    this.awaitingTimerDecision = false;
     return { ok: true };
   }
 
@@ -230,6 +247,8 @@ class Room {
     this.game = null;
     this.awaitingBustResolution = false;
     this.handHistory = [];
+    this.gameTimerEndsAt = null;
+    this.awaitingTimerDecision = false;
     this.dealerId = this.players.find(p => !p.left)?.id ?? null;
   }
 
@@ -338,6 +357,8 @@ class Room {
       startingChips: STARTING_CHIPS,
       players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false, left: p.left || false })),
       awaitingBustResolution: this.awaitingBustResolution,
+      gameTimerEndsAt: this.gameTimerEndsAt,
+      awaitingTimerDecision: this.awaitingTimerDecision,
     };
   }
 }

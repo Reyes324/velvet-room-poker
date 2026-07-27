@@ -282,6 +282,18 @@
 /* ── TOP BAR ──────────────────────────────────────────────── */
 .menu-btn { width:44px; height:44px; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.14); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; color:var(--text-secondary); cursor:pointer; }
 .bankroll { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
+/* 计时游戏 final-5-minutes countdown — only ever shown in that window, so
+   the urgent orange-red (same hue as .think-overlay's action countdown,
+   not the everyday gold used everywhere else) is warranted the whole time
+   it's visible, no separate "almost urgent" state needed. Absolutely
+   centered in .top-bar (already position:relative) rather than a 3rd flex
+   child, so it doesn't disturb the existing menu-btn/bankroll spacing. */
+.timer-countdown {
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  background:rgba(60,20,10,.35); border:1px solid rgba(255,122,69,.4); border-radius:14px;
+  padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
+  color:#FF7A45; letter-spacing:.5px; text-shadow:0 0 8px rgba(255,90,40,.35);
+}
 
 /* ── KEY ANIMATION KEYFRAMES ──────────────────────────────── */
 @keyframes dealFly {
@@ -699,6 +711,16 @@
 .lobby-restart { text-align:center; font-family:var(--font-mono); font-size:13px; font-weight:600; color:var(--text-secondary); letter-spacing:1.5px; cursor:pointer; padding:6px 0 8px; }
 .lobby-restart:active { opacity:.6; }
 .room-code { cursor:pointer; }
+
+/* 计时游戏 — secondary action next to the primary gold "开始游戏" pill,
+   same outline treatment as .modal-btn--secondary elsewhere (not filled
+   gold — plain "开始游戏" stays the one visually dominant choice, since
+   untimed is the default/expected path). */
+.lobby-timed-btn { height:44px; margin-bottom:10px; border-radius:22px; border:1.5px solid rgba(212,175,55,.35); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:13px; font-weight:700; color:#D4AF37; letter-spacing:1px; cursor:pointer; }
+.lobby-timed-btn:active { background:rgba(212,175,55,.08); }
+.timer-picker-options { display:flex; flex-direction:column; gap:8px; width:100%; }
+.timer-picker-option { height:46px; border-radius:14px; background:rgba(212,175,55,.06); border:1px solid rgba(212,175,55,.18); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--text-primary); cursor:pointer; }
+.timer-picker-option:active { background:rgba(212,175,55,.14); }
 
 /* ── TOAST (position:fixed — outside .game-stage, relative to viewport) ─ */
 .toast { position:fixed; top:env(safe-area-inset-top,0px); top:max(env(safe-area-inset-top,0px),20px); left:50%; transform:translateX(-50%); white-space:nowrap; font-family:var(--font-body); font-size:15px; padding:10px 20px; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.5); z-index:200; animation:toastIn .25s cubic-bezier(.34,1.56,.64,1) both; }

@@ -107,7 +107,7 @@ function spectatorSeatPositions(n) {
   return seats;
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -266,10 +266,28 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     setActionBubbles(seeded);
   }, [gameState.phase]);
 
+  // 计时游戏 countdown — server is the authority on WHEN the timer ends
+  // (an absolute timestamp), this just re-diffs against the client's own
+  // clock every second. Only rendered in the final 5 minutes per the
+  // original request — a full-session countdown badge would compete for
+  // attention with everything else in the top bar for most of the game.
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    if (!gameTimerEndsAt) return;
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [gameTimerEndsAt]);
+  const timeLeftMs = gameTimerEndsAt ? gameTimerEndsAt - nowTick : null;
+  const showCountdown = timeLeftMs != null && timeLeftMs > 0 && timeLeftMs <= 5 * 60_000;
+  const countdownText = showCountdown
+    ? `${String(Math.floor(timeLeftMs / 60000)).padStart(2, '0')}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`
+    : null;
+
   return (
     <div className={`game-stage${dense ? ' game-stage--dense' : ''}`}>
       <div className="top-bar">
         <div className="menu-btn" onClick={() => setShowMenu(true)}>≡</div>
+        {countdownText && <div className="timer-countdown">⏱ {countdownText}</div>}
         <div className="bankroll">¥{(amPlaying ? me.chips : myChips).toLocaleString()}</div>
       </div>
       {showMenu && (

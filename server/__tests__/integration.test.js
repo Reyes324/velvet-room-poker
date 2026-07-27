@@ -196,6 +196,102 @@ describe('集成测试 — 游戏流程', () => {
     expect(oppCards[0]).toBeNull();
   });
 
+  it('房主带 durationMinutes 开局 → 双方 game:state 到达后房间已设好 gameTimerEndsAt', async () => {
+    const { c1, c2, code } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    const gs2 = waitFor(c2, 'game:state');
+    c1.emit('room:start', { playerId: 'p1', durationMinutes: 30 });
+    await Promise.all([gs1, gs2]);
+    const room = rooms.getRoomByPlayer('p1');
+    expect(room.gameTimerEndsAt).toBeGreaterThan(Date.now());
+    expect(code).toBe(room.code);
+  });
+
+  it('计时到（模拟）+ 一手打完 → 全员收到 game:timer-expired，房主选"忽略继续" → 计时清空，正常发下一手', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    const gs2 = waitFor(c2, 'game:state');
+    c1.emit('room:start', { playerId: 'p1', durationMinutes: 15 });
+    const [state1] = await Promise.all([gs1, gs2]);
+
+    // Force "time's up" without a real 15-minute wait — same in-memory
+    // field the real countdown would eventually reach on its own.
+    const room = rooms.getRoomByPlayer('p1');
+    room.gameTimerEndsAt = Date.now() - 1000;
+
+    // Finish the current hand (fold) — the timer check only fires once
+    // this hand's settlement wait fully resolves, never mid-hand.
+    const actor = state1.actionPlayerId === 'p1' ? c1 : c2;
+    const actorId = state1.actionPlayerId;
+    const settled = waitFor(actor === c1 ? c2 : c1, 'game:showdown');
+    actor.emit('game:action', { playerId: actorId, action: 'fold' });
+    await settled;
+
+    const expired1 = waitFor(c1, 'game:timer-expired');
+    const expired2 = waitFor(c2, 'game:timer-expired');
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    await Promise.all([expired1, expired2]);
+    expect(room.awaitingTimerDecision).toBe(true);
+
+    const nextHand1 = waitFor(c1, 'game:state');
+    const nextHand2 = waitFor(c2, 'game:state');
+    c1.emit('room:timer-continue', { playerId: 'p1' });
+    const [nextState] = await Promise.all([nextHand1, nextHand2]);
+
+    expect(nextState.phase).toBe('preflop'); // dealt the next hand
+    expect(room.awaitingTimerDecision).toBe(false);
+    expect(room.gameTimerEndsAt).toBeNull(); // "ignore" goes untimed from here
+  });
+
+  it('计时到 + 一手打完 → 房主选"结束对局" → 双方收到 hostEnded 的 game:ended，回到大厅', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    const gs2 = waitFor(c2, 'game:state');
+    c1.emit('room:start', { playerId: 'p1', durationMinutes: 15 });
+    const [state1] = await Promise.all([gs1, gs2]);
+
+    const room = rooms.getRoomByPlayer('p1');
+    room.gameTimerEndsAt = Date.now() - 1000;
+
+    const actor = state1.actionPlayerId === 'p1' ? c1 : c2;
+    const actorId = state1.actionPlayerId;
+    const settled = waitFor(actor === c1 ? c2 : c1, 'game:showdown');
+    actor.emit('game:action', { playerId: actorId, action: 'fold' });
+    await settled;
+
+    const expired1 = waitFor(c1, 'game:timer-expired');
+    const expired2 = waitFor(c2, 'game:timer-expired');
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    await Promise.all([expired1, expired2]);
+
+    const ended1 = waitFor(c1, 'game:ended');
+    const ended2 = waitFor(c2, 'game:ended');
+    c1.emit('room:timer-end-game', { playerId: 'p1' });
+    const [end1, end2] = await Promise.all([ended1, ended2]);
+
+    expect(end1.hostEnded).toBe(true);
+    expect(end2.hostEnded).toBe(true);
+    expect(room.status).toBe('waiting');
+    expect(room.awaitingTimerDecision).toBe(false);
+    expect(room.gameTimerEndsAt).toBeNull();
+  });
+
+  it('非房主发送 room:timer-continue / room:timer-end-game → 收到 game:error', async () => {
+    const { c1, c2 } = await setupRoom();
+    c1.emit('room:start', { playerId: 'p1', durationMinutes: 15 });
+    await new Promise(r => setTimeout(r, 200));
+
+    const err1 = waitFor(c2, 'game:error');
+    c2.emit('room:timer-continue', { playerId: 'p2' });
+    expect(await err1).toBe('只有房主可以决定');
+
+    const err2 = waitFor(c2, 'game:error');
+    c2.emit('room:timer-end-game', { playerId: 'p2' });
+    expect(await err2).toBe('只有房主可以决定');
+  });
+
   it('房主发送 room:restart → 双方收到 status=waiting 的 room:state', async () => {
     const { c1, c2 } = await setupRoom();
     const rs1 = waitFor(c1, 'room:state');

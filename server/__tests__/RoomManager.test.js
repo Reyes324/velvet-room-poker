@@ -269,6 +269,35 @@ describe('Room — 重新开始', () => {
   });
 });
 
+describe('Room — 计时游戏（startGame durationMinutes）', () => {
+  it('不传 durationMinutes（普通"开始游戏"）→ gameTimerEndsAt 为 null，不限时', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    room.startGame();
+    expect(room.gameTimerEndsAt).toBeNull();
+  });
+
+  it('传 durationMinutes → gameTimerEndsAt 设为当前时间 + 对应分钟数', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    const before = Date.now();
+    room.startGame(30);
+    const after = Date.now();
+    expect(room.gameTimerEndsAt).toBeGreaterThanOrEqual(before + 30 * 60_000);
+    expect(room.gameTimerEndsAt).toBeLessThanOrEqual(after + 30 * 60_000);
+  });
+
+  it('restart 清空计时相关字段', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    room.startGame(15);
+    room.awaitingTimerDecision = true;
+    room.restart();
+    expect(room.gameTimerEndsAt).toBeNull();
+    expect(room.awaitingTimerDecision).toBe(false);
+  });
+});
+
 describe('Room — 借一底 (rebuy)', () => {
   it('等待阶段可借入初始筹码并累计欠款', () => {
     const room = rooms.create('p1', 'Alice');

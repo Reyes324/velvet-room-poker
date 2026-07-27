@@ -917,7 +917,25 @@ GameState {
 
 **验证**：`RoomManager` 单测覆盖——不同 `playerId`、同昵称、旧身份已离线 → 复用成功且返回旧 id；旧身份当前在线 → 不复用，走全新加入分支，两个身份并存；两个不同的人先后用同一昵称加入且都不匹配任何离线记录 → 都是全新玩家，互不影响。集成测试验证真实 socket 场景下"设备 A 掉线 → 设备 B 用同昵称加入同房间号 → 成功继承设备 A 的筹码/身份，房间玩家数不变"。
 
----
+### 计时游戏：房主可选时长，到时提醒、房主决策（用户反馈，2026-07-24）
+
+**背景**：用户希望开局时能选一个时长（15/30/60 分钟），时间到了提醒大家，房主决定是继续还是结束；最后 5 分钟牌桌上要有个倒计时。用 AskUserQuestion 确认了几个关键点：(1) 到点提醒必须等**当前这一手打完**才触发，不能打断正在进行的操作；(2) 提醒形式是全员轻量提示 + 房主专属决策弹窗，不是全员阻塞式弹窗；(3) 入口是"开始游戏"旁边新增一个"计时游戏"按钮（选时长后才真正开局），不是大厅预选或者把"开始游戏"本身改成必选时长——普通"开始游戏"维持不限时不变。
+
+**决策（已确认）**：
+1. **计时基准是服务端权威的绝对时间戳，不是客户端各自倒数**：`room.gameTimerEndsAt` 存一个绝对到期时间（`Date.now() + 分钟数`），随 `getLobbyState()` 广播给所有人；客户端只是拿这个时间戳跟自己的时钟每秒相减显示倒计时，不需要服务端每秒推送，也不会因为断线重连丢失进度或产生时钟漂移。
+2. **"时间到"只在真正的手牌边界检查，复用现有的 `tryAdvanceIfClear`（跟"筹码归零暂停"同一个检查点）**：不是额外起一个定时器主动打断游戏——`tryAdvanceIfClear` 本来就只在一手真正结束、结算等待解除、或筹码暂停解除之后才会被调用，把"计时到了吗"这一条检查放在这个函数里、且放在筹码暂停检查之后，天然保证了"最早也要等当前这一手完全打完才可能弹出提醒"，不需要额外写"是否在手牌进行中"的判断。
+3. **到点后是"暂停等待决策"，不是自动结束或自动继续**：新增 `room.awaitingTimerDecision` 标志（命名和用法模仿现有的 `awaitingBustResolution`），为真时 `tryAdvanceIfClear` 不再发下一手，房间停在牌桌上等房主表态。全员收到一次 `game:timer-expired` 事件（仅用于兜底/调试，UI 上不单独弹一次性提示——见下面的踩坑），房主看到的是持久弹窗（`TimerDecisionModal`），其他人看到的是持久 toast，两者都是根据 `roomState.awaitingTimerDecision` 派生渲染、不是自己定时消失，跟房主的决策同步出现同步消失。
+4. **"忽略继续"不是"再给我同样的时长重新计时"，而是转为不限时**：`room:timer-continue` 清空 `gameTimerEndsAt`，之后不再检查。理由：房主主动选择"忽略"，读作"不想再管时间了"，而不是"再给 30 分钟"——如果房主真想续时间，可以在忽略之后随时用"结束游戏"+ 重新开一局计时局来达到，不需要这条路径本身有隐含的续期语义。
+5. **倒计时徽标只在最后 5 分钟出现**：不是全程显示。全程显示一个倒计时会跟顶部导航栏其他信息（菜单按钮、筹码）常年抢注意力；只在真正临近时才出现，同时用跟"行动倒计时"（`.think-overlay`）一致的橙红色而不是全场默认的金色，读作"这是一个紧迫的提示"而不是日常状态。
+
+**实现**：
+- `server/RoomManager.js`：`Room` 新增 `gameTimerEndsAt`（默认 `null`）、`awaitingTimerDecision`（默认 `false`）；`startGame(durationMinutes)` 新增可选参数，传了就设置 `gameTimerEndsAt`，不传（普通"开始游戏"）保持 `null`；`restart()` 清空这两个字段；`getLobbyState()` 把两个字段广播出去
+- `server/index.js`：`tryAdvanceIfClear` 在筹码暂停检查通过之后、真正调用 `nextRound()` 之前，插入计时检查——到点且尚未标记过，广播一次 `game:timer-expired`（兜底信号）、置位 `awaitingTimerDecision`、直接 `return`（不发下一手）；新增 `endGameNow(room, reason)` 辅助函数，把原来 `room:end-game` 里那段"落盘筹码/清空 game/回大厅/广播 hostEnded"的逻辑抽出来复用；新增 `room:timer-end-game`（host-only，调用 `endGameNow`）和 `room:timer-continue`（host-only，清空计时状态后调用 `tryAdvanceIfClear` 正常发下一手）
+- 客户端：`Lobby.jsx` "开始游戏"旁新增"计时游戏"按钮（`isHost && canStart` 时才显示），点击弹出 15/30/60 分钟三个选项的小弹窗，选中后直接 `onStart(durationMinutes)` 开局；`GameTable.jsx` 新增基于 `gameTimerEndsAt` 每秒重新计算的倒计时（`useEffect` 里的 `setInterval`，仅在有 `gameTimerEndsAt` 时才启动，避免不限时局白白起定时器），剩余 ≤5 分钟时在顶部导航栏居中显示 `.timer-countdown` 徽标；新增 `TimerDecisionModal.jsx`（房主专属，参考现有 `BustDecisionModal.jsx` 的结构），`RoomPage.jsx` 根据 `roomState.awaitingTimerDecision` 分流渲染给房主的弹窗和给其他人的持久 toast
+
+**踩坑**：最初给非房主也接了一个 `game:timer-expired` 的一次性 toast（"计时已到"），跟同时出现的持久提示条（"计时已到，等待房主决定是否结束…"）在真实渲染里挤在一起，读起来很乱（截图确认，不是猜的）。这个一次性 toast 本身信息量完全被持久提示条覆盖，删掉——`game:timer-expired` 这个事件继续保留和广播（作为服务端的权威信号，未来如果需要更精细的提示可以用），只是不再单独驱动一个转瞬即逝的 toast。
+
+**验证**：`RoomManager` 单测覆盖 `startGame` 带/不带 `durationMinutes` 的行为差异、`restart` 清空计时字段。集成测试完整走通两条真实 socket 路径——计时到 + 一手打完后"忽略继续"（验证下一手正常发出、`awaitingTimerDecision` 复位、`gameTimerEndsAt` 清空）和"结束对局"（验证双方收到 `hostEnded` 的 `game:ended`、房间回到大厅）；另加非房主调用两个 host-only 事件被拒绝的测试。134/134 全绿。Playwright 双人真机验证：大厅点"计时游戏"弹出三个时长选项、选中后正常开局；用真实 socket 连接以极短时长（3 秒）触发到点场景观察真实浏览器的完整反应链——倒计时徽标正确显示并跳动、一手打完后房主看到决策弹窗、非房主看到持久 toast（且不再有重叠的一次性 toast）、房主选"忽略继续"后下一手正常发出且倒计时徽标消失，全部截图确认。
 
 ## Risks / Trade-offs
 
