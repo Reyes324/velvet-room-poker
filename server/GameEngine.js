@@ -508,4 +508,4 @@ class GameEngine {
   }
 }
 
-module.exports = { GameEngine, parseCard };
+module.exports = { GameEngine, parseCard, makeDeck, RANKS, SUITS };
