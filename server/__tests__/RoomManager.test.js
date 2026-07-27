@@ -41,10 +41,23 @@ describe('RoomManager — 加入房间', () => {
     expect(result.error).toBe('房间不存在');
   });
 
-  it('同一玩家重复加入 → 返回"已在房间内"', () => {
+  it('同一玩家重复加入（仍在线）→ 返回"已在房间内"', () => {
     const room = rooms.create('p1', 'Alice');
     const result = rooms.join(room.code, 'p1', 'Alice', 'socket1');
     expect(result.error).toBe('已在房间内');
+  });
+
+  it('同一 playerId 掉线后（未主动离开）用同一昵称重新加入 → 恢复身份，不报"已在房间内"', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.setConnected('p2', false); // 掉线，但从未 leave，left 仍是 false
+    const result = rooms.join(room.code, 'p2', 'Bob', 'socket3');
+    expect(result.error).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(result.room.players).toHaveLength(2); // 恢复原有行，不是新增一行
+    const p2 = result.room.players.find(p => p.id === 'p2');
+    expect(p2.connected).toBe(true);
+    expect(p2.left).toBe(false);
   });
 
   it('游戏已开始时加入 → 允许加入，1000筹码，但不进入当前这一手', () => {

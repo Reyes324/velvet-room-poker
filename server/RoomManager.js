@@ -73,12 +73,18 @@ class Room {
   addPlayer(id, name, socketId) {
     // Same playerId (browser-local token — survives an explicit "退出房间",
     // only the room-code half of localStorage gets cleared client-side)
-    // rejoining a room they'd previously left: reactivate their existing
-    // row instead of rejecting them as a duplicate, so their chips/debt/
-    // hand-history association comes back instead of being orphaned.
+    // rejoining a room they'd previously left, OR reconnecting after a mere
+    // disconnect (network drop, backgrounded tab): reactivate their
+    // existing row instead of rejecting them as a duplicate, so their
+    // chips/debt/hand-history association comes back instead of being
+    // orphaned. Only reject when the row is BOTH still marked present
+    // (`!left`) AND still actively connected — that's the only state a
+    // second join with the same id could mean a genuine duplicate session,
+    // mirroring the connected-check the name-fallback branch below already
+    // relies on.
     const existing = this.players.find(p => p.id === id);
     if (existing) {
-      if (!existing.left) return { error: '已在房间内' };
+      if (!existing.left && existing.connected !== false) return { error: '已在房间内' };
       existing.left = false;
       existing.connected = true;
       existing.socketId = socketId;
