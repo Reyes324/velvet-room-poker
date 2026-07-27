@@ -16,7 +16,6 @@ const S = {
   nameInput:    '.home-input:not(.home-input--code)',
   codeInput:    '.home-input--code',
   createBtn:    'button:has-text("创建房间")',
-  createSubmit: 'button:has-text("创建")',
   joinBtn:      'button:has-text("加入房间")',
   joinSubmit:   'button:has-text("加入")',
   roomCode:     '.room-code',
@@ -39,7 +38,6 @@ async function createRoom(page, name) {
   await page.goto('/');
   await page.fill(S.nameInput, name);
   await page.click(S.createBtn);
-  await page.click(S.createSubmit);
   await expect(page.locator(S.roomCode)).toBeVisible({ timeout: 5000 });
   return await page.locator(S.roomCode).textContent();
 }
@@ -346,17 +344,25 @@ test.describe('旁观视图渲染（?states= 开发自检画廊）', () => {
     await expect(rebuyBtn).toContainText('借一底');
   });
 
-  test('筹码归零决策弹窗：三个选项都存在', async ({ page }) => {
-    await page.goto('/?states=8');
+  test('筹码归零决策弹窗：两个选项都存在', async ({ page }) => {
+    // states=9, not 8 — a "结算弹窗·弃牌结束" fixture was inserted earlier in
+    // the STATES array (fixtures.js) after this test was written, shifting
+    // every fixture after it down by one index; this test was never updated
+    // to match (confirmed via `node -e "import('./fixtures.js').then(...)"`
+    // printing the real index-to-name mapping).
+    await page.goto('/?states=9');
     await page.waitForTimeout(300);
     await expect(page.locator('.modal-title:has-text("筹码已用完")')).toBeVisible();
     await expect(page.locator('.modal-btn:has-text("借一底")')).toBeVisible();
-    await expect(page.locator('.modal-btn-cancel:has-text("旁观留下")')).toBeVisible();
-    await expect(page.locator('.modal-btn-danger:has-text("离开")')).toBeVisible();
+    // Only two options — a third "旁观留下" (spectate) choice was cut per
+    // explicit user feedback (see BustDecisionModal.jsx's own comment); this
+    // test used to assert three and was never updated.
+    await expect(page.locator('.modal-btn-danger:has-text("退出对局")')).toBeVisible();
   });
 
   test('账本弹窗：四列数字与 fixture 数据一致', async ({ page }) => {
-    await page.goto('/?states=9');
+    // states=10, not 9 — same index-drift reason as above.
+    await page.goto('/?states=10');
     await page.waitForTimeout(300);
     const rows = await page.locator('.ledger-row').count();
     expect(rows).toBe(4);
@@ -483,7 +489,7 @@ test.describe('S2：断线处理', () => {
 // ─── S3：筹码归零与借一底 ───────────────────────────────────────────────────────
 
 test.describe('S3：筹码归零与借一底', () => {
-  test('全下分出胜负后落败方归零 → 游戏因筹码不足结束 → 借一底后可重新开始', async ({ browser }) => {
+  test('全下分出胜负后落败方归零 → 暂停等待决策 → 借一底后牌局直接继续（不经过大厅）', async ({ browser }) => {
     test.setTimeout(60000);
     const ctx1 = await browser.newContext();
     const ctx2 = await browser.newContext();
@@ -509,30 +515,35 @@ test.describe('S3：筹码归零与借一底', () => {
     await expect(p2.locator(S.settlement)).toBeVisible({ timeout: 10000 });
 
     // 结算面板不再自动关闭，双方都要点"我知道了"确认，服务端才会推进
-    // （game:ready-next）。确认后落败方筹码归零、房间人数不足2人可继续 → 回到大厅。
-    // 注意：.game-stage / .room-code 在 Lobby 和 GameTable 里都会用到，不能用来
-    // 区分是否已回到大厅，这里用 .lobby（仅 Lobby 组件有）判断。
+    // （game:ready-next）。确认后落败方筹码归零 → 房间暂停等待归零方决策
+    // （BustDecisionModal），不会立刻回到大厅——这是"游戏中途断线从自动
+    // 弃牌改成暂停等待重连"那一轮顺带扩展到 bust 场景的既有行为（见
+    // design.md `tryAdvanceIfClear`：只要 room.players 里有 chips===0
+    // 的人就暂停，跟总人数/是否还剩 ≥2 个有筹码的玩家无关），不是这里测的
+    // "2 人局归零就直接结束回大厅"的旧行为——这条测试原来断言的正是被取代
+    // 的旧行为，之前一直没跟着改。
     await p1.getByText('我知道了').click();
     await p2.getByText('我知道了').click();
-    await expect(p1.locator(S.lobby)).toBeVisible({ timeout: 15000 });
-    await expect(p2.locator(S.lobby)).toBeVisible({ timeout: 15000 });
 
-    // 找到筹码归零的一方：两页都能看到对方的 ¥0 行，但"+借一底"只出现在
-    // 归零玩家自己的页面上（Lobby.jsx 里 p.id===playerId 才渲染），不能用 ¥0
-    // 行数来判断是哪一页，要直接看哪一页能看到这个按钮。
-    const p1HasRebuy = await p1.getByText('+借一底').isVisible().catch(() => false);
-    const zeroPage = p1HasRebuy ? p1 : p2;
+    // 找到筹码归零的一方：两页都能看到对方的 ¥0，但 BustDecisionModal（带
+    // "+借一底"/"退出对局"两个选项）只会出现在归零玩家自己的页面上，另一
+    // 页看到的是只读的 BustWaitModal（"等待决策"）。
+    const p1IsBusted = await p1.locator('.modal-title:has-text("筹码已用完")').isVisible().catch(() => false);
+    const zeroPage = p1IsBusted ? p1 : p2;
+    const otherPage = p1IsBusted ? p2 : p1;
 
-    const rebuyBadge = zeroPage.getByText('+借一底');
-    await expect(rebuyBadge).toBeVisible({ timeout: 5000 });
-    await rebuyBadge.click();
+    await expect(zeroPage.locator('.modal-title:has-text("筹码已用完")')).toBeVisible({ timeout: 10000 });
+    await expect(otherPage.locator('.modal-title:has-text("等待决策")')).toBeVisible({ timeout: 10000 });
 
-    await expect(zeroPage.locator(S.plRow).filter({ hasText: '¥1,000' })).toHaveCount(1);
-    await expect(zeroPage.getByText(/借¥1,000/)).toBeVisible();
+    // 归零方选择"+借一底"——暂停立刻解除，两人筹码都 > 0，牌局直接继续，
+    // 不会经过大厅（这跟旧的"结束回大厅、从大厅重新借入、房主重开一局"
+    // 流程不同，是当前设计下更顺畅的路径）。
+    await zeroPage.locator('.modal-btn:has-text("借一底")').click();
 
-    // 借入后双方筹码都 > 0，房主可以重新开始下一局
-    await p1.getByText('开始游戏').click();
-    await expect(p1.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
+    await expect(zeroPage.locator('.modal-overlay')).toHaveCount(0, { timeout: 8000 });
+    await expect(otherPage.locator('.modal-overlay')).toHaveCount(0, { timeout: 8000 });
+    await expect(zeroPage.locator(S.gameStage)).toBeVisible();
+    await expect(otherPage.locator(S.gameStage)).toBeVisible();
     await expect(p2.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
 
     expect(jsErrors).toEqual([]);
@@ -709,7 +720,13 @@ test.describe('座位布局：两栏贴边', () => {
 
 test.describe('真机实测回归：贴边双栏骨架的两处重叠/裁切', () => {
   test('英雄小头像座位不与 .hero-section（姓名/筹码/大手牌）重叠', async ({ page }) => {
-    await page.goto('/?states=11');
+    // states=15, not 11 — same STATES-array index drift as the bust-modal/
+    // ledger tests above: this was silently testing "9人满桌·密集" instead
+    // of the intended "英雄行动中且有下注" fixture (confirmed by printing
+    // the real index-to-name mapping), so it was passing for the wrong
+    // reason rather than catching the real-device overlap it was written
+    // for.
+    await page.goto('/?states=15');
     await page.waitForSelector('.player-slot--hero', { state: 'attached' });
     await page.waitForTimeout(300);
     const heroSeat = await page.locator('.player-slot--hero').boundingBox();
