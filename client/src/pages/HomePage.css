@@ -112,6 +112,18 @@
   margin-top: var(--sp-2);
 }
 
+.home-pve-link {
+  margin-top: var(--sp-3);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.home-pve-link:active { opacity: .6; }
+
 .btn-primary {
   flex: 1;
   height: var(--control-h);

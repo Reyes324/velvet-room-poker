@@ -760,6 +760,6 @@
 - [x] 52.3 `server/PveSession.js`：不进 `RoomManager.rooms`，内部持有一个 `GameEngine` 实例（复用现有发牌/规则/摊牌逻辑），AI 座位的行动由 `pveStrategy`（可注入替身，见 52.4）驱动而非等 socket 消息，真人座位行动仍走 `humanAction` 校验（回合/是否已结束）；heads-up 庄家轮换、筹码结转、归零自动补回初始值（单人模式无借一底/账本）
 - [x] 52.4 `server/PveSession.js` 单测（11 项，用依赖注入替身而非 `vi.mock`——CJS `createRequire` 加载的模块跟 `vi.mock` 的拦截不兼容，实测踩过坑）：人类/AI 回合切换、已结束报错、AI 决策换算成真实 `raise`/`allin` 调用、庄家轮换+筹码结转+归零补回；另有一项不注入替身、直接用真实 `pveStrategy` 连续打 20 手的烟雾测试，验证真实策略引擎不会产生非法动作或卡死
 - [x] 52.5 `server/index.js` 新增 `pve:start`/`pve:action`/`pve:ready-next` 专属 socket 事件（`pveSessions` 按 `socket.id` 建索引，不进 `rooms`），复用现有 `game:state`/`game:showdown`/`game:error` 事件名和 payload 形状，让客户端能直接复用 `GameTable` 而不用另起一套渲染逻辑；AI 回合的拟人延迟（0.5-2s）用 `setTimeout` 驱动，每次 tick 都重新从 `pveSessions` 取 session，断线后 session 已被删除则静默跳过，不会对着走掉的 socket 发消息；MVP 明确不支持 PVE 断线重连（`socket.id` 一断就丢，接受，见 index.js 注释）。集成测试覆盖开局/完整一手（真人跟注+AI自动行动到摊牌）/对局不存在时的报错路径，168/168 全绿
-- [ ] 52.6 客户端：`HomePage.jsx` 首页按钮区下方新增文字入口"人机对战"，点击直接用当前昵称开局；新增/复用 `GameTable.jsx` 承载单人对局画面（AI 座位无需特殊 UI，按普通对手渲染即可）
-- [ ] 52.7 集成测试：一整局 PVE 对局的 socket 流程（开局→多轮下注含 AI 自动行动→摊牌→结算）
-- [ ] 52.8 Playwright 真机验证：完整打一局人机对局，确认节奏（AI 延迟观感）、行动栏/结算流程跟多人模式一致体验，截图确认
+- [x] 52.6 客户端：`HomePage.jsx` 首页按钮区下方新增文字入口"人机对战"（`.home-pve-link`），点击直接用当前昵称开局，不经过房间码/邀请链接；新增 `PvePage.jsx`（不是复用 `RoomPage.jsx`——PVE 没有大厅/踢人/账本/牌局记录/计时/借一底这些多人房间概念，硬塞共享一个页面组件只会让两条本该独立的路径纠缠），直接复用现有 `GameTable.jsx`/`SettlementModal.jsx` 渲染（两者本来就是纯 props 驱动，不依赖 Room 具体实现），"我是谁"靠"哪个座位能看到真实的第一张手牌"判断（`holeCards?.[0]`），不用姓名匹配（避免默认姓名跟 AI 或自己撞名）
+- [x] 52.7 集成测试：`server/__tests__/pve.integration.test.js` 覆盖一整局 PVE 对局的 socket 流程（开局→真人跟注/过牌与 AI 自动行动交替→摊牌→`game:showdown`；对局不存在时报错不抛异常），168/168 全绿
+- [x] 52.8 Playwright 真机验证：完整打两手人机对局（首页入口→开局→行动栏可操作→AI 自动应对→摊牌结算面板→"我知道了"进入下一手），全程无 console error/page error，截图确认首页入口、对局中、结算三个关键画面视觉正常

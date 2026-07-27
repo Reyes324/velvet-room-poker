@@ -783,3 +783,5 @@
    column that fills this 1:1 (see the GAME LAYOUT block above). No more
    uniform whole-page scale-to-fit: only .table-canvas scales now. ─ */
 .stage-wrap { position:fixed; inset:0; background:#030A04; overflow:hidden; }
+
+.pve-loading { display:flex; align-items:center; justify-content:center; height:100%; font-family:var(--font-display); font-size:14px; letter-spacing:2px; color:var(--text-secondary); }

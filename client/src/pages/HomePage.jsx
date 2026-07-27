@@ -6,7 +6,7 @@ function genId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export default function HomePage({ onJoined, initialCode }) {
+export default function HomePage({ onJoined, onPve, initialCode }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState(initialCode ?? '');
   const [mode, setMode] = useState(initialCode ? 'join' : null);
@@ -95,10 +95,16 @@ export default function HomePage({ onJoined, initialCode }) {
           {error && <p className="home-error">{error}</p>}
 
           {mode === null && (
-            <div className="home-buttons">
-              <button className="btn-primary" onClick={handleCreate}>创建房间</button>
-              <button className="btn-secondary" onClick={() => setMode('join')}>加入房间</button>
-            </div>
+            <>
+              <div className="home-buttons">
+                <button className="btn-primary" onClick={handleCreate}>创建房间</button>
+                <button className="btn-secondary" onClick={() => setMode('join')}>加入房间</button>
+              </div>
+              {/* 找不到真人对战时自己练练手——刻意跟上面两个房间入口分开：
+                  不经过任何房间码/邀请链接，点了直接开局。见 design.md
+                  「新增：单人人机对战（PVE）模式」，MVP 不跟多人房间混用。 */}
+              <div className="home-pve-link" onClick={() => onPve(name.trim())}>人机对战</div>
+            </>
           )}
 
           {mode === 'join' && (

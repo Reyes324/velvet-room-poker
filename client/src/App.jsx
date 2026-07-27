@@ -2,10 +2,17 @@ import { useState, useEffect } from 'react';
 import './styles/global.css';
 import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
+import PvePage from './pages/PvePage';
 import StatesGallery from './StatesGallery';
 
 export default function App() {
   const [room, setRoom] = useState(null); // { code, playerId, playerName } | { autoJoinCode }
+  // Deliberately a separate piece of state from `room`, not folded into it —
+  // PVE has no room code/playerId/localStorage session to restore, and
+  // keeping it structurally distinct matches the server-side decision
+  // (PveSession isn't a Room) that real players and AI never share state.
+  // null = not in PVE mode; a string = active, using that player name.
+  const [pveName, setPveName] = useState(null);
 
   useEffect(() => {
     const pathMatch = window.location.pathname.match(/^\/room\/([0-9]{6})$/i);
@@ -59,8 +66,16 @@ export default function App() {
     return <StatesGallery index={Number(statesParam) || 0} />;
   }
 
+  if (pveName !== null) {
+    return (
+      <div className="stage-wrap">
+        <PvePage playerName={pveName} onLeave={() => setPveName(null)} />
+      </div>
+    );
+  }
+
   if (!room?.code) {
-    return <HomePage onJoined={handleJoined} initialCode={room?.autoJoinCode} />;
+    return <HomePage onJoined={handleJoined} onPve={setPveName} initialCode={room?.autoJoinCode} />;
   }
 
   return (
