@@ -20,6 +20,21 @@
 .c-md { width: 52px; height: 72px; border-radius: 8px; }
 .c-lg { width: 62px; height: 84px; border-radius: 9px; }
 
+/* Showdown winning-hand highlight/dim (user feedback, 2026-07-24): the 5
+   cards that make up the best hand get a gold glow that pops in; every
+   other card visible at the same showdown quietly dims so the 5 that
+   matter read as one connected group across seat + community positions. */
+.c-highlight {
+  box-shadow: 0 0 0 2px #D4AF37, 0 0 4px 1px rgba(212,175,55,.6), 0 0 22px rgba(212,175,55,.85), 0 4px 16px rgba(0,0,0,.5);
+  animation: cardHighlightIn .4s cubic-bezier(.34,1.56,.64,1) both, cardHighlightGlow 1.6s ease-in-out .4s infinite;
+}
+.c-dim { filter: brightness(.55) saturate(.75); transition: filter .3s ease; }
+@keyframes cardHighlightIn { from { transform: scale(.85); opacity: .3; } to { transform: scale(1); opacity: 1; } }
+@keyframes cardHighlightGlow {
+  0%, 100% { box-shadow: 0 0 0 2px #D4AF37, 0 0 4px 1px rgba(212,175,55,.6), 0 0 22px rgba(212,175,55,.85), 0 4px 16px rgba(0,0,0,.5); }
+  50% { box-shadow: 0 0 0 2px #D4AF37, 0 0 6px 2px rgba(212,175,55,.8), 0 0 34px rgba(212,175,55,1), 0 4px 16px rgba(0,0,0,.5); }
+}
+
 /* face — warm ivory paper, frameless (per approved design) */
 .c-face {
   background: linear-gradient(158deg, #FDFAF2 0%, #F5EEDD 60%, #EFE6D0 100%);
@@ -96,10 +111,32 @@
    generated via the frontend-design skill (plain fine grain / coarser mottled
    grain + edge vignette / this one) — revisit if a different read is wanted. */
 /* ── POT (bare focal number) ──────────────────────────────── */
-.pot { display:flex; flex-direction:column; align-items:center; gap:2px; }
+/* margin-top nudges the whole centered Pot+community block down within
+   .table-oval-content (user feedback: borrow some of BOTTOM_ZONE's surplus
+   room for TOP_ZONE, which was the tight one) — .table-oval-content centers
+   its flex children as one block, so this margin only shifts Pot (and
+   community with it) down by roughly HALF its own value, not the full
+   amount; tuned against real measured output, not computed by hand. */
+.pot { display:flex; flex-direction:column; align-items:center; gap:2px; margin-top: 50px; }
 .street-tag { font-family:var(--font-mono); font-size:9px; color:#C9A94A; letter-spacing:4px; text-transform:uppercase; opacity:.9; }
 .pot-label { font-family:var(--font-mono); font-size:7px; color:#AE986C; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
 .pot-amt { font-family:var(--font-amount); font-size:24px; font-weight:700; color:#E8C24A; letter-spacing:.2px; text-shadow:0 0 20px rgba(212,175,55,.45), 0 2px 8px rgba(0,0,0,.6); line-height:1.05; }
+
+/* Winning hand-name (user feedback, 2026-07-24): reuses the "底池" label's
+   own slot instead of a separate floating element above it — a standalone
+   banner needed its own vertical clearance from GameTable's TOP_ZONE, which
+   left no room to fit the "2 rows above, 2 below" seating the user actually
+   wanted (measured out: not enough space existed for 2 comfortable rows +
+   a separate banner slot + the existing Pot display, all before the
+   community strip). Reusing the label slot needs zero extra height, so
+   TOP_ZONE only has to clear the community strip itself, same as
+   BOTTOM_ZONE — see GameTable.jsx's zone comments. */
+.pot-label--hand {
+  font-size: 11px; letter-spacing: 1.5px; color: #F3D778; text-transform: none;
+  text-shadow: 0 0 12px rgba(212,175,55,.85), 0 2px 6px rgba(0,0,0,.7);
+  animation: handLabelIn .4s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes handLabelIn { from { transform: translateY(-4px) scale(.9); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
 
 /* community placeholder (pre-flop) */
 .community { display:flex; gap:5px; align-items:center; perspective:600px; }

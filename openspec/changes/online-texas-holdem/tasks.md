@@ -709,11 +709,35 @@
 - [x] 47.7 **修正（用户反馈，2026-07-24）**：`playerId` 方案覆盖不到"微信内置浏览器 vs 手机自带浏览器"这种跨 App 场景（`localStorage` 按 WebView 隔离，不是按物理设备）——补一层"仅当旧身份当前不在线（`connected===false`）才生效"的昵称兜底，加在 `playerId` 精确匹配之后：`Room.addPlayer()` 匹配不到 `id` 时，退而找"昵称一致且当前离线"的既有行复用（不改这一行的 `id`，只重置 `connected`/`left`/`socketId`），返回真实的旧 `id`；`RoomManager.join()`/`server/index.js` 的 `room:join` 处理器改用这个"实际身份"（可能跟客户端传来的不一样）去更新 `playerRoom` 映射、`updateSocket`、以及通过 `room:joined` 回传给客户端——客户端本来就是以服务端返回值为准覆盖本地 `vr_playerId`（`HomePage.jsx` 一直这么写的），不需要改客户端代码。这个设计天然排除了"同一人两台设备同时在线互相顶替"的风险：一个身份同一时刻只能被一个在线连接持有，昵称匹配严格只在旧身份离线时才生效，后来者在旧身份仍在线时永远进不去、走全新加入分支
 - [x] 47.8 `RoomManager` 单测新增 3 条：不同 id+同昵称+旧身份离线→复用成功且返回旧 id；旧身份仍在线→不复用，两个身份并存；两个不同的人都用同昵称但都不匹配离线记录→各自独立成为新玩家。集成测试新增：模拟"微信断线、Safari 用不同 playerId+同昵称加入"全链路 socket 场景，验证拿回的是旧身份、房间玩家数不变。127/127 全绿；Playwright 用两个完全隔离的浏览器 context（模拟微信 vs Safari 两套独立 localStorage）实测：房主开局→"微信"加入→关掉"微信"（context 直接关闭，模拟断线不是主动退出）→"Safari"用同昵称加入同房间号→成功以"Bob（我）"身份进入大厅，玩家数仍是 2 不是 3，截图确认
 
-## 48. 新增"计时游戏"：房主可选时长，到点提醒 + 房主决策 + 最后 5 分钟倒计时（用户反馈，2026-07-24）
+## 48. 摊牌视觉升级：牌型高亮 + 放大展示（用户反馈，2026-07-24）
 
-- [x] 48.1 用 AskUserQuestion 确认了三个关键设计点（记入 design.md）：到点提醒必须等当前这一手打完才触发；提醒是全员轻量提示+房主专属决策弹窗，不是全员阻塞式弹窗；入口是"开始游戏"旁新增"计时游戏"按钮，选完时长才开局，普通"开始游戏"维持不限时不变
-- [x] 48.2 `server/RoomManager.js`：`Room` 新增 `gameTimerEndsAt`（绝对到期时间戳，服务端权威，客户端只做本地倒计时展示不需要服务端每秒推送）、`awaitingTimerDecision`；`startGame(durationMinutes)` 新增可选参数；`restart()` 清空两个新字段；`getLobbyState()` 广播出去
-- [x] 48.3 `server/index.js`：计时到点检查复用现有的 `tryAdvanceIfClear`（跟"筹码归零暂停"同一个检查点，天然保证只在真正的手牌边界才可能触发，不需要额外判断"是否在手牌进行中"）——检查顺序放在筹码暂停检查之后；到点且未标记过时广播 `game:timer-expired`、置位 `awaitingTimerDecision`、直接 return（不发下一手）；抽出 `endGameNow(room, reason)` 复用于 `room:end-game` 和新的 `room:timer-end-game`；新增 `room:timer-continue`（host-only，"忽略继续"清空 `gameTimerEndsAt` 转为不限时，不是重新计时同样时长）
-- [x] 48.4 客户端：`Lobby.jsx` 新增"计时游戏"按钮+15/30/60 分钟选择弹窗；`GameTable.jsx` 新增基于 `gameTimerEndsAt` 的每秒倒计时（仅在有值时启动 `setInterval`），剩余≤5分钟时顶部导航栏居中显示 `.timer-countdown` 徽标（橙红色，跟行动倒计时 `.think-overlay` 同色系，读作"紧迫"）；新增 `TimerDecisionModal.jsx`（参考 `BustDecisionModal.jsx` 结构，房主专属）；`RoomPage.jsx` 按 `roomState.awaitingTimerDecision` 分流渲染房主决策弹窗/其他人持久 toast
-- [x] 48.5 **踩坑**：最初非房主也接了 `game:timer-expired` 驱动的一次性 toast，跟同时渲染的持久提示条在真实截图里挤在一起读起来很乱——删掉这个一次性 toast（`game:timer-expired` 事件保留广播，只是不再单独驱动 UI），改成两边都只依赖 `roomState.awaitingTimerDecision` 派生渲染，房主决策前后同步出现/消失，不会有转瞬即逝的重复信息
-- [x] 48.6 `RoomManager` 单测新增（`startGame` 带/不带时长的行为差异、`restart` 清空计时字段）；集成测试新增完整 socket 流程（计时到+一手打完后"忽略继续"验证下一手正常发出/状态复位、"结束对局"验证双方收到 `hostEnded`、非房主调用两个 host-only 事件被拒绝），134/134 全绿；Playwright 双人真机验证：大厅选时长正常开局、用极短时长（3秒）触发真实到点场景观察完整反应链（倒计时徽标显示跳动→一手打完→房主决策弹窗+非房主持久 toast 同步出现且不重叠→"忽略继续"后下一手正常发出且倒计时消失），全部截图确认
+- [x] 48.1 设计决策已用 AskUserQuestion 逐项确认（放大方案/高亮范围/文字位置/生命周期），记入 design.md
+- [x] 48.2 `server/GameEngine.js`：`_determineWinners` 求解时保留 `hand.cards`（映射回内部记法），showdown 结果每个赢家新增 `bestCards`（组成最大牌型的 5 张）与 `handNameShort`（牌型短名）；`foldWin` 时不产出
+- [x] 48.3 `Card.jsx` 新增高亮/压暗视觉态（`highlight`/`dim` prop）
+- [x] 48.4 `PlayerSeat.jsx`：摊牌牌统一 `xs→sm`；赢家手牌按 `bestCards` 命中情况放大到 `md` + 金色高亮，位置不变（仍贴头像、朝公共牌方向）
+- [x] 48.5 `GameTable.jsx`：公共牌按 `bestCards` 高亮/压暗；公共牌上方居中展示 `handNameShort`（多赢家不同牌型纵向堆叠）；时间线挂在既有 `SHOWDOWN_REVEAL_DELAY_MS` 摊牌停顿上，结算 sheet 弹起后持续显示，下一手开始清除
+- [x] 48.6 `velvet.css` 高亮/压暗/牌型文字样式；`fixtures.js` 补充 `bestCards`/`handNameShort` 供预览
+- [x] 48.7 服务端测试覆盖 `bestCards`/`handNameShort` 下发（单赢家/多赢家平分场景），130/130 全绿；Playwright 真机验证 6 人桌摊牌放大/高亮/牌型文字/结算期间持续显示，截图确认
+- [x] 48.8 **实测发现（非本次改动引入，属预置几何限制，用户质疑后用 7/8/9 人桌逐一截图+像素级 bounding box 复核确认）**：起初以为只有"9人满桌·密集"才会撞，用户质疑后补测了 7 人桌（行距 100px，非密集档）和 8 人桌，发现两者都真实重叠（7人桌：周涛/吴敏的揭示牌跟 4♣/9♦ 边缘重叠约 25px；8人桌：吴敏的 4♠ 直接压在高亮的 8♦ 上面），修正结论——这跟"密集"与否、人数多少都无关，真正的规律是：**不管几人桌，只要"离桌面纵向中心最近的那一行"座位没弃牌、进了真摊牌，他的揭示牌就会跟中央公共牌条撞上**；此前的 6 人桌 fixture 之所以没测出来，只是因为那个位置的玩家那手弃牌了、没渲染揭示牌，不是空间真的够。用回退前的 `xs` 尺寸重跑同样撞，证明不是本轮放大造成的，只是从未被"该行未弃牌+真摊牌"这个组合测到过。缓解（范围有限）：`PlayerSeat.jsx` 新增 `dense` 参数，7 人以上的桌摊牌牌维持原 `xs`/`sm`、不套用本轮放大，确保本轮改动不会让这类桌更差；但因根因是"该行本来就会撞"而非"放大后才撞"，这个缓解并不能让 7/8/9 人桌变得没有重叠风险，只是没让本已存在的风险被放大加剧。根因（该行几何位置本身）未修，已加 7/8/9 人桌三档摊牌 fixture（`7人桌·摊牌（碰撞对比）`/`8人桌·摊牌（碰撞对比）`/`9人满桌·密集·摊牌（碰撞压力测试）`）留作回归覆盖，是否要单独立项修复见 design.md 待定问题——**根因已在 49 修复，见下**
+
+## 49. 座位布局重构：双区动态分布，修复 48.8 遗留的揭示牌撞公共牌根因（用户反馈，2026-07-24）
+
+- [x] 49.1 用户看 48.8 的截图后指出牌桌下方（公共牌到英雄手牌区之间）还有大片完全没用到的空间，要求座位布局按人数动态适配、不要从左上角硬编码起排。设计决策已记入 design.md
+- [x] 49.2 `GameTable.jsx` 重写 `seatPositions`/`spectatorSeatPositions`：原来的 `rowPitchFor`（3 档固定档位 130/100/76px，只用公共牌上方的空间）替换成 `TOP_ZONE`/`BOTTOM_ZONE` 双区模型——公共牌条视为固定排除带，上下两个区各自动态分配、按需要的行数从 `zone.start` 顺次排列（`spreadInZone`），每列最多 2 行（`ZONE_ROW_CAP`），多出的自动落入下方区
+- [x] 49.3 **实测踩坑（用户质疑"7/8人桌应该还好吧"后逐档复核）**：起初以为只有 9 人满桌才会撞，7/8 人桌截图 + 像素级 bounding box 复核后发现两者都真实撞（此前误判是因为凑巧那个位置的玩家弃牌了，不是空间真的够）——这就是 48.8 记录的同一个根因，本次结构重构从源头解决：座位不再从固定顶部起排、挤到与公共牌重叠，而是分区管理，天然规避
+- [x] 49.4 **实测踩坑**：赢家牌型文字横幅最初做成 `.table-oval-content` 的 flex 兄弟节点，导致横幅出现/消失时公共牌位置跟着挪动（因为 flex 居中会重新分布空间）——这让本来算好的安全边界在摊牌那一刻失效。改为复用 `Pot.jsx` 的"底池"文字slot（`handNameLabel` prop），不再额外占用高度，`table-oval-content` 恢复不受摊牌状态影响
+- [x] 49.5 **实测踩坑**：把 `TOP_ZONE` 起始点推到贴近毡布顶边（y=14）后，赢家高亮的金色光晕（box-shadow 溢出卡牌边框约 25px）被 `.table-zone` 的 `overflow:hidden` 切掉一截，看起来像"飘出屏幕"——退回安全值 y=46
+- [x] 49.6 **实测踩坑**：`MIN_SEAT_PITCH` 最初测的是无位置标签（庄家/小盲/大盲）的座位高度（71.5），用户希望上方能挤下 2 行、且赢家牌改成不放大（同尺寸只高亮）后以为空间够了，结果真机渲染发现带标签的座位实际有 89 高——2 行会导致头像和名字标签互相压。改用真实的更高数值
+- [x] 49.7 **用户反馈调整**：把"底池+公共牌"这坨内容整体在 `.table-oval-content` 里往下移（`.pot` 的 `margin-top`，实测 50px margin 只让 Pot 实际下移 24px——flex 居中会把新增空间对半分，不是等量平移，靠实测校正不是手算），从下方富余区域"借"空间给上方，最终让上方也能稳定装下 2 行，匹配用户截图标注的"红线上下各 2 个"预期
+- [x] 49.8 **实测踩坑**：为了让"下方只有 1 人时贴近公共牌"，一度把 `TOP_ZONE` 改成从其"内侧边"（靠近底池的一端）向外排列，`BOTTOM_ZONE` 保持从其内侧边（靠近公共牌的一端）向外——这导致同一列里编号靠前的玩家（如庄家）反而排在编号靠后的玩家下面，摊牌区域内顺序局部倒转，破坏了庄家/小盲/大盲应有的顺时针连续顺序（用户发现）。改回两个区都统一从 `zone.start` 往下排：`BOTTOM_ZONE` 的 `start` 恰好就是靠近公共牌的一端，"贴近公共牌"的效果不受影响；`TOP_ZONE` 现在够小（≈59-98px），从远离底池的一端起排也不会有明显"悬空"感，用一致的排列方向换回了正确的顺时针座位顺序
+- [x] 49.9 服务端不受影响；每轮踩坑都用 Playwright 对 6/7/8/9 人桌摊牌 + 密集桌无摊牌场景做过像素级 bounding box 复核（`.card`/`.avatar-card`/`.seat-name-row`/`.community`/`.pot` 互相之间零重叠），并截图确认视觉效果，130/130 服务端测试全绿（2 个已知的 socket 时序抖动用例与本次改动无关，重跑可复现为抖动非回归）
+
+## 50. 新增"计时游戏"：房主可选时长，到点提醒 + 房主决策 + 最后 5 分钟倒计时（用户反馈，2026-07-24）
+
+- [x] 50.1 用 AskUserQuestion 确认了三个关键设计点（记入 design.md）：到点提醒必须等当前这一手打完才触发；提醒是全员轻量提示+房主专属决策弹窗，不是全员阻塞式弹窗；入口是"开始游戏"旁新增"计时游戏"按钮，选完时长才开局，普通"开始游戏"维持不限时不变
+- [x] 50.2 `server/RoomManager.js`：`Room` 新增 `gameTimerEndsAt`（绝对到期时间戳，服务端权威，客户端只做本地倒计时展示不需要服务端每秒推送）、`awaitingTimerDecision`；`startGame(durationMinutes)` 新增可选参数；`restart()` 清空两个新字段；`getLobbyState()` 广播出去
+- [x] 50.3 `server/index.js`：计时到点检查复用现有的 `tryAdvanceIfClear`（跟"筹码归零暂停"同一个检查点，天然保证只在真正的手牌边界才可能触发，不需要额外判断"是否在手牌进行中"）——检查顺序放在筹码暂停检查之后；到点且未标记过时广播 `game:timer-expired`、置位 `awaitingTimerDecision`、直接 return（不发下一手）；抽出 `endGameNow(room, reason)` 复用于 `room:end-game` 和新的 `room:timer-end-game`；新增 `room:timer-continue`（host-only，"忽略继续"清空 `gameTimerEndsAt` 转为不限时，不是重新计时同样时长）
+- [x] 50.4 客户端：`Lobby.jsx` 新增"计时游戏"按钮+15/30/60 分钟选择弹窗；`GameTable.jsx` 新增基于 `gameTimerEndsAt` 的每秒倒计时（仅在有值时启动 `setInterval`），剩余≤5分钟时顶部导航栏居中显示 `.timer-countdown` 徽标（橙红色，跟行动倒计时 `.think-overlay` 同色系，读作"紧迫"）；新增 `TimerDecisionModal.jsx`（参考 `BustDecisionModal.jsx` 结构，房主专属）；`RoomPage.jsx` 按 `roomState.awaitingTimerDecision` 分流渲染房主决策弹窗/其他人持久 toast
+- [x] 50.5 **踩坑**：最初非房主也接了 `game:timer-expired` 驱动的一次性 toast，跟同时渲染的持久提示条在真实截图里挤在一起读起来很乱——删掉这个一次性 toast（`game:timer-expired` 事件保留广播，只是不再单独驱动 UI），改成两边都只依赖 `roomState.awaitingTimerDecision` 派生渲染，房主决策前后同步出现/消失，不会有转瞬即逝的重复信息
+- [x] 50.6 `RoomManager` 单测新增（`startGame` 带/不带时长的行为差异、`restart` 清空计时字段）；集成测试新增完整 socket 流程（计时到+一手打完后"忽略继续"验证下一手正常发出/状态复位、"结束对局"验证双方收到 `hostEnded`、非房主调用两个 host-only 事件被拒绝），134/134 全绿；Playwright 双人真机验证：大厅选时长正常开局、用极短时长（3秒）触发真实到点场景观察完整反应链（倒计时徽标显示跳动→一手打完→房主决策弹窗+非房主持久 toast 同步出现且不重叠→"忽略继续"后下一手正常发出且倒计时消失），全部截图确认
+- [x] 50.7 **合并踩坑**：推送时发现远程已有另一会话并行提交的座位布局重构（48/49号任务），`GameTable.jsx` 的函数签名和 `tasks.md` 编号都产生冲突——手工合并（保留双方函数定义+分别验证的 prop）、把本任务重新编号为 50 号避免跟远程的 48/49 撞号，合并后重新跑一遍服务端全量测试+真机快速验证计时功能仍正常，确认合并没有互相破坏

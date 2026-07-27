@@ -1,15 +1,18 @@
 // Emits the approved preview's card markup/classes (styled by shared velvet.css).
 // size: 'xs' | 'sm' | 'md' | 'lg' → c-xs / c-sm / c-md / c-lg
 // animate: 'deal-in' | 'flip-reveal' | null  delay: seconds (sets CSS --d var)
-export default function Card({ card, size = 'md', faceDown = false, animate = null, delay = 0 }) {
+// highlight: true → this card is part of the winning best-5 at showdown (gold glow)
+// dim: true → showdown is resolved and this card is NOT part of the winning best-5
+export default function Card({ card, size = 'md', faceDown = false, animate = null, delay = 0, highlight = false, dim = false }) {
   const animClass = animate ? ` ${animate}` : '';
+  const stateClass = `${highlight ? ' c-highlight' : ''}${dim ? ' c-dim' : ''}`;
   const style = delay ? { '--d': `${delay}s` } : undefined;
   if (faceDown || !card) {
-    return <div className={`card c-${size} c-back${animClass}`} style={style} />;
+    return <div className={`card c-${size} c-back${animClass}${stateClass}`} style={style} />;
   }
   const red = card.color === 'red';
   return (
-    <div className={`card c-${size} c-face${red ? ' c-red' : ''}${animClass}`} style={style}>
+    <div className={`card c-${size} c-face${red ? ' c-red' : ''}${animClass}${stateClass}`} style={style}>
       <div className="c-tl"><span className="cr">{card.rank}</span><span className="cs">{card.suit}</span></div>
       <div className="c-ct">{card.suit}</div>
     </div>

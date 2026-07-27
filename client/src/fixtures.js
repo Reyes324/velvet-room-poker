@@ -1,5 +1,9 @@
 // Fixed game states for self-verification — renders the REAL GameTable component.
-const c = (rank, suit) => ({ rank, suit, color: (suit === '♥' || suit === '♦') ? 'red' : 'black' });
+const SUIT_RAW = { '♠': 's', '♥': 'h', '♦': 'd', '♣': 'c' };
+// `raw` mirrors the server's internal notation (e.g. 'Qs') so the showdown
+// highlight fixture below can match community/hole cards against a winner's
+// `bestCards` exactly like the real game:showdown payload does.
+const c = (rank, suit) => ({ rank, suit, color: (suit === '♥' || suit === '♦') ? 'red' : 'black', raw: `${rank === '10' ? 'T' : rank}${SUIT_RAW[suit]}` });
 
 const base = [
   { id: 'wang', name: '王建国', isDealer: true },
@@ -50,7 +54,12 @@ export const STATES = [
   },
   {
     name: '摊牌', myId: 'me', roomCode: '4827',
-    showdown: [{ name: '陈美玲', handName: '两对，对Q和对5' }],
+    showdown: [{
+      id: 'chen', name: '陈美玲', handName: '两对，对Q和对5', handNameShort: '两对',
+      // Best 5: both her hole cards (pair of 5s) + the board's pair of Qs + the 7 kicker —
+      // the board's 3♥/2♥ and everyone else's hole cards should dim, not highlight.
+      bestCards: [c('Q', '♠'), c('Q', '♦'), c('5', '♦'), c('5', '♣'), c('7', '♣')],
+    }],
     gameState: {
       phase: 'showdown', pot: 1780, currentBet: 0, actionPlayerId: null,
       communityCards: [c('Q', '♠'), c('3', '♥'), c('Q', '♦'), c('7', '♣'), c('2', '♥')],
@@ -109,10 +118,13 @@ STATES.push({
 });
 
 // Settlement modal over the (dimmed) showdown table — real showdown, hand
-// description shown.
+// description shown. Also carries `showdown` so the highlight/hand-name
+// banner behind the sheet previews correctly — per design, those stay lit
+// through the whole settlement, not just the initial reveal beat.
 STATES.push({
   name: '结算弹窗·真摊牌', myId: 'me', roomCode: '4827',
   gameState: STATES[3].gameState,
+  showdown: STATES[3].showdown,
   settlement: {
     winners: [{ id: 'chen', name: '陈美玲', won: 1780, handName: '两对，对Q和对5' }],
   },
@@ -170,6 +182,76 @@ STATES.push({
       { id: 'p6', name: '孙丽', chips: 300, bet: 0, status: 'folded', holeCards: [null, null] },
       { id: 'p7', name: '周涛', chips: 200, bet: 0, status: 'active', holeCards: [null, null] },
       { id: 'p8', name: '吴敏', chips: 100, bet: 0, status: 'active', holeCards: [null, null] },
+    ],
+  },
+});
+
+// 密集9人桌摊牌：验证赢家牌放大到 md 后，在最紧凑的行距（76px）下是否会跟相邻行
+// 的座位/揭示牌相撞——赢家特意放在中间行（p4），两侧行都有座位，是碰撞风险最高的位置。
+STATES.push({
+  name: '9人满桌·密集·摊牌（碰撞压力测试）', myId: 'me', roomCode: '4827',
+  showdown: [{
+    id: 'p4', name: '李大明是个非常长的名字', handName: '三条，8带K高', handNameShort: '三条',
+    bestCards: [c('8', '♠'), c('8', '♥'), c('8', '♦'), c('K', '♣'), c('9', '♦')],
+  }],
+  gameState: {
+    phase: 'showdown', pot: 3600, currentBet: 0, actionPlayerId: null,
+    communityCards: [c('8', '♦'), c('4', '♣'), c('K', '♣'), c('9', '♦'), c('2', '♠')],
+    players: [
+      { id: 'me', name: 'Augustine', chips: 900, bet: 0, status: 'folded', holeCards: [c('8', '♠'), c('J', '♥')] },
+      { id: 'p1', name: '王建国', chips: 800, bet: 0, status: 'active', holeCards: [c('A', '♠'), c('Q', '♥')], isDealer: true },
+      { id: 'p2', name: '陈美玲', chips: 700, bet: 0, status: 'folded', holeCards: [null, null], isSB: true },
+      { id: 'p3', name: '张伟', chips: 600, bet: 0, status: 'active', holeCards: [c('2', '♥'), c('3', '♣')], isBB: true },
+      { id: 'p4', name: '李大明是个非常长的名字', chips: 4100, bet: 0, status: 'active', holeCards: [c('8', '♥'), c('7', '♠')] },
+      { id: 'p5', name: '赵军', chips: 400, bet: 0, status: 'allin', holeCards: [c('10', '♣'), c('10', '♥')] },
+      { id: 'p6', name: '孙丽', chips: 300, bet: 0, status: 'folded', holeCards: [null, null] },
+      { id: 'p7', name: '周涛', chips: 200, bet: 0, status: 'active', holeCards: [c('5', '♣'), c('6', '♦')] },
+      { id: 'p8', name: '吴敏', chips: 100, bet: 0, status: 'active', holeCards: [c('4', '♠'), c('9', '♣')] },
+    ],
+  },
+});
+
+// 7人桌摊牌（用户要求实测对比：7人行距100px，比9人的76px松，用来跟9人版对照严重程度）
+STATES.push({
+  name: '7人桌·摊牌（碰撞对比）', myId: 'me', roomCode: '4827',
+  showdown: [{
+    id: 'p4', name: '赵军', handName: '三条，8带K高', handNameShort: '三条',
+    bestCards: [c('8', '♠'), c('8', '♥'), c('8', '♦'), c('K', '♣'), c('9', '♦')],
+  }],
+  gameState: {
+    phase: 'showdown', pot: 2400, currentBet: 0, actionPlayerId: null,
+    communityCards: [c('8', '♦'), c('4', '♣'), c('K', '♣'), c('9', '♦'), c('2', '♠')],
+    players: [
+      { id: 'me', name: 'Augustine', chips: 900, bet: 0, status: 'folded', holeCards: [c('8', '♠'), c('J', '♥')] },
+      { id: 'p1', name: '王建国', chips: 800, bet: 0, status: 'active', holeCards: [c('A', '♠'), c('Q', '♥')], isDealer: true },
+      { id: 'p2', name: '陈美玲', chips: 700, bet: 0, status: 'folded', holeCards: [null, null], isSB: true },
+      { id: 'p3', name: '张伟', chips: 600, bet: 0, status: 'active', holeCards: [c('2', '♥'), c('3', '♣')], isBB: true },
+      { id: 'p4', name: '赵军', chips: 3900, bet: 0, status: 'active', holeCards: [c('8', '♥'), c('7', '♠')] },
+      { id: 'p5', name: '周涛', chips: 200, bet: 0, status: 'active', holeCards: [c('5', '♣'), c('6', '♦')] },
+      { id: 'p6', name: '吴敏', chips: 100, bet: 0, status: 'active', holeCards: [c('4', '♠'), c('9', '♣')] },
+    ],
+  },
+});
+
+// 8人桌摊牌（用户要求实测对比：8人行距已经是最紧的76px，跟9人同一档）
+STATES.push({
+  name: '8人桌·摊牌（碰撞对比）', myId: 'me', roomCode: '4827',
+  showdown: [{
+    id: 'p4', name: '赵军', handName: '三条，8带K高', handNameShort: '三条',
+    bestCards: [c('8', '♠'), c('8', '♥'), c('8', '♦'), c('K', '♣'), c('9', '♦')],
+  }],
+  gameState: {
+    phase: 'showdown', pot: 3200, currentBet: 0, actionPlayerId: null,
+    communityCards: [c('8', '♦'), c('4', '♣'), c('K', '♣'), c('9', '♦'), c('2', '♠')],
+    players: [
+      { id: 'me', name: 'Augustine', chips: 900, bet: 0, status: 'folded', holeCards: [c('8', '♠'), c('J', '♥')] },
+      { id: 'p1', name: '王建国', chips: 800, bet: 0, status: 'active', holeCards: [c('A', '♠'), c('Q', '♥')], isDealer: true },
+      { id: 'p2', name: '陈美玲', chips: 700, bet: 0, status: 'folded', holeCards: [null, null], isSB: true },
+      { id: 'p3', name: '张伟', chips: 600, bet: 0, status: 'active', holeCards: [c('2', '♥'), c('3', '♣')], isBB: true },
+      { id: 'p4', name: '赵军', chips: 3400, bet: 0, status: 'active', holeCards: [c('8', '♥'), c('7', '♠')] },
+      { id: 'p5', name: '孙丽', chips: 300, bet: 0, status: 'folded', holeCards: [null, null] },
+      { id: 'p6', name: '周涛', chips: 200, bet: 0, status: 'active', holeCards: [c('5', '♣'), c('6', '♦')] },
+      { id: 'p7', name: '吴敏', chips: 100, bet: 0, status: 'active', holeCards: [c('4', '♠'), c('9', '♣')] },
     ],
   },
 });

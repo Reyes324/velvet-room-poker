@@ -173,3 +173,58 @@ describe('GameEngine — getStateForPlayer 隐藏底牌', () => {
     expect(folderInWinnerView.holeCards[0]).not.toBeNull();
   });
 });
+
+describe('GameEngine — 摊牌 bestCards / handNameShort（用于牌桌高亮，用户反馈 2026-07-24）', () => {
+  it('单一赢家：bestCards 是组成最大牌型的5张，handNameShort 是不带踢脚的牌型短名', () => {
+    const game = new GameEngine(makePlayers(2), 0, 20);
+    const [p1, p2] = game.players;
+    p1.holeCards = ['Ah', 'Ac']; // 一对A
+    p2.holeCards = ['3c', '4c']; // 高牌
+    game.communityCards = ['2h', '7c', '9d', 'Jc', 'Kd'];
+    // 让两人已投入筹码相等，避免因盲注差额触发边池分层（那是另一套已覆盖的行为）
+    p1.totalBet = p2.totalBet = 20;
+
+    const result = game._endHand(game.players);
+    const winner = result.winners.find(w => w.id === p1.id);
+    expect(winner).toBeDefined();
+    expect(winner.handNameShort).toBe('一对');
+    expect(winner.bestCards).toHaveLength(5);
+    const rawSet = new Set(winner.bestCards.map(c => c.raw));
+    expect(rawSet.has('Ah')).toBe(true);
+    expect(rawSet.has('Ac')).toBe(true);
+
+    const loser = result.winners.find(w => w.id === p2.id);
+    expect(loser).toBeUndefined(); // 没赢，不在 winners 里
+  });
+
+  it('弃牌获胜（foldWin）：不产出 bestCards / handNameShort', () => {
+    const game = new GameEngine(makePlayers(2), 0, 20);
+    const actor = game.players[game.actionIndex];
+    const result = game.fold(actor.id);
+    expect(result.foldWin).toBe(true);
+    const winner = result.winners[0];
+    expect(winner.handNameShort).toBeNull();
+    expect(winner.bestCards).toEqual([]);
+  });
+
+  it('多个赢家（平分底池/公共牌打满）：每个赢家各自拿到自己的 bestCards，不是只有一组', () => {
+    const game = new GameEngine(makePlayers(2), 0, 20);
+    const [p1, p2] = game.players;
+    // 公共牌本身就是皇家同花顺，双方底牌都打不过公共牌，只能打平分公共牌
+    game.communityCards = ['Ah', 'Kh', 'Qh', 'Jh', 'Th'];
+    p1.holeCards = ['2c', '3d'];
+    p2.holeCards = ['4c', '5d'];
+    p1.totalBet = p2.totalBet = 20;
+
+    const result = game._endHand(game.players);
+    expect(result.winners).toHaveLength(2);
+    for (const w of result.winners) {
+      expect(w.handNameShort).toBe('皇家同花顺');
+      expect(w.bestCards).toHaveLength(5);
+      const rawSet = new Set(w.bestCards.map(c => c.raw));
+      for (const boardCard of game.communityCards) {
+        expect(rawSet.has(boardCard)).toBe(true);
+      }
+    }
+  });
+});
