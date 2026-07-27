@@ -15,6 +15,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
   const [showMenu, setShowMenu] = useState(false);
   const [rebuying, setRebuying] = useState(false);
   const [showTimerPicker, setShowTimerPicker] = useState(false);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   // Players who've left (voluntarily, kicked, or timed out) stay in
   // roomState.players so their final numbers survive in 账本 — but the
   // lobby's own seat list, open-seat count, and start-game eligibility
@@ -56,6 +57,18 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
             <div className="modal-btns">
               <div className="modal-btn-cancel" onClick={() => setShowExit(false)}>取消</div>
               <div className="modal-btn-danger" onClick={onExit}>退出</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showRestartConfirm && (
+        <div className="modal-overlay" onClick={() => setShowRestartConfirm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">重新开始</div>
+            <div className="modal-body">所有人的筹码将重置为初始值，借款和牌局记录也会清空。确定要重新开始吗？</div>
+            <div className="modal-btns">
+              <div className="modal-btn-cancel" onClick={() => setShowRestartConfirm(false)}>取消</div>
+              <div className="modal-btn-danger" onClick={() => { setShowRestartConfirm(false); onRestart(); }}>重新开始</div>
             </div>
           </div>
         </div>
@@ -148,7 +161,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
             {canStart && (
               <div className="lobby-timed-btn" onClick={() => setShowTimerPicker(true)}>计时游戏</div>
             )}
-            <div className="lobby-restart" onClick={onRestart}>重新开始</div>
+            <div className="lobby-restart" onClick={() => setShowRestartConfirm(true)}>重新开始</div>
           </div>
         ) : (
           <div className="lobby-footer">

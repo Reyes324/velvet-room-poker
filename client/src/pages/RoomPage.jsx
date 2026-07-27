@@ -16,7 +16,7 @@ import TimerDecisionModal from '../components/TimerDecisionModal';
 // feedback). A fold-win has nothing to reveal, so it skips the wait.
 const SHOWDOWN_REVEAL_DELAY_MS = 1400;
 
-export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
+export default function RoomPage({ roomCode, playerId, playerName, justCreated, onLeave }) {
   const [roomState, setRoomState] = useState(null);
   const [gameState, setGameState] = useState(null);
   const [showdown, setShowdown] = useState(null);
@@ -185,8 +185,16 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }).catch(() => {}); // clipboard permission denied/unavailable — silent, manual "复制邀请链接" button still works
   }
+
+  // Auto-copy the invite link the moment a just-created room's host lands
+  // in the lobby, saving the manual tap — only for the host's own creation
+  // (justCreated), never on a rejoin/reconnect into an already-existing
+  // room, where re-copying on every reload would be surprising, not helpful.
+  useEffect(() => {
+    if (justCreated) copyInvite();
+  }, []);
 
   function kick(targetId) {
     emit('room:kick', { hostId: playerId, targetId });
@@ -224,7 +232,7 @@ export default function RoomPage({ roomCode, playerId, playerName, onLeave }) {
           onCopy={copyInvite}
           onKick={kick}
           onStart={(durationMinutes) => emit('room:start', { playerId, durationMinutes })}
-          onRestart={() => emit('room:restart', { playerId })}
+          onRestart={() => { emit('room:restart', { playerId }); showToast('已重新开始，筹码已重置', 'info'); }}
           onRebuy={rebuy}
           onExit={leaveRoom}
           onOpenLedger={() => setShowLedger(true)}

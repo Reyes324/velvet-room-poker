@@ -220,7 +220,7 @@
 /* position badge — used to be a corner tag glued to the avatar photo; moved
    inline next to the seat name instead (real-device feedback: it read as
    covering the avatar art, and needed its own space, not a corner overlay). */
-.pos-badge { flex:0 0 auto; height:12px; padding:0 4px; border-radius:4px; background:#EAE0C8; color:var(--ink-black); font-family:var(--font-mono); font-size:7px; font-weight:700; line-height:12px; text-align:center; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,.5); }
+.pos-badge { flex:0 0 auto; height:15px; padding:0 5px; border-radius:4px; background:#EAE0C8; color:var(--ink-black); font-family:var(--font-mono); font-size:10px; font-weight:700; line-height:15px; text-align:center; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,.5); }
 
 /* chip footer — inside the same card border as the photo, not floating text below it */
 .stack-chip-footer {
@@ -476,8 +476,17 @@
 .modal-btn--paired { width:auto; flex:1; height:46px; font-size:13px; margin-top:0; }
 .modal-body { font-family:var(--font-body); font-size:14px; color:#8A8A7A; text-align:center; line-height:1.5; }
 .modal-btns { display:flex; gap:9px; width:100%; }
-.modal-btn-cancel { flex:1; height:46px; border-radius:23px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); font-family:var(--font-display); font-size:13px; color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; }
-.modal-btn-danger { flex:1; height:46px; border-radius:23px; background:linear-gradient(135deg,#7A1E1E,#C0392B); font-family:var(--font-display); font-size:13px; font-weight:700; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 16px rgba(192,57,43,.3); }
+/* flex:1 lives on .modal-btns' children, not the bare classes — .modal
+   itself is a COLUMN flex container, so flex:1 directly on a bare
+   .modal-btn-cancel there hijacks the vertical main axis (flex-basis:0%
+   overriding the explicit height:46px) instead of the intended horizontal
+   "share the row" sizing, collapsing it to ~23px. Confirmed via a real
+   render — the two standalone uses (timer-picker cancel, BustWaitModal's
+   退出) were exactly this case. */
+.modal-btn-cancel, .modal-btn-danger { height:46px; border-radius:23px; font-family:var(--font-display); font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.modal-btns > .modal-btn-cancel, .modal-btns > .modal-btn-danger { flex:1; }
+.modal-btn-cancel { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:var(--text-secondary); }
+.modal-btn-danger { background:linear-gradient(135deg,#7A1E1E,#C0392B); font-weight:700; color:#fff; box-shadow:0 4px 16px rgba(192,57,43,.3); }
 .cd { display:inline-block; width:18px; text-align:center; }
 
 /* ── ≡ TOP-BAR MENU POPOVER (账本 / 退出) ─────────────────── */
@@ -537,8 +546,12 @@
   cursor:pointer;
 }
 .hh-panel-back:active { background:rgba(212,175,55,.16); }
-.hh-panel-title { flex:1; font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--text-primary); letter-spacing:.5px; }
-.hh-panel-count { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); flex-shrink:0; }
+/* Centered relative to the whole header, not just the leftover space next
+   to the back button — .hh-panel-count balances the back button's 34px on
+   the other side (same min-width, text-align:right) so the title's flex:1
+   middle stays symmetric whether or not the count text is present. */
+.hh-panel-title { flex:1; text-align:center; font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--text-primary); letter-spacing:.5px; }
+.hh-panel-count { min-width:34px; text-align:right; font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); flex-shrink:0; }
 .hh-empty { flex:1 1 auto; font-family:var(--font-body); font-size:14px; color:var(--text-secondary); text-align:center; padding:48px 0; }
 
 /* Two independently scrollable panes (per user request, referencing a
@@ -617,7 +630,7 @@
 .pr-av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--text-primary); flex-shrink:0; }
 .pr-name { font-family:var(--font-body); font-size:14px; color:var(--text-primary); }
 .pr-chips { font-family:var(--font-amount); font-size:11px; color:var(--text-secondary); }
-.pr-badge { font-family:var(--font-mono); font-size:8px; background:rgba(212,175,55,.12); color:#D4AF37; border-radius:7px; padding:2px 7px; }
+.pr-badge { font-family:var(--font-mono); font-size:10px; background:rgba(212,175,55,.12); color:#D4AF37; border-radius:7px; padding:3px 7px; }
 .debt-badge { background:rgba(192,100,43,.15); color:#E08A4A; border:1px solid rgba(192,100,43,.3); }
 /* +借一底/移出 are tappable actions, not passive info tags like 房主/借¥X —
    real-device feedback: reusing .pr-badge's 8px/tiny-padding styling for
@@ -724,7 +737,7 @@
 .game-stage--dense .avatar-photo { height:34px; font-size:13px; }
 .game-stage--dense .think-overlay { font-size:15px; }
 .game-stage--dense .stack-chip-footer { font-size:9px; padding:2px 0; }
-.game-stage--dense .pos-badge { font-size:6px; height:11px; line-height:11px; padding:0 3px; }
+.game-stage--dense .pos-badge { font-size:9px; height:13px; line-height:13px; padding:0 4px; }
 .game-stage--dense .reveal { gap:2px; }
 
 /* ── LOBBY layout (in game-stage) ─────────────────────────── */

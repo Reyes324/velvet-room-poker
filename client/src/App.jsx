@@ -39,9 +39,9 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  function handleJoined(code, playerId, playerName) {
+  function handleJoined(code, playerId, playerName, justCreated) {
     window.history.pushState({}, '', '/room/' + code);
-    setRoom({ code, playerId, playerName });
+    setRoom({ code, playerId, playerName, justCreated });
   }
 
   function handleLeave() {
@@ -69,6 +69,7 @@ export default function App() {
         roomCode={room.code}
         playerId={room.playerId}
         playerName={room.playerName}
+        justCreated={room.justCreated}
         onLeave={handleLeave}
       />
     </div>

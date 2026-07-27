@@ -1017,6 +1017,25 @@ if (active.length < 2) { … return { ended: true, reason: '筹码不足，等�
 
 ---
 
+## 一批 UI/UX 反馈修复（用户反馈，2026-07-28）
+
+**背景**：用户一次性反馈 6 个问题：弹窗取消按钮太小、大厅/首页背景太暗、加入房间表单与按钮高度不统一（要求用设计眼光全盘检查）、大厅"重新开始"点击无反应、创建房间后应自动复制邀请链接、牌局记录返回按钮未对齐；对话中途又追加"房主/庄家/小盲等标签字号是否太小"。
+
+**根因与修复**：
+1. **弹窗取消按钮太小**（真 bug）：`.modal-btn-cancel`/`.modal-btn-danger` 的 `flex:1` 是给横排的 `.modal-btns`（并排两个按钮）设计的，但计时游戏弹窗和 `BustWaitModal` 把它当单独按钮直接放进纵向 flex 的 `.modal` 里——纵向容器里 `flex:1` 的 `flex-basis:0%` 会顶掉显式的 `height:46px`，实测只剩 22.8px。修复：把 `flex:1` 限定到 `.modal-btns > .modal-btn-cancel/.modal-btn-danger` 生效，两个类自身只保留 `height:46px` 等尺寸声明。
+2. **"重新开始"点击无反应**（非 bug，是零反馈）：实测 `room:restart` 确实正常收发，只是没有确认弹窗、也没有成功提示——如果点击时房间本来就是默认状态，视觉上跟没点一样。加了确认弹窗（会清空筹码/借款/牌局记录，需二次确认）+ 成功 toast。
+3. **牌局记录返回按钮未对齐**（真 bug）：`.hh-panel-title` 只有 `flex:1` 没有 `text-align:center`，标题贴着返回按钮左对齐而不是相对整个 header 居中。修复：标题居中 + 让右侧的手数计数区留出跟返回按钮对称的 `min-width`，实测标题现在精确落在 header 正中心。
+4. **自动复制邀请链接**（新需求）：只在"创建房间"这条路径（不是加入/重连）触发一次自动复制——`HomePage.jsx` 把 `mode !== 'join'` 作为 `justCreated` 标志一路传给 `RoomPage`，挂载时若为 true 调一次已有的 `copyInvite()`。双 context 验证过：创建者剪贴板拿到邀请链接，单纯加入的人剪贴板不受影响。
+5. **背景太暗**：实测 `text-muted`(#5A6E5C) 在最深处背景（`--felt-900`/`--surface-base`，接近纯黑）下对比度只有 3.52:1，低于 WCAG 最低标准 4.5:1。用户选择"只调亮背景色阶"，但数学上背景越亮、跟固定亮度的文字对比度反而越低（两者亮度值更接近），单独调背景无法达标，因此在此基础上把 `text-muted` 也小幅调亮到 #7A9078，实测对新背景对比度 4.87:1，达标。调整范围限定在 `--felt-900/800/700/600` 和 `--surface-*`（页面背景用的深色阶）——牌桌本身的绿呢渐变（`--felt-200~500`，本来就偏亮）未改动。
+6. **表单/按钮高度不统一**：根因是昵称输入框（16px 字号）和房间码输入框（24px 字号）共用同一套 `padding:12px 16px`，高度靠 padding+字号撑起来，天然不一致；按钮同理。新增全局 `--control-h: 48px` token，`home-input`/`home-input--code`/`btn-primary`/`btn-secondary`/`btn-ghost` 统一改成固定 `height:var(--control-h)` + flex 居中，不再依赖 padding 撑高度。
+7. **房主/庄家/小盲等标签字号太小**：`.pr-badge`（房主/借款）8px、`.pos-badge`（庄家/小盲/大盲）7px（密集桌面 6px），低于移动端可读性一般建议的 11px 下限。调到 10px，配套调整 padding/height，密集桌面维持 9px。
+
+**验证**：以上均用真实 Playwright 渲染 + `getBoundingClientRect()`/`getComputedStyle()` 测量确认（弹窗按钮高度从 22.8px→46px；hh-panel-title 居中；控件高度统一为 48px；badge 字号/尺寸；WCAG 对比度公式实算 4.87:1），而不是纯手算。全量单测 140/140 通过。e2e 套件在本次会话里大面积失败，但抽查后确认是套件本身的问题（`lobby.spec.js` 里 `创建房间` 按钮的两次 `click` 调用命中的是同一个按钮——`创建房间` 已经是单步提交，不存在第二个"创建"按钮——这是套件早于本次改动就已经过时的既有缺陷，不是本次改动引入的回归；用单测 + 针对性 Playwright 脚本代替验证）。
+
+**涉及文件**：`client/src/styles/velvet.css`（`.modal-btn-cancel`/`.modal-btn-danger`/`.hh-panel-title`/`.hh-panel-count`/`.pos-badge`/`.pr-badge`）、`client/src/styles/tokens.css`（`--felt-900~600`/`--surface-*`/`--text-muted`/新增 `--control-h`）、`client/src/pages/HomePage.css`（`.home-input`/`.btn-primary`/`.btn-secondary`/`.btn-ghost`）、`client/src/components/Lobby.jsx`（重新开始确认弹窗）、`client/src/pages/HomePage.jsx`/`App.jsx`/`client/src/pages/RoomPage.jsx`（自动复制邀请链接的 `justCreated` 传递）。
+
+---
+
 ## Risks / Trade-offs
 
 - **内存存储** → 服务重启丢失所有房间。缓解：提示用户游戏中途不要刷新页面；MVP 阶段可接受。

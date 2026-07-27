@@ -4,11 +4,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=DM+Serif+Display&family=Oswald:wght@600;700&family=Space+Mono:wght@400;700&family=Inter:wght@500;600;700&display=swap');
 
 :root {
-  /* Felt */
-  --felt-900: #041008;
-  --felt-800: #071A0D;
-  --felt-700: #0A2211;
-  --felt-600: #0D2E16;
+  /* Felt — user feedback (2026-07-28): the deepest stops (900/800/700/600 —
+     used for page-background gradients on HomePage/Lobby, not the in-game
+     table felt) read as near-black and made low-emphasis text hard to see.
+     Shifted just the dark end up by one step each (900 now equals the old
+     700, etc.) rather than inventing new hues, so it still reads as the
+     same palette, just not crushed to black. 500/400/300/200 (the bright
+     center of the actual table-felt gradient — RoomPage.css/velvet.css
+     .table-oval) are untouched; that gradient was never the "too dark"
+     complaint. */
+  --felt-900: #0A2211;
+  --felt-800: #0D2E16;
+  --felt-700: #0F3A1B;
+  --felt-600: #144D24;
   --felt-500: #0F3A1B;
   --felt-400: #144D24;
   --felt-300: #1A6630;
@@ -39,15 +47,19 @@
   --chip-purple: #6B3FA0;
   --chip-gold: #D4AF37;
 
-  /* Surface */
-  --surface-base: #08120A;
-  --surface-raised: #0D1C10;
-  --surface-card: #111E14;
+  /* Surface — shifted up alongside Felt 900-600 above, same reasoning. */
+  --surface-base: #0D1C10;
+  --surface-raised: #11241A;
+  --surface-card: #152C1F;
 
   /* Text */
   --text-primary: #F2EAD0;
   --text-secondary: #A8946A;
-  --text-muted: #5A6E5C;
+  /* Bumped from #5A6E5C: real-contrast check (WCAG luminance formula,
+     not eyeballed) against the new lighter --felt-900 still only cleared
+     ~3:1 at the old value — below the 4.5:1 minimum for legible text.
+     #7A9078 clears ~4.9:1 against the new felt-900/surface-base. */
+  --text-muted: #7A9078;
 
   /* State */
   --state-danger: #C0392B;
@@ -69,6 +81,13 @@
      was a real bug once). */
   --stage-w: 375px;
   --stage-h: 812px;
+
+  /* Control height — single source of truth for form-row elements (text
+     inputs, primary/secondary/ghost buttons) so they line up regardless of
+     their own font-size/padding. User feedback (2026-07-28): 昵称/房间码
+     inputs rendered visibly different heights because both only derived
+     height from padding+font-size (16px vs 24px) with no shared floor. */
+  --control-h: 48px;
 
   /* Spacing */
   --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px;

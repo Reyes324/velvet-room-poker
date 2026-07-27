@@ -24,7 +24,7 @@ export default function HomePage({ onJoined, initialCode }) {
     'room:joined': ({ code: roomCode, playerId }) => {
       localStorage.setItem('vr_playerId', playerId);
       localStorage.setItem('vr_roomCode', roomCode);
-      onJoined(roomCode, playerId, name);
+      onJoined(roomCode, playerId, name, mode !== 'join');
     },
     'game:error': (msg) => setError(msg),
   });

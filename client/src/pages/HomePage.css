@@ -71,13 +71,15 @@
 
 .home-input {
   width: 100%;
+  height: var(--control-h);
+  box-sizing: border-box;
   background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.1);
   border-radius: var(--r-md);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: 16px;
-  padding: 12px 16px;
+  padding: 0 16px;
   outline: none;
   transition: border-color .15s, box-shadow .15s;
   text-align: center;
@@ -112,12 +114,16 @@
 
 .btn-primary {
   flex: 1;
+  height: var(--control-h);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: .12em;
   text-transform: uppercase;
-  padding: 14px;
   border-radius: var(--r-md);
   background: linear-gradient(135deg, var(--gold-800), var(--gold-600));
   color: var(--gold-100);
@@ -133,12 +139,16 @@
 
 .btn-secondary {
   flex: 1;
+  height: var(--control-h);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: .12em;
   text-transform: uppercase;
-  padding: 14px;
   border-radius: var(--r-md);
   background: linear-gradient(135deg, #0D2840, #14395C);
   color: #78B8E8;
@@ -153,11 +163,16 @@
 }
 
 .btn-ghost {
+  height: var(--control-h);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
   font-family: var(--font-display);
   font-size: 12px;
   letter-spacing: .1em;
   text-transform: uppercase;
-  padding: 14px 16px;
   border-radius: var(--r-md);
   background: rgba(255,255,255,.04);
   color: var(--text-muted);
@@ -181,8 +196,8 @@
   .btn-primary,
   .btn-secondary {
     font-size: 12px;
-    padding: 13px 10px;
+    padding: 0 10px;
     letter-spacing: .08em;
   }
-  .btn-ghost { padding: 13px 12px; }
+  .btn-ghost { padding: 0 12px; }
 }
