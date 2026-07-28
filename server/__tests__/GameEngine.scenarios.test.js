@@ -399,6 +399,42 @@ describe('边池 — 三人不等额 All-In', () => {
 
     assertPotConservation(game, 2300);
   });
+
+  it('用户反馈（2026-07-28）：全下超过对方全部身家时，退还的未跟注部分不应该在结算里显示成"第二个赢家"——它没有真的赢过谁，只是拿回自己的钱', () => {
+    // Hero(庄/小盲, 1000) 全下推 1000，Villain(大盲, 95，短码) 只能跟到 95。
+    // 边池分层：主池 190（双方都有资格，真实比牌）／边池 810（Hero 全下超出
+    // 部分，全场只有 Hero 一个人的 totalBet 够得着这一层——不是因为对方弃
+    // 牌，是结构上没人可能跟到这里，这笔钱本质是"退还"，不是"赢得一个池"。
+    const players = [
+      { id: 'hero', name: 'Hero', chips: 1000 },
+      { id: 'villain', name: 'Villain', chips: 95 },
+    ];
+    const game = new GameEngine(players, 0, BIG_BLIND);
+    const byId = id => game.players.find(p => p.id === id);
+    byId('hero').holeCards = ['2h', '3d'];   // 明显更弱的牌，让 Villain 真正赢下主池
+    byId('villain').holeCards = ['Ah', 'Ad']; // 明显更强
+    game.deck = ['9h', 'Tc', '4d', '7c', '2s']; // 不连张/不同花，纯比牌力
+
+    game.allIn('hero');
+    const result = game.allIn('villain'); // 短码封顶跟注，heads-up 直接摊牌
+
+    expect(result.showdown).toBe(true);
+    expect(result.foldWin).toBe(false); // 真实摊牌，不是弃牌
+
+    // 结算金额本身早就是对的（边池机制本来就会把退还这部分正确算给
+    // hero）——这条测试盯的是 winners 展示列表：只应该有 Villain 一个人，
+    // hero 不应该被列进去，即便他确实拿回了 810。
+    expect(result.winners).toHaveLength(1);
+    expect(result.winners[0].id).toBe('villain');
+
+    expect(byId('hero').chips).toBe(905); // 退还部分（1000-95），没有贴上"赢家"标签
+    expect(byId('villain').chips).toBe(190); // 真正赢下的主池（95*2）
+    assertPotConservation(game, 1095);
+
+    const netOf = id => result.settle.find(s => s.id === id).net;
+    expect(netOf('hero')).toBe(-95); // 净亏损只有真正被跟注的 95，不是全部 1000
+    expect(netOf('villain')).toBe(95);
+  });
 });
 
 describe('加注金额上限校验', () => {

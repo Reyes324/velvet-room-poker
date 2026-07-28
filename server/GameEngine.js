@@ -338,11 +338,24 @@ class GameEngine {
       const eligible = this.players.filter(p => layer.eligibleIds.includes(p.id));
       const layerWinners = this._determineWinners(eligible, isFoldWin);
       const share = Math.floor(layer.amount / layerWinners.length);
+      // A layer with exactly one eligible player, reached at a REAL
+      // showdown (not an outright fold-win), is uncalled money — by
+      // construction, eligibility for a layer requires totalBet >= that
+      // layer's level, so "only one player eligible" here means no one
+      // else in the whole hand ever had enough chips to reach it, not
+      // that they folded away from it. User feedback (2026-07-28, real
+      // playtest): showing this as a second "won this hand" card next to
+      // the actual contested-pot winner reads as two different people/
+      // hands both winning, when one of them is really just getting their
+      // own excess bet refunded. It still gets added to chips/won below
+      // (the money itself was always correct — see settle[].net), just
+      // excluded from the public-facing winners list.
+      const isUncalledReturn = eligible.length === 1 && !isFoldWin;
       layerWinners.forEach((w, i) => {
         const amt = share + (i === 0 ? layer.amount - share * layerWinners.length : 0);
         w.chips += amt;
         won[w.id] = (won[w.id] || 0) + amt;
-        winnersById.set(w.id, w);
+        if (!isUncalledReturn) winnersById.set(w.id, w);
       });
     }
 
