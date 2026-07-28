@@ -133,6 +133,7 @@ class PveSession {
     const decision = this.strategy.pickAction({
       street,
       holeCards: ai.holeCards,
+      board,
       equity,
       toCall,
       potSize: this.game.pot,

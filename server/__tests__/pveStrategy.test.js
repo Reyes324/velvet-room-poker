@@ -8,6 +8,7 @@ const {
   PREFLOP_TABLE,
   POSTFLOP_BANDS,
   raiseSizeFraction,
+  boardTexture,
 } = require('../pveStrategy');
 
 describe('pveStrategy — computeEquity', () => {
@@ -195,6 +196,55 @@ describe('pveStrategy — 上下文调整（2026-07-28 用户反馈"很容易猜
     const vsAggroOpp = pickAction({ ...base, opponentAggressionRate: 0.9 });
     expect(vsPassiveOpp.action).toBe('fold'); // facingRaise alone already tips this into fold (see above)
     expect(vsAggroOpp.action).not.toBe('fold');
+  });
+});
+
+describe('pveStrategy — boardTexture', () => {
+  it('彩虹、不连张的公共牌判为干燥面', () => {
+    expect(boardTexture(['2s', '7d', 'Kc'])).toBe('dry');
+  });
+
+  it('两张同花色的公共牌（同花听牌活）判为湿润面', () => {
+    expect(boardTexture(['2s', '7s', 'Kd'])).toBe('wet');
+  });
+
+  it('点数相近（顺子听牌密集）的公共牌判为湿润面，即便花色彩虹', () => {
+    expect(boardTexture(['5s', '7d', '9c'])).toBe('wet');
+  });
+
+  it('少于 3 张公共牌（翻前）返回 dry 作为中性默认值', () => {
+    expect(boardTexture([])).toBe('dry');
+  });
+});
+
+describe('pveStrategy — 板面纹理对诈唬频率的影响（2026-07-28 新增）', () => {
+  it('同样的低胜率局面，干燥面比湿润面更容易诈唬加注（同一 random 值）', () => {
+    const dryBoard = ['2s', '7d', 'Kc'];
+    const wetBoard = ['2s', '7s', 'Kd']; // 两张黑桃，同花听牌活
+    const base = { street: 'flop', equity: 0.3, toCall: 100, potSize: 300, myChips: 1000, position: 'oop', random: () => 0.85 };
+    const onDry = pickAction({ ...base, board: dryBoard });
+    const onWet = pickAction({ ...base, board: wetBoard });
+    expect(onDry.action).toBe('raise');
+    expect(onWet.action).not.toBe('raise');
+  });
+
+  it('板面纹理只影响诈唬（低胜率）决策，不该拦下真正的高胜率价值下注', () => {
+    const wetBoard = ['2s', '7s', 'Kd'];
+    const a = pickAction({
+      street: 'flop', holeCards: ['Ah', 'Ad'], board: wetBoard, equity: 0.9,
+      toCall: 100, potSize: 300, myChips: 1000, position: 'ip', random: () => 0.99,
+      minRaiseTo: 300, currentBet: 100,
+    });
+    expect(a.action).toBe('raise');
+  });
+
+  it('板面纹理只在翻后生效——翻前传湿润 board 不应该改变翻前分档表的行为', () => {
+    const wetBoard = ['2s', '7s', 'Kd']; // 无意义的翻前输入，验证被忽略
+    const a = pickAction({
+      street: 'preflop', holeCards: ['7s', '2d'], board: wetBoard, equity: 0.1,
+      toCall: 20, potSize: 30, myChips: 1000, position: 'oop', random: () => 0.5,
+    });
+    expect(a.action).toBe('fold'); // 跟原来"翻前用 trash 分档"的测试结果一致
   });
 });
 

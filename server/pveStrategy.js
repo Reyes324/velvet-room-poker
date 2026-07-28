@@ -129,6 +129,28 @@ const CBET_RAISE_BOOST = 0.25;      // 续注倾向：上一条街是自己主�
 const FACING_RAISE_FOLD_BOOST = 0.10; // 尊重真实加注：面对真加注（不只是盲注差额）时，把这么多概率从 call 挪去 fold
 const BLUFF_VS_FOLDY_SCALE = 0.4;   // 对手爱弃牌就多诈唬：(对手面对加注的弃牌率 - 0.5) * 此系数，从 fold 挪去 raise（可为负，对方是跟注站时反而少诈唬）
 const CALL_VS_AGGRO_SCALE = 0.4;    // 对手爱加注就多跟注：面对加注时，(对手加注频率 - 0.35) * 此系数，从 fold 挪去 call
+const DRY_BOARD_BLUFF_BOOST = 0.12; // 干燥面更适合诈唬（对手很少中牌）：胜率偏低时，把这么多概率从 fold 挪去 raise
+const WET_BOARD_BLUFF_PENALTY = 0.12; // 湿润面（同花/顺子听牌多）诈唬不划算：胜率偏低时，把这么多概率从 raise 挪回 fold
+const BLUFF_EQUITY_CEILING = 0.40;  // 板面纹理只影响"这是不是诈唬"这类决策——胜率高于这个值就是真价值下注，不该被板面干湿改变要不要下注
+
+// 板面干湿判断：只看两个最主要的驱动因素——是否已经有同花听牌（2 张以上
+// 同花色公共牌）、牌面是否连张（存在两张公共牌点数相差 ≤4，順子听牌密
+// 度高）。刻意不看对子（成同花顺/葫芦的次要因素，MVP 简化不计）——二元
+// 判断（湿/干）足够驱动诈唬频率这一件事，不需要连续的"湿润度"分数。
+function boardTexture(board) {
+  if (board.length < 3) return 'dry'; // 翻前/还没发公共牌，中性，不触发额外惩罚
+  const suitCounts = {};
+  for (const c of board) suitCounts[suitOf(c)] = (suitCounts[suitOf(c)] || 0) + 1;
+  const maxSuitCount = Math.max(...Object.values(suitCounts));
+  const ranks = [...new Set(board.map(c => RANK_VALUE[rankOf(c)]))].sort((a, b) => a - b);
+  let connected = false;
+  for (let i = 0; i < ranks.length && !connected; i++) {
+    for (let j = i + 1; j < ranks.length; j++) {
+      if (ranks[j] - ranks[i] <= 4) { connected = true; break; }
+    }
+  }
+  return (maxSuitCount >= 2 || connected) ? 'wet' : 'dry';
+}
 
 function adjustDistribution(dist, deltas) {
   let { fold, call, raise } = dist;
@@ -139,7 +161,7 @@ function adjustDistribution(dist, deltas) {
   return sum === 0 ? dist : { fold: fold / sum, call: call / sum, raise: raise / sum };
 }
 
-function contextDeltas({ street, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate }) {
+function contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate }) {
   const deltas = { fold: 0, call: 0, raise: 0 };
 
   // 续注（c-bet）：上条街是自己在加注、这条街轮到自己且没人下注——不管翻牌
@@ -147,6 +169,23 @@ function contextDeltas({ street, toCall, wasAggressor, facingRaise, opponentFold
   if (street !== 'preflop' && wasAggressor && toCall === 0) {
     deltas.call -= CBET_RAISE_BOOST;
     deltas.raise += CBET_RAISE_BOOST;
+  }
+
+  // 板面干湿：只在"这手牌明显不是真价值"（胜率偏低，raise 只能是诈唬）
+  // 的场景下才有意义——胜率够高时该不该下注是牌力说了算，跟板面干湿无关。
+  // 要求 board.length>=3（真正翻牌以后才有意义的公共牌）而不是只判断
+  // `board` 真值——`pickAction` 里 board 默认是 `[]`，如果只判断真值，
+  // 没传 board 的旧调用方会被 boardTexture([]) 的"dry"默认值悄悄叠加一
+  // 层从未要求过的诈唬加成（实测踩过这个坑：两个已有的上下文调整测试因
+  // 此意外变成"raise"，才发现这里的默认值语义有问题）。
+  if (street !== 'preflop' && board.length >= 3 && equity != null && equity <= BLUFF_EQUITY_CEILING) {
+    if (boardTexture(board) === 'dry') {
+      deltas.fold -= DRY_BOARD_BLUFF_BOOST;
+      deltas.raise += DRY_BOARD_BLUFF_BOOST;
+    } else {
+      deltas.raise -= WET_BOARD_BLUFF_PENALTY;
+      deltas.fold += WET_BOARD_BLUFF_PENALTY;
+    }
   }
 
   if (facingRaise) {
@@ -190,7 +229,7 @@ function raiseSizeFraction(street, holeCards, equity, random) {
 // 翻后式的原始胜率容易导致不合理的松跟注（原因见 design.md）。
 function pickAction(params) {
   const {
-    street, holeCards, equity, toCall, potSize, myChips, position,
+    street, holeCards, board = [], equity, toCall, potSize, myChips, position,
     random = Math.random, currentBet = toCall, minRaiseTo,
     // 上下文调整，全部可选、默认不生效（向后兼容旧调用方）：
     wasAggressor = false, facingRaise = false,
@@ -200,7 +239,7 @@ function pickAction(params) {
   const baseDist = street === 'preflop'
     ? PREFLOP_TABLE[preflopTier(holeCards)]
     : bandFor(equity);
-  const deltas = contextDeltas({ street, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate });
+  const deltas = contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate });
   const dist = adjustDistribution(baseDist, deltas);
 
   // 白看（toCall===0）时不可能弃牌——把 fold 的概率吸收进 call（此时等价
@@ -236,5 +275,5 @@ function pickAction(params) {
 module.exports = {
   computeEquity, preflopTier, pickAction, PREFLOP_TABLE, POSTFLOP_BANDS,
   // exported for direct unit testing / tuning visibility, not for PveSession to call directly
-  adjustDistribution, contextDeltas, raiseSizeFraction,
+  adjustDistribution, contextDeltas, raiseSizeFraction, boardTexture,
 };
