@@ -10,15 +10,19 @@
   background: radial-gradient(ellipse at 50% 40%, var(--felt-600) 0%, var(--felt-900) 60%, var(--surface-base) 100%);
 }
 
+/* Same fix as HomePage.css's .home-card — see that file's comment: was a
+   hardcoded near-black unrelated to the felt ramp the page background is
+   built from; now uses the --surface-raised/--surface-base pairing that
+   already existed for exactly this purpose. */
 .lobby-card {
   position: relative; z-index: 1;
   width: 100%; max-width: 480px;
   margin: var(--sp-6);
-  background: linear-gradient(135deg, rgba(13,28,16,.96), rgba(8,18,10,.98));
+  background: linear-gradient(135deg, var(--surface-raised), var(--surface-base));
   border: 1px solid rgba(212,175,55,.18);
   border-radius: 20px;
   padding: var(--sp-10) var(--sp-8);
-  box-shadow: 0 24px 80px rgba(0,0,0,.7);
+  box-shadow: 0 24px 80px rgba(4,14,7,.55);
 }
 
 .lobby-header { margin-bottom: var(--sp-8); }

@@ -373,7 +373,14 @@
 .pot-burst { animation:potBurst .7s ease-out; }
 
 /* ── ACTION BAR ───────────────────────────────────────────── */
-.action-bar { position:absolute; bottom:0; left:0; right:0; padding:8px 14px 12px; background:linear-gradient(to top,#050D06 68%,transparent); z-index:40; animation:slideUp .42s cubic-bezier(.34,1.56,.64,1) both; }
+/* #050D06 was pure near-black, unrelated to the felt token ramp the table
+   itself is painted with — against the green felt it read as a hard black
+   slab dropped on top rather than the felt darkening toward the edge (user
+   feedback, 2026-07-29). --surface-base is the same tone HomePage/Lobby's
+   own page-background gradients already settle into at their darkest edge —
+   reusing it here keeps every "surface fades to shadow" moment in the app
+   consistent instead of each spot inventing its own near-black. */
+.action-bar { position:absolute; bottom:0; left:0; right:0; padding:8px 14px 12px; background:linear-gradient(to top,var(--surface-base) 68%,transparent); z-index:40; animation:slideUp .42s cubic-bezier(.34,1.56,.64,1) both; }
 .ab-main { display:flex; gap:9px; }
 .btn { border-radius:26px; font-family:var(--font-display); font-weight:600; display:flex; align-items:center; justify-content:center; letter-spacing:1px; cursor:pointer; transition:opacity .15s; }
 .btn:active { opacity:.75; }
@@ -420,7 +427,7 @@
    hand description in .modal-hand). */
 .settlement-sheet {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 50;
-  background: linear-gradient(to top, #050D06 78%, rgba(5,13,6,.94));
+  background: linear-gradient(to top, var(--surface-base) 78%, rgba(23,51,30,.94));
   border-top: 1px solid rgba(212,175,55,.3);
   border-radius: 20px 20px 0 0;
   padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
@@ -435,7 +442,14 @@
 .modal-btn--waiting { opacity: .55; cursor: default; }
 .modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,.68); backdrop-filter:blur(5px); display:flex; align-items:center; justify-content:center; z-index:60; animation:overlayFade .3s ease; }
 @keyframes overlayFade { from{opacity:0;} to{opacity:1;} }
-.modal { width:318px; background:linear-gradient(145deg,#0C1E0E,#060C07); border:1px solid rgba(212,175,55,.32); border-radius:22px; padding:24px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:13px; box-shadow:0 24px 80px rgba(0,0,0,.9); animation:modalPop .35s cubic-bezier(.34,1.56,.64,1); }
+/* Was #0C1E0E/#060C07 — same off-palette near-black as HomePage's old
+   .home-card (see that file's comment), just never caught here because this
+   is the popup dialog (menu/结算/账本/退出确认…) rather than a page
+   background — sits behind a dark scrim so the mismatch against the felt
+   underneath is less obvious, but still reads as "black box" rather than
+   "part of this room" (user feedback, 2026-07-29). Same fix: the existing
+   --surface-raised/--surface-base pairing instead of an invented tone. */
+.modal { width:318px; background:linear-gradient(145deg,var(--surface-raised),var(--surface-base)); border:1px solid rgba(212,175,55,.32); border-radius:22px; padding:24px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:13px; box-shadow:0 24px 80px rgba(4,14,7,.65); animation:modalPop .35s cubic-bezier(.34,1.56,.64,1); }
 @keyframes modalPop { from{opacity:0;transform:scale(.85);} to{opacity:1;transform:scale(1);} }
 .modal-title { font-family:var(--font-display); font-size:11px; color:#D4AF37; letter-spacing:4px; text-transform:uppercase; }
 .modal-winner-av { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#0A1A0E; border:2px solid #D4AF37; box-shadow:0 0 0 5px rgba(212,175,55,.2), 0 0 40px rgba(212,175,55,.7); }
@@ -519,11 +533,12 @@
    distinct from .modal-overlay's 60 (a small dialog still showing the
    table dimmed behind it). */
 .hh-panel-overlay { position:absolute; inset:0; z-index:70; background:rgba(0,0,0,.5); animation:overlayFade .3s ease; }
+/* Same off-palette #0C1E0E/#060C07 as .modal (see its comment) — same fix. */
 .hh-panel {
   position:absolute; top:0; right:0; bottom:0; width:min(430px, 100vw);
-  background:linear-gradient(165deg,#0C1E0E,#060C07);
+  background:linear-gradient(165deg,var(--surface-raised),var(--surface-base));
   border-left:1px solid rgba(212,175,55,.22);
-  box-shadow:-16px 0 48px rgba(0,0,0,.55);
+  box-shadow:-16px 0 48px rgba(4,14,7,.5);
   display:flex; flex-direction:column;
   animation:hhPanelIn .38s cubic-bezier(.16,1,.3,1) both;
 }
@@ -744,7 +759,7 @@
    gameplay layout is untouched — via GameTable's settlementOpen prop. */
 .table-canvas .hero-section.hero-section--lifted { bottom: 135px; }
 .game-stage .action-bar { position:relative; flex:0 0 auto; padding-bottom:calc(12px + env(safe-area-inset-bottom,0px)); z-index:40; }
-.game-stage .waiting-bar { position:relative; flex:0 0 auto; padding:10px 14px calc(16px + env(safe-area-inset-bottom,0px)); background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
+.game-stage .waiting-bar { position:relative; flex:0 0 auto; padding:10px 14px calc(16px + env(safe-area-inset-bottom,0px)); background:linear-gradient(to top,var(--surface-base) 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; z-index:30; }
 /* Persistent rebuy escape hatch for a busted spectator who picked "旁观留下" —
    without this the modal choice would be a one-way door with no way back in
    until the room happens to end. */

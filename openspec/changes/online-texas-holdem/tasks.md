@@ -838,3 +838,12 @@
 - [x] 61.2 新增 `client/src/avatar.js`：`avatarUri(playerId)` 用 `@dicebear/core`+`@dicebear/collection` 按 `playerId` 做种子本地同步生成 SVG data URI，`Map` 按 id 缓存；具体风格集中在这一个文件的一行（`const STYLE = micah`），换风格不用碰任何组件——用户明确要求"方便更改"
 - [x] 61.3 删除 `GameTable.jsx`/`SettlementModal.jsx`/`Lobby.jsx` 三处各自维护的 `AV`/`colorForId` 调色板（其中两处的颜色 class 早已没有对应 CSS 规则，是死代码），统一只保留"我自己"的 `av-gold` 描边；`PlayerSeat`/`.pr-av`/`.modal-winner-av` 相关 CSS 改为承载 `<img>` + `object-fit:cover`
 - [x] 61.4 真机 Playwright 验证三处（牌桌座位、大厅列表、结算弹窗）头像正确渲染；额外用两个独立浏览器 context 模拟两个真实客户端，确认同一 playerId 在两边拿到完全相同的头像 `<img src>`，验证"自己看到的和别人看到的一致"这条硬要求。客户端构建通过，服务端未改动、196/196 单测原样通过，e2e 全量回归待跑完确认
+
+## 62. 视觉细节走查：弹窗黑色、输入框占位字号、桌布接缝（用户反馈，2026-07-29）
+
+设计决策见 design.md「视觉细节走查：弹窗黑色跟背景不搭、输入框占位字号不统一、桌布底部接缝」。
+
+- [x] 62.1 `HomePage.css`：`.home-input`/`.home-input--code` 占位字号统一为 17px，房间码字段改用等宽字体+字间距区分，不再靠字号跳变
+- [x] 62.2 根因排查：`.modal`/`.hh-panel`（弹窗+牌局记录侧栏）、`.home-card`、`RoomPage.css` 的 `.lobby-card`（死代码，`Lobby.jsx` 实际用 velvet.css 的 `.lobby`）共 5 处弹窗/卡片背景写死 `#0C1E0E`/`#060C07`/`rgba(13,28,16..)` 等自造近黑色，跟页面背景实际的 `--felt-*` 色阶无关；`tokens.css` 里定义好但从未被使用的 `--surface-raised`/`--surface-base` 恰好就是为这个场景准备的
+- [x] 62.3 `.action-bar`/`.game-stage .waiting-bar`/`.settlement-sheet` 三处桌面底部遮罩同样把写死的 `#050D06` 换成 `--surface-base`，阴影从纯黑 `rgba(0,0,0,...)` 改成带绿色调的 `rgba(4,14,7,...)`；桌布本体（`.game-stage--table`）确认此前已铺满全屏，本次不改
+- [x] 62.4 真机 Playwright 前后对比截图（首页卡片/加入表单/局内菜单弹窗/账本弹窗/底部操作栏）发给用户确认；e2e 全量回归 34/34 通过，服务端未涉及（196/196 单测通过，1 个已知断线时序 flake 与改动无关）；用户确认后同意提交

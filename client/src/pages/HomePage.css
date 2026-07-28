@@ -15,17 +15,24 @@
   z-index: 0;
 }
 
+/* Was a hardcoded near-black (rgba(13,28,16)/rgba(8,18,10)) unrelated to the
+   felt token ramp the page background actually uses — read as an unrelated
+   black slab dropped onto the green gradient rather than a panel of the same
+   material (user feedback, 2026-07-29). --surface-raised/--surface-base
+   already existed in tokens.css for exactly this ("a panel one step up from
+   the page background") but had never actually been wired to anything —
+   using them here instead of inventing another one-off color. */
 .home-card {
   position: relative;
   z-index: 1;
   width: 100%;
   max-width: 400px;
   margin: var(--sp-6);
-  background: linear-gradient(135deg, rgba(13,28,16,.96), rgba(8,18,10,.98));
+  background: linear-gradient(135deg, var(--surface-raised), var(--surface-base));
   border: 1px solid rgba(212,175,55,.18);
   border-radius: 20px;
   padding: var(--sp-12) var(--sp-10);
-  box-shadow: 0 24px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(212,175,55,.08);
+  box-shadow: 0 24px 80px rgba(4,14,7,.55), 0 0 0 1px rgba(212,175,55,.08);
   text-align: center;
 }
 
@@ -69,6 +76,12 @@
   gap: var(--sp-3);
 }
 
+/* One shared font-size for every field in this form (was 16px here vs 24px
+   on --code below — same input row, two different-looking placeholder
+   weights, read as unintentional/inconsistent rather than as a deliberate
+   size step; user feedback, 2026-07-29). The room-code field still reads as
+   visually distinct — that's carried entirely by font-family (mono) +
+   letter-spacing now, not by also being a different size. */
 .home-input {
   width: 100%;
   height: var(--control-h);
@@ -78,7 +91,7 @@
   border-radius: var(--r-md);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 16px;
+  font-size: 17px;
   padding: 0 16px;
   outline: none;
   transition: border-color .15s, box-shadow .15s;
@@ -92,7 +105,6 @@
 
 .home-input--code {
   font-family: var(--font-mono);
-  font-size: 24px;
   letter-spacing: .3em;
 }
 
