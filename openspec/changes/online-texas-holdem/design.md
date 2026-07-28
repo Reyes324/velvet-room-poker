@@ -1034,6 +1034,14 @@ if (active.length < 2) { … return { ended: true, reason: '筹码不足，等�
 
 **涉及文件**：`client/src/styles/velvet.css`（`.modal-btn-cancel`/`.modal-btn-danger`/`.hh-panel-title`/`.hh-panel-count`/`.pos-badge`/`.pr-badge`）、`client/src/styles/tokens.css`（`--felt-900~600`/`--surface-*`/`--text-muted`/新增 `--control-h`）、`client/src/pages/HomePage.css`（`.home-input`/`.btn-primary`/`.btn-secondary`/`.btn-ghost`）、`client/src/components/Lobby.jsx`（重新开始确认弹窗）、`client/src/pages/HomePage.jsx`/`App.jsx`/`client/src/pages/RoomPage.jsx`（自动复制邀请链接的 `justCreated` 传递）。
 
+### 背景调亮第二轮：第一轮实测截图后用户反馈首页/大厅仍然太暗（2026-07-28）
+
+**背景**：上面第 5 条"背景太暗"改完、实际截图看了之后，用户反馈首页（登录页）和游戏大厅页仍然太暗。第一轮的调法是"深色阶只往上挪一档"（`--felt-900` 等于旧的 `--felt-700`），偏保守。
+
+**决策**：这次直接把新旧两版都截图对比，实测亮度差距不够——第一轮 `--felt-900` 实际亮度（WCAG 相对亮度）约 0.0125，这次调到约 0.028，接近翻倍。连带 `--text-muted` 再次调亮（原理跟第一轮一样：背景变亮会拉低固定亮度文字的对比度，不是拉高——数学上背景亮度趋近文字亮度时两者差值变小，所以背景调亮之后必须同步调亮文字才能维持住对比度），从 `#7A9078`（对新背景只剩 ~3.9:1，跌破 4.5 门槛）调到 `#86A17E`（实测 4.76:1）。顺手清理了第一轮遗留的小问题：`--felt-700`/`--felt-500` 和 `--felt-600`/`--felt-400` 当时因为"整体上移一档"精确重叠成了完全相同的十六进制值——这次把桌面本身的绿呢渐变（`--felt-500~200`，一直不在"太暗"投诉范围内）恢复成独立原值，不再意外借用页面背景色阶挪动后的副作用。
+
+**验证**：Playwright 实际截图（首页/大厅两个画面）+ 页面内跑 WCAG 对比度公式实算（`--text-muted` 对 `--felt-900` 4.76:1，对 `--surface-base` 4.85:1，均过 4.5 门槛），不是纯改数字就收工。服务端全量单测 184/184（跟这轮改动无关，纯 CSS token 改动不影响服务端逻辑）。
+
 ---
 
 ## 新增：单人人机对战（PVE）模式（用户反馈，2026-07-28）

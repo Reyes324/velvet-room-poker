@@ -4,19 +4,22 @@
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=DM+Serif+Display&family=Oswald:wght@600;700&family=Space+Mono:wght@400;700&family=Inter:wght@500;600;700&display=swap');
 
 :root {
-  /* Felt — user feedback (2026-07-28): the deepest stops (900/800/700/600 —
-     used for page-background gradients on HomePage/Lobby, not the in-game
-     table felt) read as near-black and made low-emphasis text hard to see.
-     Shifted just the dark end up by one step each (900 now equals the old
-     700, etc.) rather than inventing new hues, so it still reads as the
-     same palette, just not crushed to black. 500/400/300/200 (the bright
-     center of the actual table-felt gradient — RoomPage.css/velvet.css
-     .table-oval) are untouched; that gradient was never the "too dark"
-     complaint. */
-  --felt-900: #0A2211;
-  --felt-800: #0D2E16;
-  --felt-700: #0F3A1B;
-  --felt-600: #144D24;
+  /* Felt — user feedback (2026-07-28), round 2: the first lightening pass
+     (one step up the old scale) still read as near-black on the home/lobby
+     pages once actually screenshotted — round 1 was too conservative.
+     Bumped the dark end (900-600, used for page-background gradients on
+     HomePage/Lobby, not the in-game table felt) noticeably further this
+     time — real luminance roughly 2x round 1's values, confirmed via
+     screenshot, not just picking bigger-looking hex. 500/400/300/200 (the
+     bright center of the actual table-felt gradient — RoomPage.css/
+     velvet.css .table-oval) restored to their original values — round 1
+     had accidentally collapsed 700→500 and 600→400 into duplicate hex
+     values while shifting the dark end; that was never part of either
+     round's ask and is now cleaned up. */
+  --felt-900: #14351D;
+  --felt-800: #1A4224;
+  --felt-700: #1F4E2A;
+  --felt-600: #275E32;
   --felt-500: #0F3A1B;
   --felt-400: #144D24;
   --felt-300: #1A6630;
@@ -47,19 +50,20 @@
   --chip-purple: #6B3FA0;
   --chip-gold: #D4AF37;
 
-  /* Surface — shifted up alongside Felt 900-600 above, same reasoning. */
-  --surface-base: #0D1C10;
-  --surface-raised: #11241A;
-  --surface-card: #152C1F;
+  /* Surface — shifted up alongside Felt 900-600 above, same round-2 reasoning. */
+  --surface-base: #17331E;
+  --surface-raised: #1E3F27;
+  --surface-card: #264C30;
 
   /* Text */
   --text-primary: #F2EAD0;
   --text-secondary: #A8946A;
-  /* Bumped from #5A6E5C: real-contrast check (WCAG luminance formula,
-     not eyeballed) against the new lighter --felt-900 still only cleared
-     ~3:1 at the old value — below the 4.5:1 minimum for legible text.
-     #7A9078 clears ~4.9:1 against the new felt-900/surface-base. */
-  --text-muted: #7A9078;
+  /* Round 2: background got lighter again, which — same math as round 1's
+     comment — pulls a FIXED text luminance's contrast ratio DOWN, not up
+     (the two are closer together now). Re-checked and bumped again:
+     #7A9078 (round 1's value) only cleared ~3.9:1 against the new felt-900,
+     back below the 4.5:1 floor. #86A17E clears ~4.76:1. */
+  --text-muted: #86A17E;
 
   /* State */
   --state-danger: #C0392B;
