@@ -13,6 +13,11 @@ import { useTableScale } from '../hooks/useTableScale';
 const TABLE_REF_W = 375;
 const TABLE_REF_H = 610;
 
+// 最后一家跟注、这一手进入摊牌时，先让这个动作气泡实际停留这么久，再翻开
+// 对手的底牌——不然摊牌揭示会跟这次动作的状态更新同一瞬间到达，气泡还没
+// 看清就已经被翻牌盖过去了（用户反馈，2026-07-28）。
+const SHOWDOWN_REVEAL_HOLD_MS = 1200;
+
 const PHASE_LABEL = {
   waiting: '等待开始', preflop: '翻牌前', flop: '翻牌圈',
   turn: '转牌圈', river: '河牌圈', showdown: '摊牌',
@@ -199,6 +204,24 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     : { hero: null, opponents: spectatorSeatPositions(opponents.length) };
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
+
+  // 用户反馈（2026-07-28）：最后一家跟注直接就亮牌了，看不清最后那个动作
+  // 气泡（跟注了多少）——根因是"这次动作完成"和"进入摊牌"是同一条
+  // game:state 广播里一起到的，没有停顿，摊牌揭示（对手手牌翻开）就跟着
+  // 立刻触发。这里只延迟"揭示对手底牌"这一件事本身（PlayerSeat 的
+  // gamePhase 用这个而不是原始 gameState.phase），不影响上面 isShowdown
+  // 驱动的其他即时反馈（比如底部提示文字"正在比牌…"可以照常立刻更新）。
+  // 翻到其它任何阶段（包括下一手重新回到 preflop）都不延迟，只有"进入
+  // showdown 这一下"要等一等。
+  const [revealPhase, setRevealPhase] = useState(gameState.phase);
+  useEffect(() => {
+    if (gameState.phase === 'showdown' && revealPhase !== 'showdown') {
+      const t = setTimeout(() => setRevealPhase('showdown'), SHOWDOWN_REVEAL_HOLD_MS);
+      return () => clearTimeout(t);
+    }
+    if (gameState.phase !== 'showdown') setRevealPhase(gameState.phase);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState.phase]);
   // Winning hand highlight: the 5 cards making up the best hand are unique
   // across the whole deal (one card can't be in two different hands at
   // once), so a flat raw-notation lookup works regardless of whose card it
@@ -488,7 +511,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             isMe={true}
             isAction={gameState.actionPlayerId === myId}
             isWinner={winnerNames.has(me.name)}
-            gamePhase={gameState.phase}
+            gamePhase={revealPhase}
             color={colorForId(me.id)}
             bubble={actionBubbles[me.id]}
             poked={pokedSeat?.targetId === me.id}
@@ -522,7 +545,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               isMe={false}
               isAction={gameState.actionPlayerId === p.id}
               isWinner={winnerNames.has(p.name)}
-              gamePhase={gameState.phase}
+              gamePhase={revealPhase}
               color={colorForId(p.id)}
               bubble={actionBubbles[p.id]}
               cardsSide={cardsSide}

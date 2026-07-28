@@ -1176,6 +1176,18 @@ if (active.length < 2) { … return { ended: true, reason: '筹码不足，等�
 
 ---
 
+### 最后一家跟注直接亮牌，看不清最后那个动作气泡（用户反馈，2026-07-28）
+
+**背景**：用户反馈"最后一个人跟注的时候直接就亮牌了"，看不到最后一家的跟注动作气泡。
+
+**根因**：`server/index.js` 的 `handleActionResult` 里，"这次动作的结果广播"（`broadcastRoom`，里面带最后一家跟注后的新 `game:state`）和"进入摊牌的通知"（`game:showdown`）是背靠背同步发出去的，中间没有任何停顿。客户端这边，`PlayerSeat.jsx` 揭示对手底牌（`.reveal`）直接由 `gamePhase==='showdown'` 驱动，而这个 `gamePhase` 之前传的是原始 `gameState.phase`——也就是说"最后一家跟注的动作气泡该显示了"和"对手底牌该翻开了"是同一次状态更新里一起发生的，没有先后顺序，摊牌揭示几乎瞬间就盖过了刚弹出来的气泡。
+
+**决策**：不改服务端的广播时序（那部分本来就该尽快同步真实状态，没必要人为拖慢），只在客户端把"对手底牌揭示"这一件事单独拖住——`GameTable.jsx` 新增 `revealPhase`（状态化，不是从 `gameState.phase`直接派生的一次性计算），只有真正"进入 showdown"这一个转折点会延迟 `SHOWDOWN_REVEAL_HOLD_MS`（1200ms）才把 `revealPhase` 推进到 `'showdown'`，其它任何阶段切换（包括下一手回到 preflop）都立刻同步，不受影响。`PlayerSeat` 拿到的 `gamePhase` 改成这个延迟后的 `revealPhase`，而不是原始 `gameState.phase`——底部"正在比牌…"这类不需要延迟的即时反馈，继续用原始 `isShowdown`，没有一并拖慢。这是这个会话里第三次用同一个模式（`useState` + 真实定时器，不是"ref + 被动 effect 单帧脉冲"）解决"状态更新到达和视觉反馈之间没有停顿"这一类问题（前两次是发牌动画的 `dealing`/`heroRevealed`，和 PVE 的翻牌动画 `newCardFrom`）。
+
+**验证**：真机 Playwright 通过 PVE 模式驱动到真实摊牌，逐 100ms 轮询 `.reveal` 元素出现的时间点——确认不再是摊牌那一刻立即出现，有实测的延迟窗口，气泡有真实的时间被看到。全量单测 195/195（纯客户端改动，服务端未触碰）；e2e 全量回归待跑完确认。
+
+---
+
 ## Risks / Trade-offs
 
 - **内存存储** → 服务重启丢失所有房间。缓解：提示用户游戏中途不要刷新页面；MVP 阶段可接受。

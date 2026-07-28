@@ -802,3 +802,9 @@
 - [x] 57.2 `ActionBar.jsx`：`maxRaise` 用同一套公式（自己身家 vs 场上还没弃牌对手里最长的那个）；"跟注"按钮金额从直接显示 `toCall` 改成 `Math.min(toCall, 自己身家)`，不再显示一个自己实际跟不到的数字
 - [x] 57.3 联动踩坑：改完引擎后 PVE 20 手烟雾测试报"最多下注"错误——`pveStrategy.pickAction()` 不知道新封顶，会算出被拒绝的数字。修法：`PveSession.aiAction()` 用 `GameEngine.maxTotalFor()` 算出 AI 真实上限，当 `opponentCeiling` 参数传给 `pickAction()`
 - [x] 57.4 新增 6 项 `GameEngine.scenarios.test.js` 用例（heads-up/三人桌两种身家关系、`maxTotalFor()` 直接验证、`allIn()` 两种方向的行为）；新增 1 个 dev fixture（`?states=16`）配合真机 Playwright 截图确认按钮文案和封顶数字。全量单测 195/195
+
+## 58. 最后一家跟注直接亮牌，延迟摊牌揭示给动作气泡留出时间（用户反馈，2026-07-28）
+
+- [x] 58.1 根因：最后一家跟注的 `game:state`（带动作气泡该显示的信息）和 `game:showdown`（触发对手底牌揭示）背靠背同步广播，中间没有停顿；`PlayerSeat.jsx` 揭示底牌直接由原始 `gameState.phase` 驱动，没有缓冲
+- [x] 58.2 `GameTable.jsx` 新增 `revealPhase`（真实 `useState` + `SHOWDOWN_REVEAL_HOLD_MS=1200ms` 定时器，只延迟"进入 showdown"这一个转折点，其它阶段切换照常立即同步）；`PlayerSeat` 的 `gamePhase` 改用这个延迟后的值，底部"正在比牌…"等不需要延迟的即时反馈继续用原始 `isShowdown`。这是本次会话第三次用同一模式（真实定时器状态，不是"ref+被动 effect 单帧脉冲"）解决同一类"状态到达和视觉反馈没有停顿"问题
+- [x] 58.3 真机 Playwright（PVE 模式驱动到真实摊牌，逐 100ms 轮询）确认对手底牌揭示不再是摊牌瞬间出现，有实测延迟窗口。全量单测 195/195（纯客户端改动），e2e 全量回归待跑完确认
