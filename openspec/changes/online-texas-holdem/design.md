@@ -1222,6 +1222,22 @@ if (active.length < 2) { … return { ended: true, reason: '筹码不足，等�
 
 ---
 
+### 玩家头像：micah 人像风格，本地确定性生成（用户反馈+选型，2026-07-29）
+
+**背景**：此前所有玩家头像都是"取名字首字母 + 8 色循环色板"（`GameTable.jsx`/`SettlementModal.jsx`/`Lobby.jsx` 里各自维护一份 `AV`/`colorForId`）。用户想要真正的人像类头像，要求"随机分配"，但特别强调"我自己看的头像和别人眼中的头像要保持一致"——即头像必须由服务端已有的、所有客户端共享的同一个值（`playerId`）确定性生成，不能是每个客户端各自随机、或者需要服务端另外存一份分配记录。
+
+**选型**：现场用真实数据（几个项目里出现过的玩家名/id）生成截图对比了三批方案——抽象几何类（DiceBear shapes/rings、Multiavatar、Boring Avatars 各风格）和人像插画类（DiceBear avataaars/micah/lorelei/notionists 等），发给用户挑选。用户明确排除抽象类，要"头像、人脸类"；在人像类里选定 **DiceBear 的 `micah`** 风格（简约圆脸插画，色彩克制）。
+
+**决策**：
+1. 新增 `client/src/avatar.js`：`export function avatarUri(playerId)`，内部用 `@dicebear/core` + `@dicebear/collection` 的 `micah` 风格、以 `String(playerId)` 为种子，纯前端本地同步生成 SVG data URI，不需要任何网络请求、不需要服务端存储或分配——同一个 id 在任何客户端上算出来的图永远一样，直接满足"我看到的和别人看到的一致"这条要求。用 `Map` 做了按 id 的结果缓存（组件高频重渲染，同一 id 没必要每次重新生成）。
+2. 具体用哪个 DiceBear 风格被隔离成这一个文件里的一行（`const STYLE = micah`）——用户明确说"后面可能换一个头像方案"，所以特意不把风格选择散落在各个组件里，换风格只需要改这一处。
+3. 原来三处各自维护的 `AV`/`colorForId`（`GameTable.jsx` 传给 `PlayerSeat`、`SettlementModal.jsx`、`Lobby.jsx`）全部删除——这是同一个"玩家头像"概念的三个分散实现，其中两处（`.pr-av`/`.modal-winner-av`）的颜色 class 实际上早就没有对应的 CSS 规则、纯粹是死代码；换成真实头像图后，颜色区分本来就该由头像本身负责，不再需要一套独立的调色板。只保留"我自己"的金色描边（`.av-gold`）作为身份提示，三处统一。
+4. 相关 CSS（`.avatar-photo`/`.pr-av`/`.modal-winner-av`）改为承载 `<img>` 并用 `object-fit:cover` 填满圆形/圆角容器，删除了不再触达的 7 组颜色渐变背景规则。
+
+**验证**：客户端构建通过（462 模块，含新依赖 `@dicebear/core`/`@dicebear/collection`）；真机 Playwright 三处分别截图确认头像正确渲染（牌桌座位、大厅玩家列表、结算弹窗赢家头像）；额外验证了两个不同浏览器 context（模拟两个真实客户端）里，同一个玩家 id 拿到的头像 `<img src>` 完全一致，直接证明了"确定性、跨客户端一致"这条硬要求。服务端未改动，196/196 单测原样通过；e2e 全量回归待跑完确认。
+
+---
+
 ## Risks / Trade-offs
 
 - **内存存储** → 服务重启丢失所有房间。缓解：提示用户游戏中途不要刷新页面；MVP 阶段可接受。

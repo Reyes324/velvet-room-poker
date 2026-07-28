@@ -1,9 +1,4 @@
-const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
-function colorForId(id) {
-  let h = 0;
-  for (const ch of String(id)) h = (h + ch.charCodeAt(0)) % 8;
-  return h;
-}
+import { avatarUri } from '../avatar';
 
 export default function SettlementModal({
   winners = [], myId, readyCount, totalCount, iAmReady, onReady,
@@ -18,10 +13,9 @@ export default function SettlementModal({
       <div className="settlement-winners">
         {winners.map((w) => {
           const isMe = w.id === myId;
-          const avClass = isMe ? 'av-gold' : AV[colorForId(w.id)];
           return (
             <div key={w.id} className="settlement-winner-row">
-              <div className={`modal-winner-av ${avClass}${isFoldWin ? ' modal-winner-av--foldwin' : ''}`}>{w.name[0].toUpperCase()}</div>
+              <div className={`modal-winner-av${isFoldWin ? ' modal-winner-av--foldwin' : ''}`}><img src={avatarUri(w.id)} alt="" /></div>
               <div className="modal-winner-info">
                 <div className="modal-winner-name" style={isMe ? { color: '#D4AF37' } : undefined}>
                   {w.name}

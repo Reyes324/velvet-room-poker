@@ -29,12 +29,6 @@ const PHASE_LABEL = {
   turn: '转牌圈', river: '河牌圈', showdown: '摊牌',
 };
 
-function colorForId(id) {
-  let h = 0;
-  for (const ch of String(id)) h = (h + ch.charCodeAt(0)) % 8;
-  return h;
-}
-
 function getOrderedPlayers(players, myId) {
   const idx = players.findIndex(p => p.id === myId);
   if (idx === -1) return players;
@@ -523,7 +517,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             isAction={gameState.actionPlayerId === myId}
             isWinner={winnerNames.has(me.name)}
             gamePhase={revealPhase}
-            color={colorForId(me.id)}
             bubble={actionBubbles[me.id]}
             poked={pokedSeat?.targetId === me.id}
           />
@@ -557,7 +550,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               isAction={gameState.actionPlayerId === p.id}
               isWinner={winnerNames.has(p.name)}
               gamePhase={revealPhase}
-              color={colorForId(p.id)}
               bubble={actionBubbles[p.id]}
               cardsSide={cardsSide}
               bubbleSide={bubbleSide}

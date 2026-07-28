@@ -829,3 +829,12 @@
 - [x] 60.3 `server/index.js`：`pveHandleResult()` 镜像多人房间的 `handleActionResult()`，把每手摊牌结果写入 `session.handHistory`；PVE 只有一个人类观众，弃牌收尾时的自家手牌记录时直接写进 `reveals`，不需要多人房间那套按请求者现场脱敏的逻辑；新增 `pve:get-hand-history`/`pve:hand-history` 事件对，`HandHistoryModal` 原样复用
 - [x] 60.4 `PvePage.jsx` 补上 `onOpenLedger`/`onOpenHandHistory` 及对应弹窗渲染，跟 `RoomPage.jsx` 同一套模式
 - [x] 60.5 `PveSession.test.js` 新增/更新 3 项用例（归零记账、AI 未破产 debt 不变、`getStateForPlayer` 正确带账本字段），服务端全量单测 196/196 通过；真机 Playwright 验证账本实时盈亏、牌局记录完整展示（公共牌/双方手牌/牌型/每人盈亏）
+
+## 61. 玩家头像改为人像插画（DiceBear micah），本地确定性生成（用户反馈+选型，2026-07-29）
+
+设计决策见 design.md「玩家头像：micah 人像风格，本地确定性生成」。
+
+- [x] 61.1 现场用真实数据生成两批风格截图给用户选（抽象几何类 vs 人像插画类），用户排除抽象类、选定 DiceBear `micah`
+- [x] 61.2 新增 `client/src/avatar.js`：`avatarUri(playerId)` 用 `@dicebear/core`+`@dicebear/collection` 按 `playerId` 做种子本地同步生成 SVG data URI，`Map` 按 id 缓存；具体风格集中在这一个文件的一行（`const STYLE = micah`），换风格不用碰任何组件——用户明确要求"方便更改"
+- [x] 61.3 删除 `GameTable.jsx`/`SettlementModal.jsx`/`Lobby.jsx` 三处各自维护的 `AV`/`colorForId` 调色板（其中两处的颜色 class 早已没有对应 CSS 规则，是死代码），统一只保留"我自己"的 `av-gold` 描边；`PlayerSeat`/`.pr-av`/`.modal-winner-av` 相关 CSS 改为承载 `<img>` + `object-fit:cover`
+- [x] 61.4 真机 Playwright 验证三处（牌桌座位、大厅列表、结算弹窗）头像正确渲染；额外用两个独立浏览器 context 模拟两个真实客户端，确认同一 playerId 在两边拿到完全相同的头像 `<img src>`，验证"自己看到的和别人看到的一致"这条硬要求。客户端构建通过，服务端未改动、196/196 单测原样通过，e2e 全量回归待跑完确认

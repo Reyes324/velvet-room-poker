@@ -8,8 +8,7 @@
 // showdown.
 import { useThinkSeconds } from '../hooks/useThinkSeconds';
 import Card from './Card';
-
-const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
+import { avatarUri } from '../avatar';
 
 // The showdown reveal always renders to the side of the seat (toward
 // whichever direction GameTable's cardsSide picks — the center strip, per
@@ -41,12 +40,12 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
   const badge = player.isDealer ? '庄家' : player.isSB ? '小盲' : player.isBB ? '大盲' : null;
-  const avClass = isMe ? 'av-gold' : AV[color % AV.length];
+  const avClass = isMe ? 'av-gold' : '';
   const thinkSeconds = useThinkSeconds(isAction);
 
   const seatClass = [
@@ -66,7 +65,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
       </div>
       <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>
         <div className="avatar-photo">
-          {player.name[0].toUpperCase()}
+          <img className="avatar-img" src={avatarUri(player.id)} alt="" />
           {isAction && (
             <div className="think-overlay">{thinkSeconds}s</div>
           )}
