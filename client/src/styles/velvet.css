@@ -649,7 +649,15 @@
    chrome (address bar, in-app-browser toolbars, etc.) ate a lot of vertical
    space, leaving large empty margins on the sides even though only the
    height was actually constrained. */
-.game-stage { position:relative; width:100%; height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:#08120A; }
+/* 用户反馈（2026-07-28）：大厅页背景跟首页不是同一套绿色、牌桌页顶栏/
+   操作栏底下露出的这块背景是纯黑，跟中间的绿呢桌布断层，看起来像加了一
+   圈黑边框、没有"拉通"。根因是这个背景一直是写死的纯色 #08120A，从来没
+   跟着首页那两轮调亮走——.game-stage 是大厅和牌桌共用的最外层容器，牌桌
+   模式下 .table-canvas 只填满中间 .table-zone 这一段，顶栏/操作栏区域露
+   出的正是这个背景色，纯黑跟绿呢桌布反差大就是"边框感"的来源。改成跟首
+   页同一套调亮后的 token 渐变，两个问题一起解决：大厅背景色系统一；牌桌
+   页顶栏/操作栏底下的留白色调跟桌布本身更接近，不再像单独镶了一圈黑框。 */
+.game-stage { position:relative; width:100%; height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:radial-gradient(ellipse at 50% 45%, var(--felt-700) 0%, var(--felt-900) 55%, var(--surface-base) 100%); }
 .game-stage .top-bar { position:relative; flex:0 0 auto; padding:14px 14px 10px; padding-top:max(env(safe-area-inset-top,0px),14px); display:flex; justify-content:space-between; align-items:center; z-index:10; }
 
 .table-zone { position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
