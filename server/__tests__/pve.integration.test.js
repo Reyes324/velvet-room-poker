@@ -41,7 +41,7 @@ describe('集成测试 — PVE 人机对战', () => {
   it('pve:start 开局，收到只有两位玩家（自己+电脑）的 game:state', async () => {
     const c = await connect();
     const state = waitFor(c, 'game:state');
-    c.emit('pve:start', { playerName: 'Alice' });
+    c.emit('pve:start', { playerName: 'Alice', pveId: 'p-alice-1' });
     const s = await state;
     expect(s.players).toHaveLength(2);
     expect(s.players.some(p => p.name === 'Alice')).toBe(true);
@@ -49,10 +49,17 @@ describe('集成测试 — PVE 人机对战', () => {
     expect(s.phase).toBe('preflop');
   });
 
+  it('没有 pveId 时 pve:start 报错，不静默用 socket.id 兜底', async () => {
+    const c = await connect();
+    const err = waitFor(c, 'game:error');
+    c.emit('pve:start', { playerName: 'Alice' });
+    expect(await err).toBe('缺少玩家标识');
+  });
+
   it('完整打一手（真人一路跟注/过牌，AI 自动行动），最终收到 game:showdown', async () => {
     const c = await connect();
     const state1 = waitFor(c, 'game:state');
-    c.emit('pve:start', { playerName: 'Alice' });
+    c.emit('pve:start', { playerName: 'Alice', pveId: 'p-alice-2' });
     let s = await state1;
 
     const showdownPromise = waitFor(c, 'game:showdown', 15000);
@@ -87,5 +94,65 @@ describe('集成测试 — PVE 人机对战', () => {
     const err = waitFor(c, 'game:error');
     c.emit('pve:action', { action: 'check' });
     expect(await err).toBe('对局不存在');
+  });
+
+  describe('断线重连（用户反馈：关掉浏览器再打开显示"对局不存在"）', () => {
+    it('同一 pveId 用新 socket 重新 pve:start → 恢复原有对局，不是一局新的（手数/筹码/座位不变）', async () => {
+      const c1 = await connect();
+      const state1 = waitFor(c1, 'game:state');
+      c1.emit('pve:start', { playerName: 'Bob', pveId: 'p-reconnect-1' });
+      const before = await state1;
+
+      c1.disconnect();
+      await new Promise(r => setTimeout(r, 100)); // let the server's disconnect handler actually run
+
+      const c2 = await connect();
+      const state2 = waitFor(c2, 'game:state');
+      // playerName intentionally omitted/blank here — a resume should
+      // ignore it and still come back with the original "Bob".
+      c2.emit('pve:start', { playerName: '', pveId: 'p-reconnect-1' });
+      const after = await state2;
+
+      expect(after.players.find(p => p.name === 'Bob')).toBeDefined();
+      expect(after.players).toHaveLength(2); // still 2 rows, not a fresh 3rd
+      expect(after.phase).toBe('preflop');
+      expect(after.pot).toBe(before.pot); // same hand still in progress, not reset
+    });
+
+    it('不同 pveId 各自独立——重连不会把两个不同玩家的对局混在一起', async () => {
+      const c1 = await connect();
+      const s1 = waitFor(c1, 'game:state');
+      c1.emit('pve:start', { playerName: 'Carol', pveId: 'p-independent-A' });
+      await s1;
+      c1.disconnect();
+      await new Promise(r => setTimeout(r, 100));
+
+      const c2 = await connect();
+      const s2 = waitFor(c2, 'game:state');
+      c2.emit('pve:start', { playerName: 'Dave', pveId: 'p-independent-B' });
+      const state = await s2;
+      // A brand-new pveId must get a brand-new session, not Carol's.
+      expect(state.players.some(p => p.name === 'Dave')).toBe(true);
+      expect(state.players.some(p => p.name === 'Carol')).toBe(false);
+    });
+
+    it('pve:leave 显式清掉对局——同一 pveId 之后重新 pve:start 得到全新的一局，不是恢复', async () => {
+      const c = await connect();
+      const s1 = waitFor(c, 'game:state');
+      c.emit('pve:start', { playerName: 'Eve', pveId: 'p-leave-1' });
+      await s1;
+
+      c.emit('pve:leave');
+      await new Promise(r => setTimeout(r, 50));
+
+      const s2 = waitFor(c, 'game:state');
+      c.emit('pve:start', { playerName: 'Eve', pveId: 'p-leave-1' });
+      const fresh = await s2;
+      expect(fresh.phase).toBe('preflop');
+      // Blinds are already posted by the time this state arrives (see
+      // GameEngine constructor), so chips alone won't read 1000 — check
+      // chips+bet (their total commitment) sums back to the starting stack.
+      expect(fresh.players.every(p => p.chips + p.bet === 1000)).toBe(true);
+    });
   });
 });

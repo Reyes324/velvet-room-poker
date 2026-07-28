@@ -9,6 +9,17 @@ import SettlementModal from '../components/SettlementModal';
 // page (see design.md「新增：单人人机对战（PVE）模式」).
 const SHOWDOWN_REVEAL_DELAY_MS = 1400;
 
+// Reuses vr_playerId — the same anonymous per-device id multiplayer already
+// persists — rather than inventing a separate PVE identity. There's no
+// namespace collision risk (RoomManager and the server's pveSessions Map are
+// entirely separate keyed structures); this is just "this browser", same as
+// multiplayer already treats it.
+function getPveId() {
+  let id = localStorage.getItem('vr_playerId');
+  if (!id) { id = Math.random().toString(36).slice(2, 10); localStorage.setItem('vr_playerId', id); }
+  return id;
+}
+
 export default function PvePage({ playerName, onLeave }) {
   const [gameState, setGameState] = useState(null);
   const [showdown, setShowdown] = useState(null);
@@ -22,7 +33,7 @@ export default function PvePage({ playerName, onLeave }) {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const { emit } = useSocket({
+  const { emit, socket } = useSocket({
     'game:state': (state) => {
       setGameState(state);
       setShowdown(null);
@@ -41,8 +52,18 @@ export default function PvePage({ playerName, onLeave }) {
   });
 
   useEffect(() => {
-    emit('pve:start', { playerName });
-    return () => clearTimeout(settlementTimerRef.current);
+    // Re-sync on every (re)connect, not just mount — mirrors RoomPage's own
+    // reasoning: a backgrounded mobile tab or brief network blip drops the
+    // socket without necessarily unmounting this component. Server-side
+    // pve:start resumes the existing session (matched by pveId) instead of
+    // starting fresh when one's already there — see server/index.js.
+    function sync() { emit('pve:start', { playerName, pveId: getPveId() }); }
+    sync();
+    socket.on('connect', sync);
+    return () => {
+      socket.off('connect', sync);
+      clearTimeout(settlementTimerRef.current);
+    };
   }, []);
 
   function handleAction(action, amount) {
@@ -52,6 +73,11 @@ export default function PvePage({ playerName, onLeave }) {
 
   function handleReady() {
     emit('pve:ready-next');
+  }
+
+  function handleExit() {
+    emit('pve:leave');
+    onLeave();
   }
 
   if (!gameState) {
@@ -75,7 +101,7 @@ export default function PvePage({ playerName, onLeave }) {
         showdown={showdown}
         onAction={handleAction}
         actionDisabled={actionDisabled}
-        onExit={onLeave}
+        onExit={handleExit}
         amPlaying
         myChips={me?.chips ?? 0}
         settlementOpen={!!settlement}

@@ -8,10 +8,11 @@ import StatesGallery from './StatesGallery';
 export default function App() {
   const [room, setRoom] = useState(null); // { code, playerId, playerName } | { autoJoinCode }
   // Deliberately a separate piece of state from `room`, not folded into it —
-  // PVE has no room code/playerId/localStorage session to restore, and
-  // keeping it structurally distinct matches the server-side decision
-  // (PveSession isn't a Room) that real players and AI never share state.
-  // null = not in PVE mode; a string = active, using that player name.
+  // keeps this structurally distinct from the multiplayer path, matching
+  // the server-side decision (PveSession isn't a Room) that real players
+  // and AI never share state. null = not in PVE mode; a string = active,
+  // using that player name (only meaningful when actually creating a new
+  // session — see PvePage's pve:start, which ignores it on a resume).
   const [pveName, setPveName] = useState(null);
 
   useEffect(() => {
@@ -31,6 +32,18 @@ export default function App() {
     if (savedPlayerId && savedRoomCode && (!urlCode || urlCode === savedRoomCode) && !room) {
       window.history.replaceState({}, '', '/room/' + savedRoomCode);
       setRoom({ code: savedRoomCode, playerId: savedPlayerId });
+      return;
+    }
+
+    // Same idea, for PVE — user feedback (2026-07-28): closing the browser
+    // mid-hand and coming back showed "对局不存在", the exact rough edge
+    // the room-resume logic above exists to avoid for multiplayer. Only
+    // checked once room-resume above didn't already claim this cold start
+    // (a saved room session always wins if somehow both markers are stale
+    // at once). playerName is passed as '' — server's pve:start resumes an
+    // existing session by pveId and ignores the name in that case.
+    if (localStorage.getItem('vr_pveActive') && !room && pveName === null) {
+      setPveName('');
       return;
     }
 
@@ -56,8 +69,22 @@ export default function App() {
     // reuse for the next room. vr_roomCode must go, or the next cold start
     // (see the resume effect above) tries to restore this now-dead session.
     localStorage.removeItem('vr_roomCode');
+    // Also clear any stale PVE marker — starting/resuming a multiplayer
+    // room supersedes it, so a later cold start shouldn't try to resume a
+    // PVE session that's no longer the point.
+    localStorage.removeItem('vr_pveActive');
     window.history.pushState({}, '', '/');
     setRoom(null);
+  }
+
+  function handlePve(name) {
+    localStorage.setItem('vr_pveActive', '1');
+    setPveName(name);
+  }
+
+  function handlePveLeave() {
+    localStorage.removeItem('vr_pveActive');
+    setPveName(null);
   }
 
   // Dev self-check: ?states=N renders the real GameTable for one fixed state
@@ -69,13 +96,13 @@ export default function App() {
   if (pveName !== null) {
     return (
       <div className="stage-wrap">
-        <PvePage playerName={pveName} onLeave={() => setPveName(null)} />
+        <PvePage playerName={pveName} onLeave={handlePveLeave} />
       </div>
     );
   }
 
   if (!room?.code) {
-    return <HomePage onJoined={handleJoined} onPve={setPveName} initialCode={room?.autoJoinCode} />;
+    return <HomePage onJoined={handleJoined} onPve={handlePve} initialCode={room?.autoJoinCode} />;
   }
 
   return (

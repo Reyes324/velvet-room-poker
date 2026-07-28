@@ -14,14 +14,82 @@ function createServer() {
   });
 
   const rooms = new RoomManager();
-  // PVE (人机对战): keyed by socket.id, not by any playerId/room concept —
-  // see design.md「新增：单人人机对战（PVE）模式」for why this is
-  // deliberately not stored in `rooms`. No reconnect support in MVP: a
-  // socket.id is only valid for the life of one browser tab's connection,
-  // so a real disconnect just loses the session (acceptable for a "kill
-  // time while waiting for friends" feature, unlike the real-money-stakes
-  // multiplayer reconnect guarantees above).
+  // PVE (人机对战): deliberately NOT stored in `rooms` — see design.md
+  // 「新增：单人人机对战（PVE）模式」. Reconnect support added 2026-07-28
+  // (user feedback: closing the browser and coming back showed "对局不存
+  // 在", same rough edge multiplayer went through several rounds fixing —
+  // PVE shouldn't be worse):
+  // - pveSessions: keyed by a persistent client-supplied id (localStorage
+  //   `vr_playerId`, same one multiplayer already uses as an anonymous
+  //   device identity — reused here, not a new namespace), NOT socket.id.
+  //   A session survives a disconnect; only an explicit pve:leave or the
+  //   idle reaper below removes one.
+  // - pveActiveSocket: pveId -> the socket.id currently "owning" that
+  //   session, so broadcasts always reach whoever's actually connected
+  //   right now, not a stale closed-over socket from whenever the session
+  //   was created. Re-pointed on every pve:start (including a resume).
+  // - socketToPveId: the reverse lookup pve:action/pve:ready-next/
+  //   disconnect need, since those only have `socket.id` in scope.
   const pveSessions = new Map();
+  const pveActiveSocket = new Map();
+  const socketToPveId = new Map();
+  const PVE_IDLE_TTL_MS = 30 * 60 * 1000; // 30 分钟无人接回就清掉，避免内存无限攒着废弃对局
+
+  function pveBroadcastState(session) {
+    const socketId = pveActiveSocket.get(session.humanId);
+    if (!socketId) return; // currently disconnected — next resume re-sends full state anyway
+    io.to(socketId).emit('game:state', session.getStateForPlayer(session.humanId));
+  }
+
+  function pveHandleResult(session, result) {
+    if (!result || result.error) return;
+    pveBroadcastState(session);
+    if (result.showdown) {
+      const socketId = pveActiveSocket.get(session.humanId);
+      if (socketId) {
+        io.to(socketId).emit('game:showdown', {
+          winners: result.winners,
+          pot: result.pot,
+          settle: result.settle,
+          foldWin: result.foldWin,
+        });
+      }
+    }
+  }
+
+  // Drives the AI's turn(s) one at a time with a human-like delay between
+  // each — PveSession itself stays synchronous/timer-free (see its own
+  // comment) so this pacing lives entirely in the transport layer. Reads
+  // pveSessions fresh on every tick (by pveId, not a closed-over session)
+  // so a disconnect mid-delay — or a reconnect that re-points
+  // pveActiveSocket to a new socket — is picked up correctly rather than
+  // stuck emitting to whatever socket happened to be live when the timer
+  // was scheduled.
+  function pveRunAiLoop(pveId) {
+    const session = pveSessions.get(pveId);
+    if (!session || !session.isAiTurn()) return;
+    setTimeout(() => {
+      const s = pveSessions.get(pveId);
+      if (!s || !s.isAiTurn()) return;
+      s.touch();
+      const r = s.aiAction();
+      if (r) pveHandleResult(s, r.result);
+      pveRunAiLoop(pveId);
+    }, 500 + Math.random() * 1500); // 拟人延迟 0.5-2s，见 design.md
+  }
+
+  // Sweeps sessions nobody's come back to in a while — mirrors the spirit
+  // of multiplayer's idle-room reaper (see RoomManager.sweepIdleRooms).
+  // Only ever removes a session with NO currently-active socket; a session
+  // someone's still connected to is never touched no matter how long since
+  // its last action (same principle multiplayer's reaper already follows).
+  setInterval(() => {
+    const now = Date.now();
+    for (const [pveId, session] of pveSessions) {
+      if (pveActiveSocket.has(pveId)) continue;
+      if (now - (session.lastActivityAt ?? 0) > PVE_IDLE_TTL_MS) pveSessions.delete(pveId);
+    }
+  }, 5 * 60 * 1000);
   // Grace-period timers for lobby (pre-game) disconnects, keyed by playerId.
   // A disconnect while just sitting in the lobby is very often transient —
   // backgrounding the tab to paste the invite link into a messaging app,
@@ -570,70 +638,72 @@ function createServer() {
     });
 
     // ─── PVE (人机对战) ───────────────────────────────────────────────────
+    // pveBroadcastState/pveHandleResult/pveRunAiLoop are defined once at
+    // server scope above (not per-connection) — they route by pveId via
+    // pveActiveSocket, not by closing over this specific socket, so a
+    // reconnect under the same pveId picks up correctly.
 
-    function pveBroadcastState(session) {
-      socket.emit('game:state', session.getStateForPlayer(session.humanId));
-    }
-
-    function pveHandleResult(session, result) {
-      if (!result || result.error) return;
-      pveBroadcastState(session);
-      if (result.showdown) {
-        socket.emit('game:showdown', {
-          winners: result.winners,
-          pot: result.pot,
-          settle: result.settle,
-          foldWin: result.foldWin,
-        });
+    socket.on('pve:start', ({ playerName, pveId }) => {
+      if (!pveId) return socket.emit('game:error', '缺少玩家标识');
+      socketToPveId.set(socket.id, pveId);
+      pveActiveSocket.set(pveId, socket.id);
+      let session = pveSessions.get(pveId);
+      if (!session) {
+        const name = (playerName || '').trim() || '玩家';
+        session = new PveSession(pveId, name);
+        session.touch();
+        pveSessions.set(pveId, session);
+      } else {
+        // Resuming an existing session — playerName is whatever's in the
+        // (possibly blank, on a cold-start resume) form field right now,
+        // not the name this session actually started with. Ignore it.
+        session.touch();
       }
-    }
-
-    // Drives the AI's turn(s) one at a time with a human-like delay between
-    // each — PveSession itself stays synchronous/timer-free (see its own
-    // comment) so this pacing lives entirely in the transport layer. Reads
-    // pveSessions fresh on every tick instead of closing over `session`
-    // alone so a disconnect mid-delay (session already deleted) is a no-op
-    // instead of emitting to a socket that's walked away.
-    function pveRunAiLoop() {
-      const session = pveSessions.get(socket.id);
-      if (!session || !session.isAiTurn()) return;
-      setTimeout(() => {
-        const s = pveSessions.get(socket.id);
-        if (!s || !s.isAiTurn()) return;
-        const r = s.aiAction();
-        if (r) pveHandleResult(s, r.result);
-        pveRunAiLoop();
-      }, 500 + Math.random() * 1500); // 拟人延迟 0.5-2s，见 design.md
-    }
-
-    socket.on('pve:start', ({ playerName }) => {
-      const name = (playerName || '').trim() || '玩家';
-      const session = new PveSession(socket.id, name);
-      pveSessions.set(socket.id, session);
       pveBroadcastState(session);
-      pveRunAiLoop(); // heads-up: AI may be dealer/SB and act first
+      pveRunAiLoop(pveId); // heads-up: AI may be dealer/SB and act first, or may owe a move from before the disconnect
     });
 
     socket.on('pve:action', ({ action, amount }) => {
-      const session = pveSessions.get(socket.id);
+      const pveId = socketToPveId.get(socket.id);
+      const session = pveId && pveSessions.get(pveId);
       if (!session) return socket.emit('game:error', '对局不存在');
+      session.touch();
       const result = session.humanAction(action, amount);
       if (result.error) return socket.emit('game:error', result.error);
       pveHandleResult(session, result);
-      pveRunAiLoop();
+      pveRunAiLoop(pveId);
     });
 
     socket.on('pve:ready-next', () => {
-      const session = pveSessions.get(socket.id);
+      const pveId = socketToPveId.get(socket.id);
+      const session = pveId && pveSessions.get(pveId);
       if (!session) return socket.emit('game:error', '对局不存在');
+      session.touch();
       const result = session.readyNext();
       if (result.error) return socket.emit('game:error', result.error);
       pveBroadcastState(session);
-      pveRunAiLoop();
+      pveRunAiLoop(pveId);
+    });
+
+    // Explicit "退出游戏" — free the session immediately instead of waiting
+    // out the idle reaper, mirroring multiplayer's player:leave-room.
+    socket.on('pve:leave', () => {
+      const pveId = socketToPveId.get(socket.id);
+      if (pveId) pveSessions.delete(pveId);
+      socketToPveId.delete(socket.id);
+      if (pveId) pveActiveSocket.delete(pveId);
     });
 
     socket.on('disconnect', () => {
-      pveSessions.delete(socket.id);
+      const pveId = socketToPveId.get(socket.id);
+      if (pveId) {
+        socketToPveId.delete(socket.id);
+        // Only clear the pveId->socket pointer if it's still THIS socket —
+        // if the same pveId already reconnected on a newer socket (fast
+        // reload) before this stale disconnect event fires, don't let it
+        // clobber the new, live association.
+        if (pveActiveSocket.get(pveId) === socket.id) pveActiveSocket.delete(pveId);
+      }
 
       if (!myPlayerId) return;
       const room = rooms.getRoomByPlayer(myPlayerId);

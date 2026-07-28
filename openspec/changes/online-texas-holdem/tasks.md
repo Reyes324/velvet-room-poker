@@ -776,3 +776,13 @@
 
 - [x] 54.1 用户反馈人机对战翻牌动画感觉没有了；用页面内打点实测（不是靠读代码猜）确认根因——`newCardFrom` 原来是"ref + 被动 effect 单帧脉冲"，公共牌数量变化和 ref 被更新之间只隔 2ms，两次渲染挤进同一绘制帧，动画类从未被浏览器真正画出来过。跟"发牌动画"那次修复是同一类 React 时序 bug（`dealing`/`heroRevealed` 当时已经用状态化方案修过一次，这处翻街揭牌的同款隐患一直没摸到，PVE 里 AI 更快的行动节奏才把它暴露出来）
 - [x] 54.2 改成跟 `dealing`/`heroRevealed` 一致的模式：`newCardFrom` 用真实 `useState` + 950ms 定时器（620ms 动画时长+最多 0.3s 交错，留余量）才推进，不再靠"赌下一帧不会撞车"。同一脚本连续验证 4 次，`flip-reveal` 类每次都稳定出现；多人对局既有的翻牌动画 e2e 测试修复后依然通过，确认无回归。全量单测 184/184，e2e 34/34
+
+## 55. PVE 会话恢复（用户反馈+确认，2026-07-28）
+
+设计决策见 design.md「PVE 补上会话恢复」。
+
+- [x] 55.1 `server/index.js`：`PveSession` 索引方式从 `socket.id` 改成客户端持久化 id（复用 `vr_playerId`）；新增 `pveActiveSocket`（id→当前 socket.id）、`socketToPveId`（反查）两张表；`pveBroadcastState`/`pveHandleResult`/`pveRunAiLoop` 从按连接闭包的函数改成服务端作用域的共享函数，按 pveId 路由到当前活跃 socket
+- [x] 55.2 `pve:start` 语义改成"创建或恢复"：id 已有 session 就恢复（忽略传入的 `playerName`），没有就新建；新增 `pve:leave`（显式退出立即释放）；新增 30 分钟空闲会话清理定时器（只清理当前无活跃 socket 的 session）
+- [x] 55.3 `PveSession.js` 新增 `touch()` 方法（跟 `Room.touch()` 同样的约定），构造时初始化 `lastActivityAt`
+- [x] 55.4 客户端：`PvePage.jsx` 挂载+每次 socket `connect` 事件都发 `pve:start`（不只挂载时发一次，覆盖同页面断线重连）；`App.jsx` 新增 `vr_pveActive` localStorage 标记 + 冷启动恢复检查（覆盖整页冷启动/关闭重开）；新增 `pve:leave` 客户端触发（"退出游戏"时）
+- [x] 55.5 服务端 7 项 `pve.integration.test.js` 用例（含 3 项新增：同 id 重连恢复原对局、不同 id 互不干扰、`pve:leave` 后重开是全新一局），全量单测 188/188。真机 Playwright 用真实 `page.reload()` 复现"整页刷新/关闭重开"，确认恢复到同一手牌（同底池/同底牌/同名字），无"对局不存在"报错

@@ -38,7 +38,14 @@ class PveSession {
     // _opponentReads() below so early hands (no real signal yet) don't
     // overfit to noise.
     this.oppStats = { totalActions: 0, raises: 0, raiseFacedCount: 0, foldsFacingRaise: 0 };
+    // For the idle-session reaper (server/index.js) — same touch()
+    // convention Room already uses, not a bare property poked from outside.
+    this.lastActivityAt = Date.now();
     this._dealNewHand();
+  }
+
+  touch() {
+    this.lastActivityAt = Date.now();
   }
 
   _syncChipsFromGame() {
