@@ -1,10 +1,8 @@
 .home {
   min-height: 100dvh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-5);
   position: relative;
   overflow: hidden;
 }
@@ -115,7 +113,12 @@
 }
 
 .home-pve-link {
-  position: relative;
+  /* 贴近页面底部，跟卡片本身（垂直居中）的位置脱钩——不管卡片多高、
+     视口多高，这个入口始终在接近视口底边的地方，而不是紧跟在卡片下方。 */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(env(safe-area-inset-bottom, 0px), var(--sp-8));
   z-index: 1;
   text-align: center;
   font-family: var(--font-mono);
