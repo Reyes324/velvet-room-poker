@@ -216,18 +216,38 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
   // ── Animation refs (track prev state to compute what's newly visible) ──────
-  // prevCardCountRef starts at current length to skip flip-reveal on reconnect
-  const prevCardCountRef = useRef(gameState.communityCards.length);
   const prevShowdownRef = useRef(null);
 
   const cardCount = gameState.communityCards.length;
-  const newCardFrom = prevCardCountRef.current; // indices >= this are newly revealed
   const justShowdown = !prevShowdownRef.current && showdown && showdown.length > 0;
 
+  // newCardFrom used to be a ref updated in a passive useEffect right after
+  // commit — a one-render pulse. Real bug (found via PVE, where the AI can
+  // act fast enough that two 'game:state' updates land within the same
+  // repaint window): if ANY second re-render fires within that same
+  // ~1 frame — even one wholly unrelated to community cards — React's
+  // effect had usually already advanced the ref before the browser ever
+  // painted the "isNew" frame, so the flip-reveal class technically existed
+  // for one commit but was never actually visible. Same root cause the
+  // `dealing`/`heroRevealed` state below already had to work around once —
+  // this is that same class of bug hitting the per-street reveal too.
+  // Fixed the same way: a real state value that only advances after a
+  // genuine timer (matching flipIn's .62s + up to 3 cards' 0.1s stagger —
+  // see velvet.css), immune to how many extra renders happen in between,
+  // instead of racing an effect against the next arbitrary re-render.
+  const [newCardFrom, setNewCardFrom] = useState(gameState.communityCards.length);
   useEffect(() => {
-    prevCardCountRef.current = cardCount;
+    if (cardCount > newCardFrom) {
+      const t = setTimeout(() => setNewCardFrom(cardCount), 950);
+      return () => clearTimeout(t);
+    }
+    if (cardCount < newCardFrom) setNewCardFrom(cardCount); // new hand — snap, nothing to animate away from
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardCount]);
+
+  useEffect(() => {
     prevShowdownRef.current = showdown;
-  }, [cardCount, showdown]);
+  }, [showdown]);
 
   // ── Hole-card deal sequence: SB-first round-robin stagger, hero flips
   // face-up only once every player's two cards — AND the 5 community cards
@@ -360,7 +380,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     : null;
 
   return (
-    <div className={`game-stage${dense ? ' game-stage--dense' : ''}`}>
+    <div className={`game-stage game-stage--table${dense ? ' game-stage--dense' : ''}`}>
       <div className="top-bar">
         <div className="menu-btn" onClick={() => setShowMenu(true)}>≡</div>
         {countdownText && <div className="timer-countdown">⏱ {countdownText}</div>}
