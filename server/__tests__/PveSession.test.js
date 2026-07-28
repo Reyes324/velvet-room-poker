@@ -77,6 +77,36 @@ describe('PveSession — aiAction', () => {
     expect(s.game.currentBet).toBe(60);
   });
 
+  it('把上下文正确传给策略引擎：wasAggressor/facingRaise/对手读数', () => {
+    const s = makeSession({ bigBlind: 20 });
+    s.humanAction('call'); // human (SB/dealer) just calls the blind — not a real raise
+    fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
+    s.aiAction(); // AI is BB, gets a free check option
+    let call = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(call.wasAggressor).toBe(false); // nobody raised yet
+    expect(call.facingRaise).toBe(false); // just a blind call, not a real raise
+    expect(call.opponentAggressionRate).toBeNull(); // not enough sample yet
+    expect(call.opponentFoldToRaiseRate).toBeNull();
+  });
+
+  it('对手统计只在样本量够时才生效（不会被前几手过拟合）', () => {
+    const s = makeSession();
+    // Play several hands where the human always raises when it's their
+    // turn, to build up sample size in oppStats.
+    for (let i = 0; i < 3; i++) {
+      fakeStrategy.pickAction.mockReturnValue({ action: 'fold' }); // AI folds → hand ends fast
+      s.humanAction('raise', 100);
+      if (!s.isOver()) s.aiAction();
+      if (s.isOver() && i < 2) s.readyNext();
+    }
+    fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
+    if (s.isAiTurn()) s.aiAction();
+    const lastCall = fakeStrategy.pickAction.mock.calls.at(-1)[0];
+    // 3 human actions total (raise/raise/raise) is still short of the >=8
+    // totalActions threshold _opponentReads() requires for aggression rate.
+    expect(lastCall.opponentAggressionRate).toBeNull();
+  });
+
   it('AI 的 allin 决策会被换算成真正的 allIn() 调用', () => {
     const s = makeSession();
     s.humanAction('call');

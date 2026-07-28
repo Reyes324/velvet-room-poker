@@ -7,6 +7,7 @@ const {
   pickAction,
   PREFLOP_TABLE,
   POSTFLOP_BANDS,
+  raiseSizeFraction,
 } = require('../pveStrategy');
 
 describe('pveStrategy — computeEquity', () => {
@@ -135,5 +136,88 @@ describe('pveStrategy — pickAction', () => {
       toCall: 20, potSize: 30, myChips: 1000, position: 'oop', random: () => 0.5,
     });
     expect(a.action).toBe('fold');
+  });
+});
+
+describe('pveStrategy — 上下文调整（2026-07-28 用户反馈"很容易猜"后新增）', () => {
+  // Band for equity=0.3: fold 0.55 / call 0.35 / raise 0.10 (20-40% band).
+  // With toCall===0 the fold mass merges into call before sampling, so
+  // baseline cumulative is call=[0,0.90), raise=[0.90,1). r=0.85 lands in
+  // call at baseline — proving the c-bet boost (which should push it into
+  // raise) actually did something, not just coincidentally matching.
+  it('续注倾向：上条街是自己主动加注、这条街轮到自己且无人下注时，同一随机数更容易落进 raise（对比不续注的基线）', () => {
+    const base = { street: 'flop', equity: 0.3, toCall: 0, potSize: 300, myChips: 1000, position: 'ip', random: () => 0.85 };
+    const withoutCbet = pickAction(base);
+    const withCbet = pickAction({ ...base, wasAggressor: true });
+    expect(withoutCbet.action).not.toBe('raise');
+    expect(withCbet.action).toBe('raise');
+  });
+
+  it('续注倾向只在翻后生效——翻前传 wasAggressor 不应该改变行为（翻前分档表本来就没有这个概念）', () => {
+    const a = pickAction({
+      street: 'preflop', holeCards: ['7s', '2d'], equity: 0.99, wasAggressor: true,
+      toCall: 0, potSize: 30, myChips: 1000, position: 'oop', random: () => 0.85,
+    });
+    // trash table with toCall===0: fold(0.70)+call(0.20) merged = 0.90 call,
+    // raise stays 0.10 — r=0.85 must still land in call, proving the c-bet
+    // delta never touched a preflop decision.
+    expect(a.action).not.toBe('raise');
+  });
+
+  // Band for equity=0.5: fold 0.15 / call 0.55 / raise 0.30 (40-55% band),
+  // toCall>0 so no merge. Baseline cumulative: fold=[0,0.15), call=[0.15,0.70).
+  // r=0.20 lands in call at baseline.
+  it('面对真实加注（facingRaise）时更容易弃牌（对比同样局面但不是面对加注的基线）', () => {
+    const base = { street: 'flop', equity: 0.5, toCall: 100, potSize: 300, myChips: 1000, position: 'oop', random: () => 0.20 };
+    const withoutFacingRaise = pickAction(base);
+    const withFacingRaise = pickAction({ ...base, facingRaise: true });
+    expect(withoutFacingRaise.action).not.toBe('fold');
+    expect(withFacingRaise.action).toBe('fold');
+  });
+
+  it('对手面对加注时爱弃牌（高 opponentFoldToRaiseRate）→ 更容易诈唬加注', () => {
+    // <20% band: fold 0.78 / call 0.12 / raise 0.10, toCall>0 (no merge).
+    // Baseline cumulative: fold=[0,0.78), call=[0.78,0.90), raise=[0.90,1).
+    // r=0.85 lands in call at baseline.
+    const base = { street: 'flop', equity: 0.1, toCall: 100, potSize: 300, myChips: 1000, position: 'oop', random: () => 0.85 };
+    const baseline = pickAction(base);
+    const vsFoldyOpp = pickAction({ ...base, opponentFoldToRaiseRate: 0.9 });
+    expect(baseline.action).not.toBe('raise');
+    expect(vsFoldyOpp.action).toBe('raise');
+  });
+
+  it('对手很爱加注（高 opponentAggressionRate）→ 面对加注时更容易跟注而不是弃牌', () => {
+    const base = {
+      street: 'flop', equity: 0.5, toCall: 100, potSize: 300, myChips: 1000, position: 'oop',
+      random: () => 0.20, facingRaise: true,
+    };
+    const vsPassiveOpp = pickAction({ ...base, opponentAggressionRate: 0.1 });
+    const vsAggroOpp = pickAction({ ...base, opponentAggressionRate: 0.9 });
+    expect(vsPassiveOpp.action).toBe('fold'); // facingRaise alone already tips this into fold (see above)
+    expect(vsAggroOpp.action).not.toBe('fold');
+  });
+});
+
+describe('pveStrategy — raiseSizeFraction（下注尺度极化）', () => {
+  it('极端胜率（价值/诈唬两端）应该比中等胜率有更宽、更大的尺度范围', () => {
+    const polarizedFractions = [];
+    const mergedFractions = [];
+    for (let i = 0; i <= 20; i++) {
+      const r = i / 20;
+      polarizedFractions.push(raiseSizeFraction('flop', null, 0.95, () => r));
+      mergedFractions.push(raiseSizeFraction('flop', null, 0.5, () => r));
+    }
+    // Polarized [0.6, 1.4] vs merged [0.35, 0.7] — polarized reaches a much
+    // bigger max (the actual point: strong value/bluffs can go big), and
+    // its average sits meaningfully higher than merged's average.
+    expect(Math.max(...polarizedFractions)).toBeGreaterThan(Math.max(...mergedFractions));
+    const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    expect(avg(polarizedFractions)).toBeGreaterThan(avg(mergedFractions));
+  });
+
+  it('翻前没有真实胜率，用起手牌分档当代理——premium 起手牌走极化尺度，playable 起手牌走合并尺度', () => {
+    const premiumFraction = raiseSizeFraction('preflop', ['As', 'Ac'], null, () => 1);
+    const playableFraction = raiseSizeFraction('preflop', ['6s', '6c'], null, () => 1);
+    expect(premiumFraction).toBeGreaterThan(playableFraction);
   });
 });

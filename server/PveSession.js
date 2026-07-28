@@ -30,6 +30,14 @@ class PveSession {
     this.dealerIndex = 0;
     this.handNumber = 0;
     this.game = null;
+    // Running read on the human's tendencies across the WHOLE session (not
+    // reset per hand) — user feedback (2026-07-28) was that the AI played
+    // "too easy to read"; part of the fix is having it actually adapt to
+    // how this specific opponent plays, not just re-run the same static
+    // tables forever. Gated behind a minimum sample size in
+    // _opponentReads() below so early hands (no real signal yet) don't
+    // overfit to noise.
+    this.oppStats = { totalActions: 0, raises: 0, raiseFacedCount: 0, foldsFacingRaise: 0 };
     this._dealNewHand();
   }
 
@@ -66,7 +74,40 @@ class PveSession {
   humanAction(action, amount) {
     if (this.isOver()) return { error: '这一手已经结束' };
     if (this.actionPlayerId !== this.humanId) return { error: '还没轮到你' };
-    return this._dispatch(this.humanId, action, amount);
+
+    const idx = this.game.players.findIndex(p => p.id === this.humanId);
+    const human = this.game.players[idx];
+    const toCall = this.game.currentBet - human.bet;
+    const facedRaise = this._facingRaise(this.game.phase, toCall);
+    const result = this._dispatch(this.humanId, action, amount);
+    if (!result.error) {
+      this.oppStats.totalActions += 1;
+      if (action === 'raise' || action === 'allin') this.oppStats.raises += 1;
+      if (facedRaise) {
+        this.oppStats.raiseFacedCount += 1;
+        if (action === 'fold') this.oppStats.foldsFacingRaise += 1;
+      }
+    }
+    return result;
+  }
+
+  _facingRaise(street, toCall) {
+    // Preflop, "toCall" is at minimum the blind differential even with no
+    // real raise yet — only count it as facing a raise once it's bigger
+    // than just that. Postflop there's no blind, so any toCall>0 is a real
+    // bet/raise.
+    return street === 'preflop' ? toCall > this.bigBlind : toCall > 0;
+  }
+
+  // Only returns non-null once there's enough sample to mean anything —
+  // early hands fall back to pveStrategy's un-adjusted tables (deltas of 0)
+  // rather than overreacting to 2-3 data points.
+  _opponentReads() {
+    const { totalActions, raises, raiseFacedCount, foldsFacingRaise } = this.oppStats;
+    return {
+      opponentAggressionRate: totalActions >= 8 ? raises / totalActions : null,
+      opponentFoldToRaiseRate: raiseFacedCount >= 3 ? foldsFacingRaise / raiseFacedCount : null,
+    };
   }
 
   // Computes and executes exactly one AI decision. Callers (index.js's
@@ -85,6 +126,9 @@ class PveSession {
       ? null // pickAction ignores equity preflop and uses preflopTier instead
       : this.strategy.computeEquity(ai.holeCards, board, { iterations: 300 });
     const position = aiIdx === this.game.dealerIndex ? 'ip' : 'oop';
+    const wasAggressor = this.game.lastAggressorIndex === aiIdx;
+    const facingRaise = this._facingRaise(street, toCall);
+    const { opponentAggressionRate, opponentFoldToRaiseRate } = this._opponentReads();
 
     const decision = this.strategy.pickAction({
       street,
@@ -96,6 +140,10 @@ class PveSession {
       position,
       currentBet: this.game.currentBet,
       minRaiseTo: this.game.currentBet + this.game.lastRaiseAmount,
+      wasAggressor,
+      facingRaise,
+      opponentAggressionRate,
+      opponentFoldToRaiseRate,
     });
 
     const result = decision.action === 'raise'

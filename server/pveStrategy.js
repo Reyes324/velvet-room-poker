@@ -120,6 +120,71 @@ function computeEquity(holeCards, board, opts = {}) {
   return (win + tie / 2) / iterations;
 }
 
+// ─── 上下文调整（用户实测反馈"很容易猜"后新增，2026-07-28）──────────────
+// 光有分档概率表还不够——真人玩家会记得自己这手牌之前做过什么、会看对手
+// 打法调整、下注尺度会按"这是价值下注还是诈唬"而不是均匀分布。下面几个
+// 调整量都是独立、具名的常量（不是散落的魔法数字），每个对应一条具体的
+// 可读牌理由，调紧/调松改这几个数字就够。
+const CBET_RAISE_BOOST = 0.25;      // 续注倾向：上一条街是自己主动加注、这条街率先行动时，把这么多概率从 call 挪去 raise
+const FACING_RAISE_FOLD_BOOST = 0.10; // 尊重真实加注：面对真加注（不只是盲注差额）时，把这么多概率从 call 挪去 fold
+const BLUFF_VS_FOLDY_SCALE = 0.4;   // 对手爱弃牌就多诈唬：(对手面对加注的弃牌率 - 0.5) * 此系数，从 fold 挪去 raise（可为负，对方是跟注站时反而少诈唬）
+const CALL_VS_AGGRO_SCALE = 0.4;    // 对手爱加注就多跟注：面对加注时，(对手加注频率 - 0.35) * 此系数，从 fold 挪去 call
+
+function adjustDistribution(dist, deltas) {
+  let { fold, call, raise } = dist;
+  fold = Math.max(0, fold + (deltas.fold ?? 0));
+  call = Math.max(0, call + (deltas.call ?? 0));
+  raise = Math.max(0, raise + (deltas.raise ?? 0));
+  const sum = fold + call + raise;
+  return sum === 0 ? dist : { fold: fold / sum, call: call / sum, raise: raise / sum };
+}
+
+function contextDeltas({ street, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate }) {
+  const deltas = { fold: 0, call: 0, raise: 0 };
+
+  // 续注（c-bet）：上条街是自己在加注、这条街轮到自己且没人下注——不管翻牌
+  // 有没有连到，真实玩家大概率会延续攻势，不是每条街都从零重新算胜率。
+  if (street !== 'preflop' && wasAggressor && toCall === 0) {
+    deltas.call -= CBET_RAISE_BOOST;
+    deltas.raise += CBET_RAISE_BOOST;
+  }
+
+  if (facingRaise) {
+    deltas.call -= FACING_RAISE_FOLD_BOOST;
+    deltas.fold += FACING_RAISE_FOLD_BOOST;
+
+    if (opponentAggressionRate != null) {
+      const bump = (opponentAggressionRate - 0.35) * CALL_VS_AGGRO_SCALE;
+      deltas.fold -= bump;
+      deltas.call += bump;
+    }
+  }
+
+  if (opponentFoldToRaiseRate != null) {
+    const bump = (opponentFoldToRaiseRate - 0.5) * BLUFF_VS_FOLDY_SCALE;
+    deltas.fold -= bump;
+    deltas.raise += bump;
+  }
+
+  return deltas;
+}
+
+// 翻前给不了真实胜率（还没公共牌），用分档给一个粗略的数值代理，只用来
+// 决定下注尺度是"极化"还是"合并"，不影响弃牌/跟注/加注的概率本身（那个
+// 仍然是 PREFLOP_TABLE 说了算）。
+const PREFLOP_EQUITY_PROXY = { premium: 0.88, strong: 0.72, playable: 0.55, marginal: 0.38, trash: 0.18 };
+
+// 下注尺度极化：真实强牌（价值）和明显诈唬用大且浮动范围更宽的尺度
+// （0.6-1.4 倍底池)，中等牌力用偏小、偏窄的"保护性"尺度（0.35-0.7 倍底
+// 池）——这是真实的极化/合并下注范围理论的简化落地，不是一个统一的
+// 0.5-1.0 倍区间：后者本身就是最容易被摸出规律的"每次都差不多大"。
+function raiseSizeFraction(street, holeCards, equity, random) {
+  const e = street === 'preflop' ? PREFLOP_EQUITY_PROXY[preflopTier(holeCards)] : equity;
+  const polarized = e >= 0.70 || e <= 0.30;
+  const [lo, hi] = polarized ? [0.6, 1.4] : [0.35, 0.7];
+  return lo + random() * (hi - lo);
+}
+
 // ─── 动作抽样 ──────────────────────────────────────────────────────────
 // street==='preflop' 时完全忽略传入的 equity，改用 preflopTier——翻前用
 // 翻后式的原始胜率容易导致不合理的松跟注（原因见 design.md）。
@@ -127,11 +192,16 @@ function pickAction(params) {
   const {
     street, holeCards, equity, toCall, potSize, myChips, position,
     random = Math.random, currentBet = toCall, minRaiseTo,
+    // 上下文调整，全部可选、默认不生效（向后兼容旧调用方）：
+    wasAggressor = false, facingRaise = false,
+    opponentFoldToRaiseRate = null, opponentAggressionRate = null,
   } = params;
 
-  const dist = street === 'preflop'
+  const baseDist = street === 'preflop'
     ? PREFLOP_TABLE[preflopTier(holeCards)]
     : bandFor(equity);
+  const deltas = contextDeltas({ street, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate });
+  const dist = adjustDistribution(baseDist, deltas);
 
   // 白看（toCall===0）时不可能弃牌——把 fold 的概率吸收进 call（此时等价
   // 于 check），加注概率原样保留。
@@ -148,12 +218,12 @@ function pickAction(params) {
   if (bucket === 'fold') return { action: 'fold' };
   if (bucket === 'call') return { action: toCall === 0 ? 'check' : 'call' };
 
-  // raise：尺度在底池的 50%-100% 之间浮动（第二次调用 random() 决定具体
-  // 落点），再夹到 [minRaiseTo, 全下] 之间；夹完发现连最小加注都摸不到全
-  // 下（筹码太浅），直接报 allin，不返回一个不合法的加注数字。
+  // raise：尺度按 raiseSizeFraction 极化浮动（第二次调用 random() 决定具
+  // 体落点），再夹到 [minRaiseTo, 全下] 之间；夹完发现连最小加注都摸不到
+  // 全下（筹码太浅），直接报 allin，不返回一个不合法的加注数字。
   const myBetThisStreet = currentBet - toCall;
   const maxTotal = myChips + myBetThisStreet;
-  const sizeFraction = 0.5 + random() * 0.5; // [0.5, 1.0) of pot
+  const sizeFraction = raiseSizeFraction(street, holeCards, equity, random);
   const fallbackMinRaiseTo = currentBet + Math.max(1, Math.round(potSize * 0.5));
   const wantRaiseTo = Math.round(currentBet + potSize * sizeFraction);
   const floor = minRaiseTo ?? fallbackMinRaiseTo;
@@ -163,4 +233,8 @@ function pickAction(params) {
   return { action: 'raise', raiseTo };
 }
 
-module.exports = { computeEquity, preflopTier, pickAction, PREFLOP_TABLE, POSTFLOP_BANDS };
+module.exports = {
+  computeEquity, preflopTier, pickAction, PREFLOP_TABLE, POSTFLOP_BANDS,
+  // exported for direct unit testing / tuning visibility, not for PveSession to call directly
+  adjustDistribution, contextDeltas, raiseSizeFraction,
+};
