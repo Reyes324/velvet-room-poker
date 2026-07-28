@@ -135,6 +135,33 @@ class GameEngine {
     );
     this.lastAggressorIndex = this.actionIndex;
     this.actedThisStreet = new Set();
+    // 谁刚做了动作、这是第几次动作——跟 actionIndex 是两件独立的事。
+    // actionIndex 只在"还需要有人接着行动"时才会推进（_advance()/_nextStreet()
+    // 里都是这样写的），一手牌里最后一个导致直接结束的动作（弃牌到只剩一人、
+    // 或河牌圈跟注完直接摊牌）不会再推进 actionIndex——那一刻已经没有"下一个
+    // 该谁"这件事了。用户反馈（2026-07-28）：客户端原来完全靠"actionPlayerId
+    // 变了"去判断"刚才是谁行动了"，这两种收尾动作因为 actionIndex 压根没变，
+    // 从未被判断出来过，导致最后一家跟注/弃牌收尾时那个动作气泡从来没显示
+    // 过。这两个字段就是给客户端一个不依赖 actionIndex 语义的、明确的"谁刚
+    // 行动了"信号，每次真正执行一个合法动作（fold/check/call/raise/allIn）
+    // 都会更新，不管这手牌是否因此结束。
+    this.lastActionSeq = 0;
+    this.lastActionBy = null;
+    this.lastActionLabel = null;
+  }
+
+  // 在每个动作方法真正生效（校验通过之后）时调用，而不是在方法一开始——避
+  // 免一次被拒绝的非法操作（比如"还没轮到你"）也被误记成一次真实动作。
+  // label 由调用方在自己重置任何状态（比如 raise 清空 actedThisStreet、
+  // _nextStreet 把所有人的 bet 清零）之前算好传进来——客户端气泡文案原来
+  // 是靠对比前后两次 getPublicState 的 bet/status 字段"猜"出玩家做了什么，
+  // 但一条街最后一个动作往往紧接着就会触发 _nextStreet 把 bet 清零，猜出
+  // 来的文案要么是错的（比如全都变成"过牌"）要么干脆没有，所以改成服务端
+  // 直接算好、原样告诉客户端，不再让客户端反推。
+  _recordAction(playerId, label) {
+    this.lastActionSeq += 1;
+    this.lastActionBy = playerId;
+    this.lastActionLabel = label;
   }
 
   _seat(i) {
@@ -206,6 +233,7 @@ class GameEngine {
     if (idx !== this.actionIndex) return { error: '还没轮到你' };
     this.players[idx].status = 'folded';
     this.actedThisStreet.add(playerId);
+    this._recordAction(playerId, { type: 'fold' });
     return this._advance();
   }
 
@@ -215,6 +243,7 @@ class GameEngine {
     const p = this.players[idx];
     if (p.bet < this.currentBet) return { error: '当前有注可以跟注，不能过牌' };
     this.actedThisStreet.add(playerId);
+    this._recordAction(playerId, { type: 'check' });
     return this._advance();
   }
 
@@ -225,6 +254,8 @@ class GameEngine {
     const toCall = this.currentBet - p.bet;
     this._placeBet(idx, toCall);
     this.actedThisStreet.add(playerId);
+    const label = p.status === 'allin' ? { type: 'allin', amount: p.bet } : { type: 'call', amount: toCall };
+    this._recordAction(playerId, label);
     return this._advance();
   }
 
@@ -258,6 +289,8 @@ class GameEngine {
     this.currentBet = p.bet; // after bet placed
     this.lastAggressorIndex = idx;
     this.actedThisStreet = new Set([playerId]); // everyone else must act again
+    const label = p.status === 'allin' ? { type: 'allin', amount: totalAmount } : { type: 'raise', amount: totalAmount };
+    this._recordAction(playerId, label);
     return this._advance();
   }
 
@@ -273,10 +306,11 @@ class GameEngine {
     // pushing more than anyone could ever match.
     const cappedTotal = this.maxTotalFor(playerId);
     if (cappedTotal > this.currentBet) {
-      return this.raise(playerId, cappedTotal);
+      return this.raise(playerId, cappedTotal); // raise() 自己会记 _recordAction，这里不用重复记
     }
     this._placeBet(idx, Math.min(p.chips, cappedTotal - p.bet));
     this.actedThisStreet.add(playerId);
+    this._recordAction(playerId, { type: 'allin', amount: p.bet });
     return this._advance();
   }
 
@@ -533,6 +567,9 @@ class GameEngine {
       currentBet: this.currentBet,
       communityCards: this.communityCards.map(parseCard),
       actionPlayerId: this.players[this.actionIndex]?.id ?? null,
+      lastActionSeq: this.lastActionSeq,
+      lastActionBy: this.lastActionBy,
+      lastActionLabel: this.lastActionLabel,
       players: this.players.map(p => ({
         id: p.id,
         name: p.name,

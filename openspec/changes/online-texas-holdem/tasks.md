@@ -808,3 +808,14 @@
 - [x] 58.1 根因：最后一家跟注的 `game:state`（带动作气泡该显示的信息）和 `game:showdown`（触发对手底牌揭示）背靠背同步广播，中间没有停顿；`PlayerSeat.jsx` 揭示底牌直接由原始 `gameState.phase` 驱动，没有缓冲
 - [x] 58.2 `GameTable.jsx` 新增 `revealPhase`（真实 `useState` + `SHOWDOWN_REVEAL_HOLD_MS=1200ms` 定时器，只延迟"进入 showdown"这一个转折点，其它阶段切换照常立即同步）；`PlayerSeat` 的 `gamePhase` 改用这个延迟后的值，底部"正在比牌…"等不需要延迟的即时反馈继续用原始 `isShowdown`。这是本次会话第三次用同一模式（真实定时器状态，不是"ref+被动 effect 单帧脉冲"）解决同一类"状态到达和视觉反馈没有停顿"问题
 - [x] 58.3 真机 Playwright（PVE 模式驱动到真实摊牌，逐 100ms 轮询）确认对手底牌揭示不再是摊牌瞬间出现，有实测延迟窗口。全量单测 195/195（纯客户端改动），e2e 全量回归待跑完确认
+
+## 59. 每一条街最后一家的动作气泡从未显示过——两个独立根因，不只是摊牌（用户反馈追问，2026-07-28）
+
+设计决策见 design.md「每一条街最后一家的动作气泡从未显示过——不只是摊牌，根因也不只是上一条的时序问题」。
+
+- [x] 59.1 根因一（时序竞争，各条街通用）：`GameTable.jsx` 里"设置气泡"和"清空气泡"是两个分别监听 `gameState`/`gameState.phase` 的 effect，最后一家的动作直接把 `phase` 推进到下一条街时两者在同一次渲染里背靠背执行，气泡刚设置就被同一 commit 里的清空 effect 干掉。修法：清空 effect 延迟 `ACTION_BUBBLE_CLEAR_HOLD_MS=1200ms` 才真正清空（已在此前一轮改动中写好并 build 验证，本次任务里确认保留）
+- [x] 59.2 根因二（更深，专属"一手牌真正收尾的那个动作"）：`GameEngine.actionIndex` 只在"接下来还有人要行动"时才推进，弃牌到只剩一人/河牌圈跟注完直接摊牌这类收尾动作永远不会触发它变化，客户端原来完全靠"`actionPlayerId` 变了"判断"谁刚行动"，这个前提对收尾动作从未成立——气泡从来没被设置过，不是设置了又被抢跑清掉
+- [x] 59.3 `GameEngine.js` 新增 `lastActionSeq`/`lastActionBy`/`lastActionLabel`（`{type, amount?}`，各动作方法在做任何状态重置之前算好）三个字段，`_recordAction(playerId, label)` 在 `fold`/`check`/`call`/`raise`/`allIn` 校验通过后统一调用，不管这个动作是否直接结束一手牌都会更新，随 `getPublicState()` 下发
+- [x] 59.4 `GameTable.jsx` 气泡"设置" effect 改为依赖 `lastActionSeq` 变化（`useRef` 记上次看到的 seq）触发，文案直接取 `lastActionLabel`，不再靠对比前后两次 `bet`/`status` 反推——`_nextStreet()` 会先清零所有人的 `bet` 再广播，原来的反推方式对任何街尾动作的文案本就不可靠
+- [x] 59.5 顺带一并解决用户同批追问的弃牌收尾结算弹窗瞬间弹出问题：`RoomPage.jsx`/`PvePage.jsx` 去掉 `foldWin` 单独"不等待直接展示"的分支，统一走 `SHOWDOWN_REVEAL_DELAY_MS` 延迟，弃牌气泡跟真实摊牌一样有真实可见的时间窗口
+- [x] 59.6 服务端 195/195 单测通过（1 个已知断线时序 flake，隔离重跑必过，与本次改动无关）；真机 Playwright 验证河牌圈→摊牌转场气泡从空数组变成正确文案，弃牌收尾场景气泡在结算弹窗前有真实可见窗口；e2e 全量回归待跑完确认

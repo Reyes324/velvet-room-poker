@@ -64,11 +64,13 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         setSettlementProgress({ readyCount: 0, totalCount: (roomState?.players ?? []).length });
       };
       clearTimeout(settlementTimerRef.current);
-      // Fold-wins have nothing on the table to reveal, so they skip the wait;
-      // real showdowns get SHOWDOWN_REVEAL_DELAY_MS to actually look at the
-      // revealed hands before the settlement summary appears.
-      if (foldWin) showSettlement();
-      else settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
+      // Used to skip the wait entirely for fold-wins ("nothing on the table
+      // to reveal") — but the settlement sheet sliding up instantly also
+      // meant the last folding player's own action bubble ("弃牌") never
+      // had a moment to actually be seen before it got covered/upstaged
+      // (user feedback, 2026-07-28). Give every showdown — fold-win or
+      // real — the same pause.
+      settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
     },
     'game:settlement-progress': (progress) => setSettlementProgress(progress),
     'game:ended': ({ reason, hostEnded }) => {

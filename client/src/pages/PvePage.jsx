@@ -45,8 +45,10 @@ export default function PvePage({ playerName, onLeave }) {
       setShowdown(winners);
       const showSettlement = () => setSettlement({ winners, foldWin });
       clearTimeout(settlementTimerRef.current);
-      if (foldWin) showSettlement();
-      else settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
+      // Used to skip the wait for fold-wins — see RoomPage.jsx's matching
+      // comment (2026-07-28): the last folder's own "弃牌" bubble needs the
+      // same pause as a real showdown, not just the card reveal.
+      settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
     },
     'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
   });

@@ -17,6 +17,12 @@ const TABLE_REF_H = 610;
 // 对手的底牌——不然摊牌揭示会跟这次动作的状态更新同一瞬间到达，气泡还没
 // 看清就已经被翻牌盖过去了（用户反馈，2026-07-28）。
 const SHOWDOWN_REVEAL_HOLD_MS = 1200;
+// 用户反馈追问（2026-07-28）：不只是摊牌，每一条街最后一家行动（跟注/弃
+// 牌/加注）都有同样的问题——下面清空气泡的 effect 一旦 gameState.phase
+// 变了就立刻执行，跟设置气泡的 effect 挤在同一次渲染里，清空直接把刚设
+// 好的气泡冲掉，浏览器根本没机会画出来。这个常量控制"清空气泡"这一步要
+// 拖多久，跟上面揭牌用的时长保持一致的节奏感。
+const ACTION_BUBBLE_CLEAR_HOLD_MS = 1200;
 
 const PHASE_LABEL = {
   waiting: '等待开始', preflop: '翻牌前', flop: '翻牌圈',
@@ -310,30 +316,32 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.phase]);
 
-  // ── Action feedback bubbles ── whoever held actionPlayerId last render just
-  // acted; diff their bet/status against the previous snapshot to say what they
-  // did, and pop a fading bubble from their seat for a couple seconds.
-  const prevActionSnapshotRef = useRef(null);
+  // ── Action feedback bubbles ── server tells us directly who just acted and
+  // what they did (lastActionBy/lastActionLabel), keyed by lastActionSeq so we
+  // only react once per real action. Used to be inferred client-side by diffing
+  // actionPlayerId/bet/status between renders, but actionIndex never advances
+  // for a hand's true final action (fold-to-one-left, or river call straight
+  // into showdown — see GameEngine's own comment on lastActionSeq), so that
+  // diff-based approach could never detect those actions at all, and even when
+  // it did fire, _nextStreet() resets everyone's bet to 0 before the diff ever
+  // runs, making the inferred text wrong for any street-ending action (user
+  // feedback, 2026-07-28).
+  const prevActionSeqRef = useRef(0);
   const [actionBubbles, setActionBubbles] = useState({});
 
   useEffect(() => {
-    const prevSnap = prevActionSnapshotRef.current;
-    if (prevSnap && prevSnap.actionPlayerId && prevSnap.actionPlayerId !== gameState.actionPlayerId) {
-      const actorId = prevSnap.actionPlayerId;
-      const prevP = prevSnap.players.find(p => p.id === actorId);
-      const currP = gameState.players.find(p => p.id === actorId);
-      if (prevP && currP) {
+    const seq = gameState.lastActionSeq ?? 0;
+    if (seq && seq !== prevActionSeqRef.current) {
+      const actorId = gameState.lastActionBy;
+      const label = gameState.lastActionLabel;
+      if (actorId && label) {
         let text = null;
         let folded = false;
-        if (currP.status === 'folded' && prevP.status !== 'folded') { text = '弃牌'; folded = true; }
-        else if (currP.status === 'allin' && prevP.status !== 'allin') text = `ALL IN ¥${currP.bet.toLocaleString()}`;
-        else if (currP.bet > prevP.bet) {
-          text = currP.bet > prevSnap.currentBet
-            ? `加注 ¥${currP.bet.toLocaleString()}`
-            : `跟注 ¥${(currP.bet - prevP.bet).toLocaleString()}`;
-        } else {
-          text = '过牌';
-        }
+        if (label.type === 'fold') { text = '弃牌'; folded = true; }
+        else if (label.type === 'allin') text = `ALL IN ¥${label.amount.toLocaleString()}`;
+        else if (label.type === 'raise') text = `加注 ¥${label.amount.toLocaleString()}`;
+        else if (label.type === 'call') text = `跟注 ¥${label.amount.toLocaleString()}`;
+        else text = '过牌'; // check
         // Persistent now — no self-clearing timeout. The bubble stays until
         // this same player's status/bet changes again (this effect re-fires
         // and overwrites their entry) or a new street/hand clears everyone
@@ -342,11 +350,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded } }));
       }
     }
-    prevActionSnapshotRef.current = {
-      actionPlayerId: gameState.actionPlayerId,
-      currentBet: gameState.currentBet,
-      players: gameState.players.map(p => ({ id: p.id, bet: p.bet, status: p.status })),
-    };
+    prevActionSeqRef.current = seq;
   }, [gameState]);
 
   // Persistent action bubbles represent "what happened this street" — clear
@@ -360,20 +364,27 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // moment they take a real action.
   useEffect(() => {
     if (gameState.phase !== 'preflop') {
-      // "弃牌" is a hand-long state, not a street-specific action like a
-      // call/raise — it used to get wiped along with everything else the
-      // moment the street advanced, so a folded player's bubble vanished
-      // even though they were still out for the rest of the hand (user
-      // feedback: looked like the fold indicator disappeared). Keep it
-      // through subsequent streets; every other bubble still clears.
-      setActionBubbles(b => {
-        const kept = {};
-        for (const p of gameState.players) {
-          if (p.status === 'folded' && b[p.id]?.folded) kept[p.id] = b[p.id];
-        }
-        return kept;
-      });
-      return;
+      // 延迟清空，不是立刻清空——这个 effect 的依赖是 gameState.phase，
+      // 最后一家行动导致进入新的一条街时，跟上面"设置气泡"的 effect 挤在
+      // 同一次渲染里；不加这个延迟的话，气泡刚被设置就在同一个 commit 里
+      // 被这里清掉，浏览器从来没机会真的画出来（用户反馈，2026-07-28：
+      // 不只是摊牌，每一条街最后一家的动作气泡都是这样消失的）。
+      const t = setTimeout(() => {
+        // "弃牌" is a hand-long state, not a street-specific action like a
+        // call/raise — it used to get wiped along with everything else the
+        // moment the street advanced, so a folded player's bubble vanished
+        // even though they were still out for the rest of the hand (user
+        // feedback: looked like the fold indicator disappeared). Keep it
+        // through subsequent streets; every other bubble still clears.
+        setActionBubbles(b => {
+          const kept = {};
+          for (const p of gameState.players) {
+            if (p.status === 'folded' && b[p.id]?.folded) kept[p.id] = b[p.id];
+          }
+          return kept;
+        });
+      }, ACTION_BUBBLE_CLEAR_HOLD_MS);
+      return () => clearTimeout(t);
     }
     const seeded = {};
     const key = Date.now();
