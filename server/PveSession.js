@@ -24,12 +24,17 @@ class PveSession {
     // correctly and executes whatever it returns.
     this.strategy = strategy;
     this.players = [
-      { id: humanId, name: humanName, chips: startingChips },
-      { id: AI_ID, name: AI_NAME, chips: startingChips },
+      { id: humanId, name: humanName, chips: startingChips, debt: 0 },
+      { id: AI_ID, name: AI_NAME, chips: startingChips, debt: 0 },
     ];
     this.dealerIndex = 0;
     this.handNumber = 0;
     this.game = null;
+    // 用户反馈（2026-07-28）：之前筹码归零直接补满、完全不留痕迹，导致整个
+    // session 打完都不知道自己对电脑到底是赢是输——"电脑也算是一个玩家"，
+    // 应该跟真人牌局一样：每次补满算一次新的买入（debt），最终盈亏 = 当前
+    // 筹码 − 总买入，用同一套 LedgerModal/账本逻辑（见 RoomManager.rebuy）。
+    this.handHistory = [];
     // Running read on the human's tendencies across the WHOLE session (not
     // reset per hand) — user feedback (2026-07-28) was that the AI played
     // "too easy to read"; part of the fix is having it actually adapt to
@@ -58,9 +63,19 @@ class PveSession {
 
   _dealNewHand() {
     this._syncChipsFromGame();
-    // Solo mode has no ledger/借一底 — a bust just gets topped back up so
-    // the human can keep playing without a separate rebuy flow to build.
-    for (const p of this.players) if (p.chips <= 0) p.chips = this.startingChips;
+    // Solo mode still has no separate "borrow or leave" decision UI to
+    // build (unlike multiplayer's 借一底 flow) — a bust just gets topped
+    // back up automatically so the human can keep playing without
+    // interrupting the session. But it DOES count as a real buy-in against
+    // the ledger now, exactly like RoomManager.rebuy(): otherwise there's
+    // no way to ever tell whether the human is actually up or down against
+    // the AI across the session.
+    for (const p of this.players) {
+      if (p.chips <= 0) {
+        p.debt = (p.debt || 0) + this.startingChips;
+        p.chips = this.startingChips;
+      }
+    }
     if (this.handNumber > 0) this.dealerIndex = 1 - this.dealerIndex;
     this.handNumber += 1;
     this.game = new GameEngine(this.players, this.dealerIndex, this.bigBlind);
@@ -179,7 +194,16 @@ class PveSession {
   }
 
   getStateForPlayer(playerId) {
-    return this.game.getStateForPlayer(playerId);
+    const state = this.game.getStateForPlayer(playerId);
+    // GameEngine has no concept of debt/买入 — it's a session-level ledger
+    // fact, not a hand-level one — so merge it in here, same shape
+    // LedgerModal already expects from roomState.players.
+    state.startingChips = this.startingChips;
+    state.players = state.players.map(p => ({
+      ...p,
+      debt: this.players.find(x => x.id === p.id)?.debt || 0,
+    }));
+    return state;
   }
 }
 

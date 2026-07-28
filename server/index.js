@@ -54,6 +54,29 @@ function createServer() {
           foldWin: result.foldWin,
         });
       }
+
+      // Mirrors handleActionResult's room.handHistory.push below, but
+      // simpler: PVE only ever has the one human viewer, so there's no
+      // multi-player privacy dance to defer to a per-request "personalize"
+      // step (room:get-hand-history) — bake the human's own cards in
+      // directly at record time. A fold-win's public showdownReveal is
+      // empty (nobody had to prove anything), but the human should still
+      // always be able to see their own cards for a hand they played,
+      // win or lose, same rule the live table itself follows.
+      const reveals = result.foldWin
+        ? result.allHoleCards
+            .filter(c => c.id === session.humanId)
+            .map(c => ({ ...c, name: session.players.find(p => p.id === c.id)?.name }))
+        : result.showdownReveal;
+      session.handHistory.push({
+        handNumber: session.handHistory.length + 1,
+        timestamp: Date.now(),
+        communityCards: result.state.communityCards,
+        foldWin: result.foldWin,
+        winners: result.winners.map(w => ({ id: w.id, name: w.name, won: w.won, handName: w.handName })),
+        settle: result.settle,
+        reveals,
+      });
     }
   }
 
@@ -672,6 +695,13 @@ function createServer() {
       if (result.error) return socket.emit('game:error', result.error);
       pveHandleResult(session, result);
       pveRunAiLoop(pveId);
+    });
+
+    socket.on('pve:get-hand-history', () => {
+      const pveId = socketToPveId.get(socket.id);
+      const session = pveId && pveSessions.get(pveId);
+      if (!session) return socket.emit('game:error', '对局不存在');
+      socket.emit('pve:hand-history', session.handHistory);
     });
 
     socket.on('pve:ready-next', () => {

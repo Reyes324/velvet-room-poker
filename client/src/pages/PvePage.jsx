@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import GameTable from '../components/GameTable';
 import SettlementModal from '../components/SettlementModal';
+import LedgerModal from '../components/LedgerModal';
+import HandHistoryModal from '../components/HandHistoryModal';
 
 // Same pacing as RoomPage's real-showdown reveal — see that file's own
 // comment. Duplicated rather than imported: it's one constant, and PVE is
@@ -26,6 +28,9 @@ export default function PvePage({ playerName, onLeave }) {
   const [settlement, setSettlement] = useState(null);
   const [toast, setToast] = useState(null);
   const [actionDisabled, setActionDisabled] = useState(false);
+  const [showLedger, setShowLedger] = useState(false);
+  const [showHandHistory, setShowHandHistory] = useState(false);
+  const [handHistory, setHandHistory] = useState([]);
   const settlementTimerRef = useRef(null);
 
   const showToast = useCallback((msg, type = 'info') => {
@@ -51,6 +56,7 @@ export default function PvePage({ playerName, onLeave }) {
       settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
     },
     'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
+    'pve:hand-history': (hands) => setHandHistory(hands),
   });
 
   useEffect(() => {
@@ -107,7 +113,24 @@ export default function PvePage({ playerName, onLeave }) {
         amPlaying
         myChips={me?.chips ?? 0}
         settlementOpen={!!settlement}
+        onOpenLedger={() => setShowLedger(true)}
+        onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
       />
+      {showLedger && (
+        <LedgerModal
+          players={gameState.players}
+          startingChips={gameState.startingChips ?? 1000}
+          myId={me?.id}
+          onClose={() => setShowLedger(false)}
+        />
+      )}
+      {showHandHistory && (
+        <HandHistoryModal
+          hands={handHistory}
+          myId={me?.id}
+          onClose={() => setShowHandHistory(false)}
+        />
+      )}
       {settlement && settlement.winners?.length > 0 && (
         <SettlementModal
           winners={settlement.winners}

@@ -23,8 +23,8 @@ describe('PveSession — 初始化', () => {
   it('创建时双方各持初始筹码，人类是庄家（heads-up 庄家/小盲翻前先行动）', () => {
     const s = makeSession();
     expect(s.players).toEqual([
-      { id: 'me', name: 'Alice', chips: 1000 },
-      { id: AI_ID, name: '电脑', chips: 1000 },
+      { id: 'me', name: 'Alice', chips: 1000, debt: 0 },
+      { id: AI_ID, name: '电脑', chips: 1000, debt: 0 },
     ]);
     expect(s.handNumber).toBe(1);
     expect(s.isAiTurn()).toBe(false);
@@ -143,7 +143,7 @@ describe('PveSession — readyNext / 结算与筹码结转', () => {
     expect(s.players.find(p => p.id === AI_ID).chips).toBe(aiChipsAfterHand1); // carried over, not reset
   });
 
-  it('归零的一方在下一手开始前自动补回初始筹码（单人模式没有借一底流程）', () => {
+  it('归零的一方在下一手开始前自动补回初始筹码，且这次补回记一笔"买入"（单人模式没有借一底流程，但要能看出账本盈亏）', () => {
     const s = makeSession();
     // Force human to 0 chips directly on the live engine (simulating a
     // hand that busted them) rather than playing out a real all-in, which
@@ -154,6 +154,21 @@ describe('PveSession — readyNext / 结算与筹码结转', () => {
     expect(s.isOver()).toBe(true);
     s.readyNext();
     expect(s.players.find(p => p.id === 'me').chips).toBe(1000);
+    expect(s.players.find(p => p.id === 'me').debt).toBe(1000);
+    // AI didn't bust, so it never gets a debt entry.
+    expect(s.players.find(p => p.id === AI_ID).debt).toBe(0);
+  });
+
+  it('getStateForPlayer 带上 startingChips 和每个玩家的 debt，供客户端账本直接用', () => {
+    const s = makeSession();
+    const humanGp = s.game.players.find(p => p.id === 'me');
+    humanGp.chips = 0;
+    s.humanAction('fold');
+    s.readyNext();
+    const state = s.getStateForPlayer('me');
+    expect(state.startingChips).toBe(1000);
+    expect(state.players.find(p => p.id === 'me').debt).toBe(1000);
+    expect(state.players.find(p => p.id === AI_ID).debt).toBe(0);
   });
 });
 

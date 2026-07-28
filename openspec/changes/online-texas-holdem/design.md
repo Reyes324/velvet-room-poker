@@ -1204,6 +1204,24 @@ if (active.length < 2) { … return { ended: true, reason: '筹码不足，等�
 
 ---
 
+### PVE 补齐账本 + 牌局记录——菜单里点了没反应，且"归零就补满"本来就没法看出输赢（用户反馈，2026-07-28/29）
+
+**背景**：用户点了 PVE 局内菜单的"账本"和"牌局记录"，发现毫无反应。
+
+**根因**：`GameTable.jsx` 的菜单是共享组件，"账本"/"牌局记录"两行无条件渲染、无条件调用 `onOpenLedger`/`onOpenHandHistory` 这两个 prop，但 `PvePage.jsx` 从来没有传过这两个 prop——点击时 `onOpenLedger?.()` 静默 no-op，UI 上没有任何提示，看起来像"点了没反应"。往下追问发现这不是简单的漏传：
+
+- **账本**：`PveSession.js` 里本来就有意不做——"solo mode has no ledger/借一底，归零直接补满"，因为设计时认为账本是"一群真人互相分钱"的概念，AI 对手不涉及。用户当场反驳："电脑也算是一个玩家吧"——如果归零就默默补满、完全不留痕迹，打了一整个 session 根本没法知道自己对 AI 整体是赢是输，这就失去了账本的意义。
+- **牌局记录**：纯粹是没做，服务端 `PveSession` 完全没有记录历史手牌，`room:get-hand-history` 这条消息只有多人房间那一路（`RoomManager`）实现了。
+
+**决策**：
+1. **账本**：把 AI 当成账本里真正的一个"玩家"，复用 `RoomManager.rebuy()` 同一套买入语义——`PveSession.players` 每个玩家新增 `debt` 字段，`_dealNewHand()` 里筹码归零时不再直接补满了事，而是先 `debt += startingChips` 再补满（等价于又买入一次）。最终盈亏 = 当前筹码 − 总买入，跟真实多人局的 `LedgerModal`（"盈亏 = 当前 − 初始 − 已借"）算法完全一致，直接复用同一个组件，不需要另写一套"个人输赢曲线"UI。`PveSession.getStateForPlayer()` 把 `startingChips` 和每个玩家的 `debt` 合并进返回的状态里（`GameEngine` 本身不知道"买入"这个会话级概念，只在 session 层合并）。
+2. **牌局记录**：在 `server/index.js` 的 `pveHandleResult()` 里镜像多人房间 `handleActionResult()` 的 `room.handHistory.push(...)` 逻辑，写入 `session.handHistory`。PVE 只有一个人类观众，不需要多人房间那套"按请求者身份现场脱敏"（`room:get-hand-history` 的 personalize 逻辑）——弃牌收尾时人类自己的手牌直接在记录时就写进 `reveals`，不用等客户端按 `playerId` 现查。新增 `pve:get-hand-history`/`pve:hand-history` 事件对，`HandHistoryModal` 组件原样复用，字段形状完全一致。
+3. `PvePage.jsx` 补上 `onOpenLedger`/`onOpenHandHistory` 两个 prop 和对应的 `LedgerModal`/`HandHistoryModal` 渲染，跟 `RoomPage.jsx` 是同一套模式。
+
+**验证**：新增/更新 `PveSession.test.js` 3 项用例（归零后 `debt` 正确记账、AI 未破产时 `debt` 不变、`getStateForPlayer` 正确带上 `startingChips`/`debt`），服务端全量单测 196/196 通过。真机 Playwright：PVE 模式下打开账本，确认小盲/大盲刚下注就能看到实时盈亏（非等到手牌结束）；打完一手真实摊牌后打开牌局记录，确认公共牌、双方手牌、牌型、每人盈亏都正确显示。
+
+---
+
 ## Risks / Trade-offs
 
 - **内存存储** → 服务重启丢失所有房间。缓解：提示用户游戏中途不要刷新页面；MVP 阶段可接受。

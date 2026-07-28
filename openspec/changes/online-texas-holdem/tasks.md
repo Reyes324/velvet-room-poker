@@ -819,3 +819,13 @@
 - [x] 59.4 `GameTable.jsx` 气泡"设置" effect 改为依赖 `lastActionSeq` 变化（`useRef` 记上次看到的 seq）触发，文案直接取 `lastActionLabel`，不再靠对比前后两次 `bet`/`status` 反推——`_nextStreet()` 会先清零所有人的 `bet` 再广播，原来的反推方式对任何街尾动作的文案本就不可靠
 - [x] 59.5 顺带一并解决用户同批追问的弃牌收尾结算弹窗瞬间弹出问题：`RoomPage.jsx`/`PvePage.jsx` 去掉 `foldWin` 单独"不等待直接展示"的分支，统一走 `SHOWDOWN_REVEAL_DELAY_MS` 延迟，弃牌气泡跟真实摊牌一样有真实可见的时间窗口
 - [x] 59.6 服务端 195/195 单测通过（1 个已知断线时序 flake，隔离重跑必过，与本次改动无关）；真机 Playwright 验证河牌圈→摊牌转场气泡从空数组变成正确文案，弃牌收尾场景气泡在结算弹窗前有真实可见窗口；e2e 全量回归待跑完确认
+
+## 60. PVE 补齐账本 + 牌局记录（用户反馈，2026-07-28/29）
+
+设计决策见 design.md「PVE 补齐账本 + 牌局记录——菜单里点了没反应，且"归零就补满"本来就没法看出输赢」。
+
+- [x] 60.1 根因：`GameTable.jsx` 菜单的"账本"/"牌局记录"两行无条件渲染，但 `PvePage.jsx` 没传 `onOpenLedger`/`onOpenHandHistory`，点击静默 no-op；账本在 PVE 里此前是有意不做（归零直接补满），用户反驳"电脑也算是一个玩家"——不留买入痕迹就没法看出整体输赢，站得住脚
+- [x] 60.2 `PveSession.js`：`players` 新增 `debt` 字段；`_dealNewHand()` 归零补满前先 `debt += startingChips`（等价于真人局的一次 rebuy）；`getStateForPlayer()` 把 `startingChips` 和每个玩家的 `debt` 合并进返回状态，复用现成的 `LedgerModal`（同一套"盈亏=当前−初始−已借"算法），不用另写 UI
+- [x] 60.3 `server/index.js`：`pveHandleResult()` 镜像多人房间的 `handleActionResult()`，把每手摊牌结果写入 `session.handHistory`；PVE 只有一个人类观众，弃牌收尾时的自家手牌记录时直接写进 `reveals`，不需要多人房间那套按请求者现场脱敏的逻辑；新增 `pve:get-hand-history`/`pve:hand-history` 事件对，`HandHistoryModal` 原样复用
+- [x] 60.4 `PvePage.jsx` 补上 `onOpenLedger`/`onOpenHandHistory` 及对应弹窗渲染，跟 `RoomPage.jsx` 同一套模式
+- [x] 60.5 `PveSession.test.js` 新增/更新 3 项用例（归零记账、AI 未破产 debt 不变、`getStateForPlayer` 正确带账本字段），服务端全量单测 196/196 通过；真机 Playwright 验证账本实时盈亏、牌局记录完整展示（公共牌/双方手牌/牌型/每人盈亏）
