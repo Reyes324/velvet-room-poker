@@ -161,6 +161,13 @@
   text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   min-width:0; flex:0 1 auto;
 }
+/* Was appended straight into .seat-name's own text ("{name}（我）"), sharing
+   its ellipsis-truncated width budget with the actual name — on a 4-char
+   name that left barely 1-2 characters visible before truncating (user
+   feedback, 2026-07-29). Own non-shrinking element instead, so the name
+   keeps its full width and "我" always shows in full regardless of name
+   length. */
+.seat-me-tag { flex:0 0 auto; font-family:var(--font-mono); font-size:10px; font-weight:700; color:var(--gold-300); }
 .avatar-card {
   width:56px; border-radius:10px; position:relative;
   border:2px solid rgba(212,175,55,.18); background:#0A1A0E;
@@ -170,9 +177,9 @@
    .avatar-card as a whole. */
 .avatar-photo {
   width:100%; height:42px; display:flex; align-items:center; justify-content:center;
-  position:relative; border-radius:8px 8px 0 0; background:#0A1A0E; overflow:hidden;
+  font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--text-primary);
+  position:relative; border-radius:8px 8px 0 0;
 }
-.avatar-img { width:100%; height:100%; object-fit:cover; display:block; }
 /* Orange-red rather than gold — gold reads as "normal/idle" everywhere else
    on the table (pot, bankroll, borders), so the countdown needs its own,
    more urgent hue to actually stand out as a ticking clock. */
@@ -182,11 +189,14 @@
   font-size:19px; font-weight:700; border-radius:8px 8px 0 0;
   text-shadow:0 1px 4px rgba(0,0,0,.9), 0 0 10px rgba(255,90,40,.5);
 }
-/* Only "me" still gets a color modifier now that every seat shows a real
-   (DiceBear-generated, see src/avatar.js) face instead of a letter-on-color
-   swatch — the old per-player rainbow palette existed purely to tell
-   letter avatars apart and is redundant once the avatar image itself does
-   that job. */
+.av-green  .avatar-photo { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
+.av-purple .avatar-photo { background:radial-gradient(circle at 38% 35%, #4A228A, #1E0855); }
+.av-teal   .avatar-photo { background:radial-gradient(circle at 38% 35%, #0E6060, #042E2E); }
+.av-rust   .avatar-photo { background:radial-gradient(circle at 38% 35%, #7A3018, #3A1008); }
+.av-olive  .avatar-photo { background:radial-gradient(circle at 38% 35%, #4A6020, #1E2A0A); }
+.av-blue   .avatar-photo { background:radial-gradient(circle at 38% 35%, #2A5A8A, #0A2238); }
+.av-magenta .avatar-photo { background:radial-gradient(circle at 38% 35%, #8A2A5A, #380A22); }
+.av-gold   .avatar-photo { background:radial-gradient(circle at 38% 35%, #8B6914, #3D2800); }
 .av-gold.avatar-card { border-color:rgba(212,175,55,.45); }
 
 /* Simplified from a 3px border + two stacked box-shadows (heavy/busy look,
@@ -314,8 +324,15 @@
 }
 
 /* ── TOP BAR ──────────────────────────────────────────────── */
-.menu-btn { width:44px; height:44px; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.14); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; color:var(--text-secondary); cursor:pointer; }
-.bankroll { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
+/* Was color:var(--text-secondary) (#A8946A, a dim tan) on a near-invisible
+   8%-opacity plate — against the busy woven felt texture underneath, both
+   the icon and its own "button" boundary read as low-contrast (user
+   feedback, 2026-07-29). Icon now matches .bankroll's already-legible
+   #D4AF37 gold instead of a separate, dimmer tone, and both plates got a
+   more opaque background/border so they read as a distinct chip sitting on
+   the felt rather than blending into it. */
+.menu-btn { width:44px; height:44px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; color:#D4AF37; cursor:pointer; }
+.bankroll { background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.36); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
 /* 计时游戏 final-5-minutes countdown — only ever shown in that window, so
    the urgent orange-red (same hue as .think-overlay's action countdown,
    not the everyday gold used everywhere else) is warranted the whole time
@@ -452,8 +469,7 @@
 .modal { width:318px; background:linear-gradient(145deg,var(--surface-raised),var(--surface-base)); border:1px solid rgba(212,175,55,.32); border-radius:22px; padding:24px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:13px; box-shadow:0 24px 80px rgba(4,14,7,.65); animation:modalPop .35s cubic-bezier(.34,1.56,.64,1); }
 @keyframes modalPop { from{opacity:0;transform:scale(.85);} to{opacity:1;transform:scale(1);} }
 .modal-title { font-family:var(--font-display); font-size:11px; color:#D4AF37; letter-spacing:4px; text-transform:uppercase; }
-.modal-winner-av { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#0A1A0E; border:2px solid #D4AF37; box-shadow:0 0 0 5px rgba(212,175,55,.2), 0 0 40px rgba(212,175,55,.7); }
-.modal-winner-av img { width:100%; height:100%; object-fit:cover; display:block; }
+.modal-winner-av { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--text-primary); border:2px solid #D4AF37; box-shadow:0 0 0 5px rgba(212,175,55,.2), 0 0 40px rgba(212,175,55,.7); }
 .modal-winner-name { font-family:var(--font-display); font-size:14px; color:var(--text-primary); }
 .modal-win-amt { font-family:var(--font-amount); font-size:26px; font-weight:700; letter-spacing:.2px; color:#D4AF37; }
 /* The winning hand ("两对，A和K") — or, for a fold-win, "其他人全部弃牌" —
@@ -640,9 +656,7 @@
 .share-icon { font-size:14px; }
 .lobby-sec { font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); letter-spacing:3px; padding-bottom:8px; border-bottom:1px solid rgba(212,175,55,.07); margin-bottom:9px; }
 .pl-row { display:flex; align-items:center; gap:11px; padding:9px 11px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:11px; }
-.pr-av { width:36px; height:36px; border-radius:50%; overflow:hidden; flex-shrink:0; background:#0A1A0E; border:2px solid transparent; }
-.pr-av img { width:100%; height:100%; object-fit:cover; display:block; }
-.pr-av.av-gold { border-color:rgba(212,175,55,.55); }
+.pr-av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--text-primary); flex-shrink:0; }
 .pr-name { font-family:var(--font-body); font-size:14px; color:var(--text-primary); }
 .pr-chips { font-family:var(--font-amount); font-size:11px; color:var(--text-secondary); }
 .pr-badge { font-family:var(--font-mono); font-size:10px; background:rgba(212,175,55,.12); color:#D4AF37; border-radius:7px; padding:3px 7px; }

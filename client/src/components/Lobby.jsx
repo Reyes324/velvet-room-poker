@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { avatarUri } from '../avatar';
+
+const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
+function colorForId(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h + ch.charCodeAt(0)) % 8;
+  return h;
+}
 
 // Lobby / waiting room — styled by shared velvet.css (.lobby/.room-code/.pl-row/...)
 const TIMER_OPTIONS = [15, 30, 60];
@@ -107,7 +113,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
         <div className="lobby-scroll">
           {players.map(p => (
             <div key={p.id} className="pl-row">
-              <div className={`pr-av${p.id === playerId ? ' av-gold' : ''}`}><img src={avatarUri(p.id)} alt="" /></div>
+              <div className={`pr-av ${p.id === playerId ? 'av-gold' : AV[colorForId(p.id)]}`}>{p.name[0].toUpperCase()}</div>
               <div className="pr-info">
                 <div className="pr-name">
                 {p.name}{p.id === playerId ? '（我）' : ''}

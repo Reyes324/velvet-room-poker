@@ -10,8 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@dicebear/collection": "^9.4.2",
-    "@dicebear/core": "^9.4.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "socket.io-client": "^4.8.3"
