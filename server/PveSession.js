@@ -148,6 +148,7 @@ class PveSession {
       position,
       currentBet: this.game.currentBet,
       minRaiseTo: this.game.currentBet + this.game.lastRaiseAmount,
+      opponentCeiling: this.game.maxTotalFor(this.aiId),
       wasAggressor,
       facingRaise,
       opponentAggressionRate,

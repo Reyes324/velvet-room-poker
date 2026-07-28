@@ -188,6 +188,18 @@ class GameEngine {
     return actual;
   }
 
+  // Public — the actual most a player could usefully put in this street
+  // (own stack, capped by the deepest live opponent's own ceiling). raise/
+  // allIn use this internally; PveSession's AI decision sizing also needs
+  // it (its own maxTotal math has to agree with what the engine will
+  // actually accept, or its "raiseTo" gets rejected — see design.md).
+  maxTotalFor(playerId) {
+    const idx = this._playerIndex(playerId);
+    if (idx === -1) return 0;
+    const p = this.players[idx];
+    return Math.min(p.chips + p.bet, this._liveOpponentCeiling(playerId));
+  }
+
   // Public action API
   fold(playerId) {
     const idx = this._playerIndex(playerId);
@@ -216,11 +228,22 @@ class GameEngine {
     return this._advance();
   }
 
+  // 场上还没弃牌的其他玩家里，身家最长的那个人这条街最多能跟到多少（他自
+  // 己的剩余筹码 + 已经投入这条街的部分，跟 raise/allIn 自己算 maxTotal
+  // 用的是同一个公式）——用户反馈（2026-07-28）：推超过所有对手身家的部
+  // 分，本来就只能靠边池机制原路退还（见 _endHand 的"纯退还"判定），允许
+  // 选到那个数字只会制造"怎么显示的是我全部身家"的困惑。没有对手在场（不
+  // 该在真实一手牌里发生，纯兜底）时不设上限。
+  _liveOpponentCeiling(playerId) {
+    const others = this.players.filter(p => p.id !== playerId && p.status !== 'folded');
+    return others.length > 0 ? Math.max(...others.map(p => p.chips + p.bet)) : Infinity;
+  }
+
   raise(playerId, totalAmount) {
     const idx = this._playerIndex(playerId);
     if (idx !== this.actionIndex) return { error: '还没轮到你' };
     const p = this.players[idx];
-    const maxTotal = p.chips + p.bet;
+    const maxTotal = this.maxTotalFor(playerId);
     if (totalAmount > maxTotal) {
       return { error: `最多下注 ¥${maxTotal}` };
     }
@@ -242,15 +265,19 @@ class GameEngine {
     const idx = this._playerIndex(playerId);
     if (idx !== this.actionIndex) return { error: '还没轮到你' };
     const p = this.players[idx];
-    const totalBet = p.bet + p.chips;
-    if (totalBet > this.currentBet) {
-      // treat as raise
-      return this.raise(playerId, totalBet);
-    } else {
-      this._placeBet(idx, p.chips);
-      this.actedThisStreet.add(playerId);
-      return this._advance();
+    // Capped the same way raise() caps its own maxTotal — a player whose
+    // real stack would raise, but whose capped ceiling no longer clears
+    // the current bet (only possible when every other live opponent is
+    // already tapped out at or below the current bet), effectively
+    // downgrades to a capped call instead of erroring out or silently
+    // pushing more than anyone could ever match.
+    const cappedTotal = this.maxTotalFor(playerId);
+    if (cappedTotal > this.currentBet) {
+      return this.raise(playerId, cappedTotal);
     }
+    this._placeBet(idx, Math.min(p.chips, cappedTotal - p.bet));
+    this.actedThisStreet.add(playerId);
+    return this._advance();
   }
 
   _playerIndex(id) {

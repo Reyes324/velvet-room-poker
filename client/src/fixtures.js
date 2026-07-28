@@ -270,3 +270,20 @@ STATES.push({
     ],
   },
 });
+
+// 用户反馈（2026-07-28）：对手身家比自己短很多时，加注/全下面板不该还能选
+// 到自己的全部身家——超过对手身家的部分反正结算时会原路退还，允许选到那
+// 个数字只会制造"这数字什么意思"的困惑。真正上限 = min(自己身家, 场上还
+// 没弃牌的对手里最长的那个人的身家)。这个 fixture 专门覆盖"对手明显短码"
+// 这一种，回归用（ActionBar.jsx 的 maxRaise/跟注文案）。
+STATES.push({
+  name: '对手身家远小于自己（全下/跟注封顶回归）', myId: 'me', roomCode: '4827',
+  gameState: {
+    phase: 'preflop', pot: 115, currentBet: 95, actionPlayerId: 'me',
+    communityCards: [null, null, null, null, null],
+    players: [
+      { id: 'op', name: '短码对手', chips: 0, bet: 95, status: 'allin', holeCards: [null, null], isDealer: true },
+      { id: 'me', name: '测试', chips: 990, bet: 10, status: 'active', isSB: true, holeCards: [c('10', '♦'), c('J', '♦')] },
+    ],
+  },
+});

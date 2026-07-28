@@ -472,6 +472,87 @@ describe('加注金额上限校验', () => {
   });
 });
 
+describe('全下/加注按场上最长对手身家封顶（用户反馈，2026-07-28）', () => {
+  // 用户反馈：自己 1000、对方只有 95 时，点全下还是能选到 1000——多出的部分
+  // 反正结算时会原路退还（边池机制），显示"全下 1000"只会制造困惑。真正
+  // 能选的上限应该是 min(自己身家, 场上还没弃牌的对手里最长的那个人的身
+  // 家)，不是自己的全部身家。
+  it('heads-up：对方身家比自己短时，加注上限被对方身家封顶，超过这个数就报错', () => {
+    const game = new GameEngine(
+      [{ id: 'hero', name: 'Hero', chips: 1000 }, { id: 'villain', name: 'Villain', chips: 95 }],
+      0, BIG_BLIND,
+    );
+    const villainCeiling = game.players.find(p => p.id === 'villain').chips
+      + game.players.find(p => p.id === 'villain').bet; // 95（身家）+ 已经投入的盲注
+
+    const overCap = game.raise('hero', villainCeiling + 1);
+    expect(overCap.error).toBe(`最多下注 ¥${villainCeiling}`);
+
+    const atCap = game.raise('hero', villainCeiling);
+    expect(atCap.error).toBeUndefined();
+    expect(game.players.find(p => p.id === 'hero').bet).toBe(villainCeiling);
+  });
+
+  it('maxTotalFor() 直接反映这个封顶——heads-up 对方更短码时封顶就是对方身家', () => {
+    const game = new GameEngine(
+      [{ id: 'hero', name: 'Hero', chips: 1000 }, { id: 'villain', name: 'Villain', chips: 95 }],
+      0, BIG_BLIND,
+    );
+    const villain = game.players.find(p => p.id === 'villain');
+    expect(game.maxTotalFor('hero')).toBe(villain.chips + villain.bet);
+  });
+
+  it('对方身家比自己更长时，封顶就是自己的全部身家（不会被对方"拖累"变得更小）', () => {
+    const game = new GameEngine(
+      [{ id: 'hero', name: 'Hero', chips: 500 }, { id: 'villain', name: 'Villain', chips: 2000 }],
+      0, BIG_BLIND,
+    );
+    const hero = game.players.find(p => p.id === 'hero');
+    expect(game.maxTotalFor('hero')).toBe(hero.chips + hero.bet);
+  });
+
+  it('三人桌：封顶按对手里身家最长的那个算，不是最短的那个（短码只影响它自己那层边池，不该拖累加注上限）', () => {
+    const game = new GameEngine(
+      [
+        { id: 'hero', name: 'Hero', chips: 2000 },
+        { id: 'short', name: 'Short', chips: 50 },
+        { id: 'deep', name: 'Deep', chips: 800 },
+      ],
+      0, BIG_BLIND,
+    );
+    const deep = game.players.find(p => p.id === 'deep');
+    // 封顶应该是 deep 的身家（800附近，含盲注），不是 short 的 50
+    const cap = game.maxTotalFor('hero');
+    expect(cap).toBe(deep.chips + deep.bet);
+    expect(cap).toBeGreaterThan(200); // 明确不是被 short 的 50 拖累
+  });
+
+  it('allIn()：自己身家远超所有对手时，点全下会被封顶到对方身家，不会真的清空自己筹码（对手全部跟上后自己还有余额）', () => {
+    const game = new GameEngine(
+      [{ id: 'hero', name: 'Hero', chips: 1000 }, { id: 'villain', name: 'Villain', chips: 95 }],
+      0, BIG_BLIND,
+    );
+    const result = game.allIn('hero');
+    expect(result.error).toBeUndefined();
+    const hero = game.players.find(p => p.id === 'hero');
+    expect(hero.status).not.toBe('allin'); // 封顶后还有余额，不是真的全下
+    expect(hero.chips).toBeGreaterThan(0);
+    expect(hero.bet).toBe(game.maxTotalFor('villain')); // 正好封顶到对方的身家
+  });
+
+  it('allIn()：自己确实是全场最短码时，行为不变——照常清空自己全部筹码', () => {
+    const game = new GameEngine(
+      [{ id: 'hero', name: 'Hero', chips: 30 }, { id: 'villain', name: 'Villain', chips: 1000 }],
+      0, BIG_BLIND,
+    );
+    const result = game.allIn('hero');
+    expect(result.error).toBeUndefined();
+    const hero = game.players.find(p => p.id === 'hero');
+    expect(hero.chips).toBe(0);
+    expect(hero.status).toBe('allin');
+  });
+});
+
 describe('对手全下后，剩余唯一可行动玩家不应被重复要求操作', () => {
   it('短码方全下、长码方跟注后仍有余额，应直接自动摊牌，不再弹出行动机会', () => {
     const game = new GameEngine(makePlayers(2, 1000), 0, BIG_BLIND);

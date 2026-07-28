@@ -10,10 +10,29 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
   if (!gameState || gameState.actionPlayerId !== myId || disabled || !me) return null;
 
   const toCall = Math.max(0, gameState.currentBet - me.bet);
+  // What I'll actually put in if I call — never the raw toCall when it
+  // exceeds my own stack (call() already clamps this server-side; the
+  // button used to just show the unclamped number, reading like "跟注
+  // ¥1000" when the player only has ¥20 left — user feedback, 2026-07-28).
+  const callAmount = Math.min(toCall, me.chips);
   const canCheck = toCall === 0;
   const step = gameState.bigBlind || 20;
   const minRaise = Math.max(gameState.currentBet * 2, gameState.currentBet + step) || step;
-  const maxRaise = me.chips + me.bet;
+  // Capped not just by my own stack but by the deepest stack any other
+  // still-live opponent could ever match — user feedback (2026-07-28):
+  // shoving more than literally anyone at the table could call always just
+  // comes back via the side-pot refund anyway (see GameEngine._endHand),
+  // so offering it as a selectable amount only invites the exact "why did
+  // it look like I bet 1000 when only 95 of it was ever real" confusion
+  // that prompted that fix. p.chips+p.bet is each opponent's own ceiling
+  // this street (same formula the engine itself uses for maxTotal), so an
+  // opponent who's already all-in for less is naturally included at their
+  // own already-fixed ceiling, not excluded.
+  const liveOpponents = gameState.players.filter(p => p.id !== myId && p.status !== 'folded');
+  const opponentCeiling = liveOpponents.length > 0
+    ? Math.max(...liveOpponents.map(p => p.chips + p.bet))
+    : Infinity; // no live opponent to matter — fall back to just my own stack
+  const maxRaise = Math.min(me.chips + me.bet, opponentCeiling);
   const amt = Math.min(maxRaise, Math.max(minRaise, amount ?? minRaise));
 
   // Pot-fraction quick sizing: raise TO (call + a fraction of the pot as it

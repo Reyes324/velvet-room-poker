@@ -793,3 +793,12 @@
 - [x] 56.2 `GameEngine.js` `_endHand()`：真实摊牌（非弃牌获胜）且某层边池只有 1 个人有资格时判定为"纯退还"——金额依然正确计入筹码和 `settle[].net`，但不再加入公开 `winners` 列表；同一人若在别的多人边池真正获胜，不受影响照常出现
 - [x] 56.3 顺带确认设计问题（记入 design.md）：跟注是否按自己后手封顶——已是既有实现，验证过；全下方要不要预先按最短对手身家封顶——不建议，真实德扑规则+多人桌场景下会不公平，边池机制才是标准解法
 - [x] 56.4 新增 1 项 `GameEngine.scenarios.test.js` 用例覆盖用户描述的确切场景，全量单测 189/189
+
+## 57. 加注/全下按场上最长对手身家封顶（用户反馈+讨论确认，2026-07-28）
+
+设计决策见 design.md「加注/全下按场上最长对手身家封顶」。
+
+- [x] 57.1 `GameEngine.js` 新增公开方法 `maxTotalFor(playerId)`；`raise()`/`allIn()` 统一改用它算封顶，`allIn()` 新增"封顶后已不超过当前注额"分支（退化成按封顶跟注，不报错不多推、也不会真的清空自己筹码）
+- [x] 57.2 `ActionBar.jsx`：`maxRaise` 用同一套公式（自己身家 vs 场上还没弃牌对手里最长的那个）；"跟注"按钮金额从直接显示 `toCall` 改成 `Math.min(toCall, 自己身家)`，不再显示一个自己实际跟不到的数字
+- [x] 57.3 联动踩坑：改完引擎后 PVE 20 手烟雾测试报"最多下注"错误——`pveStrategy.pickAction()` 不知道新封顶，会算出被拒绝的数字。修法：`PveSession.aiAction()` 用 `GameEngine.maxTotalFor()` 算出 AI 真实上限，当 `opponentCeiling` 参数传给 `pickAction()`
+- [x] 57.4 新增 6 项 `GameEngine.scenarios.test.js` 用例（heads-up/三人桌两种身家关系、`maxTotalFor()` 直接验证、`allIn()` 两种方向的行为）；新增 1 个 dev fixture（`?states=16`）配合真机 Playwright 截图确认按钮文案和封顶数字。全量单测 195/195

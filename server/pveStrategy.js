@@ -231,6 +231,10 @@ function pickAction(params) {
   const {
     street, holeCards, board = [], equity, toCall, potSize, myChips, position,
     random = Math.random, currentBet = toCall, minRaiseTo,
+    // 场上对手能跟到的最高上限（GameEngine.maxTotalFor 同一套口径）——不
+    // 传就是不设上限，纯向后兼容；PveSession 会传真实值，见 design.md「用
+    // 户反馈：全下应该按场上最长对手的身家封顶」。
+    opponentCeiling = Infinity,
     // 上下文调整，全部可选、默认不生效（向后兼容旧调用方）：
     wasAggressor = false, facingRaise = false,
     opponentFoldToRaiseRate = null, opponentAggressionRate = null,
@@ -261,7 +265,7 @@ function pickAction(params) {
   // 体落点），再夹到 [minRaiseTo, 全下] 之间；夹完发现连最小加注都摸不到
   // 全下（筹码太浅），直接报 allin，不返回一个不合法的加注数字。
   const myBetThisStreet = currentBet - toCall;
-  const maxTotal = myChips + myBetThisStreet;
+  const maxTotal = Math.min(myChips + myBetThisStreet, opponentCeiling);
   const sizeFraction = raiseSizeFraction(street, holeCards, equity, random);
   const fallbackMinRaiseTo = currentBet + Math.max(1, Math.round(potSize * 0.5));
   const wantRaiseTo = Math.round(currentBet + potSize * sizeFraction);
