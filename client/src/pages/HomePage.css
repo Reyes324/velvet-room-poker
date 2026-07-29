@@ -7,6 +7,19 @@
   overflow: hidden;
 }
 
+/* Software keyboard is up (tracked in HomePage.jsx via visualViewport, not
+   dvh — iOS Safari doesn't shrink the layout viewport for the keyboard).
+   Drop out of vertical centering so a tall form (join mode: name + code +
+   buttons) doesn't stay centered against the full, keyboard-including
+   height and get its lower fields covered — top-align instead and allow
+   scrolling, so the focused field's own onFocus scrollIntoView has room to
+   bring it above the keyboard. */
+.home--keyboard-open {
+  align-items: flex-start;
+  overflow-y: auto;
+  padding-top: var(--sp-8);
+}
+
 .home-bg {
   position: absolute;
   inset: 0;

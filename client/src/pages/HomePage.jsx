@@ -12,6 +12,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   const [mode, setMode] = useState(initialCode ? 'join' : null);
   const [error, setError] = useState('');
   const [inviterName, setInviterName] = useState(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   useEffect(() => {
     if (initialCode) {
@@ -19,6 +20,36 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
       setMode('join');
     }
   }, [initialCode]);
+
+  // iOS Safari doesn't shrink the layout viewport (what 100dvh in
+  // HomePage.css tracks) when the software keyboard opens — only the
+  // visual viewport shrinks — so the vertically-centered card stayed
+  // centered against the full, keyboard-including height and the keyboard
+  // could cover the lower fields/buttons entirely, worse in join mode
+  // (name + code + buttons is taller) (user feedback, 2026-07-29).
+  // visualViewport is the one API that actually reports the keyboard-
+  // shrunk height; drop out of centered layout once it shrinks enough to
+  // mean the keyboard is up, rather than a random resize/rotation.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const baseline = vv.height;
+    function onResize() {
+      setKeyboardOpen(vv.height < baseline * 0.75);
+    }
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, []);
+
+  // The visualViewport resize (keyboardOpen flipping true) and the OS
+  // keyboard's own open animation don't land in the same frame — a short
+  // delay lets the keyboard actually finish opening before scrolling, or
+  // this races and can scroll to where the field will be, not where it
+  // currently is.
+  function scrollFieldIntoView(e) {
+    const el = e.target;
+    setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+  }
 
   const { emit, socket } = useSocket({
     'room:joined': ({ code: roomCode, playerId }) => {
@@ -58,7 +89,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   }
 
   return (
-    <div className="home">
+    <div className={`home${keyboardOpen ? ' home--keyboard-open' : ''}`}>
       <div className="home-bg" />
       <div className="home-card">
         <div className="home-logo">翡翠厅</div>
@@ -78,6 +109,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
             maxLength={16}
             onChange={e => { setName(e.target.value); setError(''); }}
             onKeyDown={e => e.key === 'Enter' && mode === 'join' && handleJoin()}
+            onFocus={scrollFieldIntoView}
           />
 
           {mode === 'join' && (
@@ -88,6 +120,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
               maxLength={6}
               onChange={e => { setCode(e.target.value.toUpperCase()); setError(''); }}
               onKeyDown={e => e.key === 'Enter' && handleJoin()}
+              onFocus={scrollFieldIntoView}
               autoFocus
             />
           )}
