@@ -77,6 +77,7 @@ function createServer() {
         settle: result.settle,
         reveals,
       });
+      session.persist(); // 跨会话保留对手画像/历史（design.md「PVE AI 剥削性强化」）
     }
   }
 

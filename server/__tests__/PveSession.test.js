@@ -8,16 +8,60 @@ const { PveSession, AI_ID } = require('../PveSession');
 // pveStrategy's own math (band tables, equity, sizing/allin edge cases) is
 // already covered by its own unit tests.
 let fakeStrategy;
+// Same reasoning as fakeStrategy — a no-op fake store keeps these tests from
+// touching the real on-disk pveProfiles.json (pveStore.js has its own tests
+// for the actual persistence behavior).
+let fakeStore;
 beforeEach(() => {
   fakeStrategy = {
     computeEquity: vi.fn(() => 0.5),
     pickAction: vi.fn(() => ({ action: 'check' })),
   };
+  fakeStore = { loadProfile: vi.fn(() => null), saveProfile: vi.fn() };
 });
 
 function makeSession(opts = {}) {
-  return new PveSession('me', 'Alice', { startingChips: 1000, bigBlind: 20, strategy: fakeStrategy, ...opts });
+  return new PveSession('me', 'Alice', { startingChips: 1000, bigBlind: 20, strategy: fakeStrategy, store: fakeStore, ...opts });
 }
+
+describe('PveSession — 对手画像/牌局历史跨会话持久化（用户反馈 2026-07-30）', () => {
+  it('构造时用 store.loadProfile(humanId) 加载已有画像/历史，而不是从零开始', () => {
+    fakeStore.loadProfile = vi.fn(() => ({
+      oppStats: { totalActions: 10, raises: 5, raiseFacedCount: 4, foldsFacingRaise: 2 },
+      handHistory: [{ handNumber: 1 }],
+    }));
+    const s = makeSession();
+    expect(fakeStore.loadProfile).toHaveBeenCalledWith('me');
+    expect(s.oppStats.totalActions).toBe(10);
+    expect(s.handHistory).toEqual([{ handNumber: 1 }]);
+  });
+
+  it('store 没有该玩家的记录（新对手）时，回退到默认初始值，不抛异常', () => {
+    const s = makeSession();
+    expect(s.oppStats).toEqual({ totalActions: 0, raises: 0, raiseFacedCount: 0, foldsFacingRaise: 0 });
+    expect(s.handHistory).toEqual([]);
+  });
+
+  it('persist() 用当前的 oppStats/handHistory 调用 store.saveProfile(humanId, ...)', () => {
+    const s = makeSession();
+    s.oppStats.totalActions = 3;
+    s.handHistory.push({ handNumber: 1 });
+    s.persist();
+    expect(fakeStore.saveProfile).toHaveBeenCalledWith('me', {
+      oppStats: s.oppStats,
+      handHistory: s.handHistory,
+    });
+  });
+
+  it('persist() 把内存里的 handHistory 也裁剪到最近 200 手，不是只在落盘时裁剪', () => {
+    const s = makeSession();
+    for (let i = 0; i < 210; i++) s.handHistory.push({ handNumber: i });
+    s.persist();
+    expect(s.handHistory.length).toBe(200);
+    expect(s.handHistory[0].handNumber).toBe(10); // oldest 10 entries dropped
+    expect(s.handHistory[199].handNumber).toBe(209);
+  });
+});
 
 describe('PveSession — 初始化', () => {
   it('创建时双方各持初始筹码，人类是庄家（heads-up 庄家/小盲翻前先行动）', () => {
@@ -159,7 +203,7 @@ describe('PveSession — readyNext / 结算与筹码结转', () => {
     expect(s.players.find(p => p.id === AI_ID).debt).toBe(0);
   });
 
-  it('getStateForPlayer 带上 startingChips 和每个玩家的 debt，供客户端账本直接用', () => {
+  it('getStateForPlayer 带上 startingChips 和 ledger（每个玩家的 chips/debt，用手数边界冻结的快照，不是牌局中的实时筹码），供客户端账本直接用', () => {
     const s = makeSession();
     const humanGp = s.game.players.find(p => p.id === 'me');
     humanGp.chips = 0;
@@ -167,8 +211,19 @@ describe('PveSession — readyNext / 结算与筹码结转', () => {
     s.readyNext();
     const state = s.getStateForPlayer('me');
     expect(state.startingChips).toBe(1000);
-    expect(state.players.find(p => p.id === 'me').debt).toBe(1000);
-    expect(state.players.find(p => p.id === AI_ID).debt).toBe(0);
+    expect(state.ledger.find(p => p.id === 'me').debt).toBe(1000);
+    expect(state.ledger.find(p => p.id === 'me').chips).toBe(1000);
+    expect(state.ledger.find(p => p.id === AI_ID).debt).toBe(0);
+  });
+
+  it('getStateForPlayer 的 ledger 用手数边界快照，不受本手已下注的盲注/加注影响（回归：之前用实时筹码导致账本"盈亏总和不为 0"）', () => {
+    const s = makeSession();
+    // Blinds have already been posted into s.game.players[].chips for the
+    // NEW hand (post-readyNext), but s.players (ledger source) shouldn't
+    // move until the hand ends and _dealNewHand() re-syncs it.
+    const state = s.getStateForPlayer('me');
+    const totalLedgerChips = state.ledger.reduce((sum, p) => sum + p.chips, 0);
+    expect(totalLedgerChips).toBe(2000); // 2x startingChips, blinds notwithstanding
   });
 });
 

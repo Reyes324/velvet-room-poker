@@ -133,6 +133,15 @@ const DRY_BOARD_BLUFF_BOOST = 0.12; // 干燥面更适合诈唬（对手很少�
 const WET_BOARD_BLUFF_PENALTY = 0.12; // 湿润面（同花/顺子听牌多）诈唬不划算：胜率偏低时，把这么多概率从 raise 挪回 fold
 const BLUFF_EQUITY_CEILING = 0.40;  // 板面纹理只影响"这是不是诈唬"这类决策——胜率高于这个值就是真价值下注，不该被板面干湿改变要不要下注
 
+// 位置调整（用户反馈"经常能赢"后新增，2026-07-30）：`position` 参数此前一直
+// 算出来传进 pickAction，却从没被消费——IP（庄家位，后行动，信息优势）该打
+// 得比 OOP 更宽、续注更有信心；OOP 面对加注（先行动，信息劣势，跟注后还要
+// 再多扛一条街）该更谨慎。三条都是独立、具名的调整量，跟上面几条上下文调整
+// 同一个模式，不是散落的魔法数字。
+const IP_PREFLOP_OPEN_BOOST = 0.08;  // IP 翻前开池（未面对真实加注）比 OOP 打得更宽：把这么多概率从 fold 挪去 raise
+const IP_CBET_EXTRA_BOOST = 0.10;    // IP 续注比 OOP 续注更有效（对手要在信息劣势下先动）：在已有的续注加成之上再多给一点
+const OOP_FACING_RAISE_TIGHTEN = 0.08; // OOP 面对加注比 IP 更该谨慎：在已有的"面对真实加注"调整之上再多收紧
+
 // 板面干湿判断：只看两个最主要的驱动因素——是否已经有同花听牌（2 张以上
 // 同花色公共牌）、牌面是否连张（存在两张公共牌点数相差 ≤4，順子听牌密
 // 度高）。刻意不看对子（成同花顺/葫芦的次要因素，MVP 简化不计）——二元
@@ -161,14 +170,25 @@ function adjustDistribution(dist, deltas) {
   return sum === 0 ? dist : { fold: fold / sum, call: call / sum, raise: raise / sum };
 }
 
-function contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate }) {
+function contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate, position }) {
   const deltas = { fold: 0, call: 0, raise: 0 };
+  const ip = position === 'ip';
+
+  // 翻前开池：IP 没面对真实加注时打得更宽，OOP 维持基线不变。
+  if (street === 'preflop' && ip && !facingRaise) {
+    deltas.fold -= IP_PREFLOP_OPEN_BOOST;
+    deltas.raise += IP_PREFLOP_OPEN_BOOST;
+  }
 
   // 续注（c-bet）：上条街是自己在加注、这条街轮到自己且没人下注——不管翻牌
   // 有没有连到，真实玩家大概率会延续攻势，不是每条街都从零重新算胜率。
   if (street !== 'preflop' && wasAggressor && toCall === 0) {
     deltas.call -= CBET_RAISE_BOOST;
     deltas.raise += CBET_RAISE_BOOST;
+    if (ip) {
+      deltas.call -= IP_CBET_EXTRA_BOOST;
+      deltas.raise += IP_CBET_EXTRA_BOOST;
+    }
   }
 
   // 板面干湿：只在"这手牌明显不是真价值"（胜率偏低，raise 只能是诈唬）
@@ -191,6 +211,10 @@ function contextDeltas({ street, board, equity, toCall, wasAggressor, facingRais
   if (facingRaise) {
     deltas.call -= FACING_RAISE_FOLD_BOOST;
     deltas.fold += FACING_RAISE_FOLD_BOOST;
+    if (!ip) {
+      deltas.call -= OOP_FACING_RAISE_TIGHTEN;
+      deltas.fold += OOP_FACING_RAISE_TIGHTEN;
+    }
 
     if (opponentAggressionRate != null) {
       const bump = (opponentAggressionRate - 0.35) * CALL_VS_AGGRO_SCALE;
@@ -243,7 +267,7 @@ function pickAction(params) {
   const baseDist = street === 'preflop'
     ? PREFLOP_TABLE[preflopTier(holeCards)]
     : bandFor(equity);
-  const deltas = contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate });
+  const deltas = contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate, position });
   const dist = adjustDistribution(baseDist, deltas);
 
   // 白看（toCall===0）时不可能弃牌——把 fold 的概率吸收进 call（此时等价

@@ -1,5 +1,6 @@
 const { GameEngine } = require('./GameEngine');
 const pveStrategy = require('./pveStrategy');
+const { defaultStore, MAX_HAND_HISTORY } = require('./pveStore');
 
 const AI_ID = '__ai__';
 const AI_NAME = '电脑';
@@ -13,7 +14,7 @@ const AI_NAME = '电脑';
 // the only new part is that the AI seat's actions come from pveStrategy
 // instead of a socket message.
 class PveSession {
-  constructor(humanId, humanName, { startingChips = 1000, bigBlind = 20, strategy = pveStrategy } = {}) {
+  constructor(humanId, humanName, { startingChips = 1000, bigBlind = 20, strategy = pveStrategy, store = defaultStore } = {}) {
     this.humanId = humanId;
     this.aiId = AI_ID;
     this.startingChips = startingChips;
@@ -23,6 +24,14 @@ class PveSession {
     // separately; this class only needs to prove it calls the strategy
     // correctly and executes whatever it returns.
     this.strategy = strategy;
+    // Same injectable-for-tests reasoning as `strategy` above — see
+    // pveStore.js. `humanId` doubles as the persistent cross-session key
+    // (it's the client's `vr_playerId`, not a per-session id), so a
+    // returning opponent on the same browser picks up right where their
+    // profile/history left off instead of both resetting to zero every
+    // session (用户反馈 2026-07-30：AI 应该"记住"这个对手一直以来的打法倾向).
+    this.store = store;
+    const saved = this.store.loadProfile(humanId);
     this.players = [
       { id: humanId, name: humanName, chips: startingChips, debt: 0 },
       { id: AI_ID, name: AI_NAME, chips: startingChips, debt: 0 },
@@ -34,19 +43,29 @@ class PveSession {
     // session 打完都不知道自己对电脑到底是赢是输——"电脑也算是一个玩家"，
     // 应该跟真人牌局一样：每次补满算一次新的买入（debt），最终盈亏 = 当前
     // 筹码 − 总买入，用同一套 LedgerModal/账本逻辑（见 RoomManager.rebuy）。
-    this.handHistory = [];
-    // Running read on the human's tendencies across the WHOLE session (not
-    // reset per hand) — user feedback (2026-07-28) was that the AI played
-    // "too easy to read"; part of the fix is having it actually adapt to
-    // how this specific opponent plays, not just re-run the same static
-    // tables forever. Gated behind a minimum sample size in
-    // _opponentReads() below so early hands (no real signal yet) don't
-    // overfit to noise.
-    this.oppStats = { totalActions: 0, raises: 0, raiseFacedCount: 0, foldsFacingRaise: 0 };
+    this.handHistory = saved?.handHistory ?? [];
+    // Running read on the human's tendencies — NOW persisted across
+    // sessions/process restarts (not just within one session, as before
+    // 2026-07-30), keyed by humanId via `store`. Gated behind a minimum
+    // sample size in _opponentReads() below so early hands (no real signal
+    // yet) don't overfit to noise.
+    this.oppStats = saved?.oppStats ?? { totalActions: 0, raises: 0, raiseFacedCount: 0, foldsFacingRaise: 0 };
     // For the idle-session reaper (server/index.js) — same touch()
     // convention Room already uses, not a bare property poked from outside.
     this.lastActivityAt = Date.now();
     this._dealNewHand();
+  }
+
+  // Called by index.js once per completed hand (mirrors where
+  // handHistory.push already happens) — persists the running opponent
+  // profile and hand history so they survive a disconnect/process restart.
+  // Trimming handHistory here (not just in pveStore.saveProfile) also caps
+  // its in-memory size for long-running sessions, not just the on-disk copy.
+  persist() {
+    if (this.handHistory.length > MAX_HAND_HISTORY) {
+      this.handHistory = this.handHistory.slice(-MAX_HAND_HISTORY);
+    }
+    this.store.saveProfile(this.humanId, { oppStats: this.oppStats, handHistory: this.handHistory });
   }
 
   touch() {
@@ -195,14 +214,21 @@ class PveSession {
 
   getStateForPlayer(playerId) {
     const state = this.game.getStateForPlayer(playerId);
-    // GameEngine has no concept of debt/买入 — it's a session-level ledger
-    // fact, not a hand-level one — so merge it in here, same shape
-    // LedgerModal already expects from roomState.players.
+    // Bug fix (用户反馈 2026-07-30): state.players[].chips is the LIVE
+    // in-hand engine state (already net of this hand's posted blinds/bets —
+    // correct for table rendering, where a stack visibly shrinks as you
+    // bet). The ledger must NOT read chips from there: mid-hand, whatever's
+    // currently sitting in this.game.pot is subtracted from both players'
+    // live chips but isn't a real loss yet, so it looked like chips had
+    // vanished (¥2000 total in, but live chips summed to less while a hand
+    // was in progress). RoomManager avoids this the same way — its
+    // getLobbyState() (ledger source) reads its OWN this.players, frozen at
+    // hand boundaries by _syncChips, entirely separate from
+    // getStateForPlayer() (live, for the table). Mirror that split here:
+    // state.players stays live/untouched; the ledger gets its own field
+    // sourced from this.players (only synced in _dealNewHand/_syncChipsFromGame).
     state.startingChips = this.startingChips;
-    state.players = state.players.map(p => ({
-      ...p,
-      debt: this.players.find(x => x.id === p.id)?.debt || 0,
-    }));
+    state.ledger = this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0 }));
     return state;
   }
 }

@@ -4,6 +4,7 @@ import GameTable from '../components/GameTable';
 import SettlementModal from '../components/SettlementModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
+import PveStatsModal from '../components/PveStatsModal';
 
 // Same pacing as RoomPage's real-showdown reveal — see that file's own
 // comment. Duplicated rather than imported: it's one constant, and PVE is
@@ -30,6 +31,7 @@ export default function PvePage({ playerName, onLeave }) {
   const [actionDisabled, setActionDisabled] = useState(false);
   const [showLedger, setShowLedger] = useState(false);
   const [showHandHistory, setShowHandHistory] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
   const settlementTimerRef = useRef(null);
 
@@ -115,10 +117,11 @@ export default function PvePage({ playerName, onLeave }) {
         settlementOpen={!!settlement}
         onOpenLedger={() => setShowLedger(true)}
         onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
+        onOpenStats={() => { emit('pve:get-hand-history'); setShowStats(true); }}
       />
       {showLedger && (
         <LedgerModal
-          players={gameState.players}
+          players={gameState.ledger}
           startingChips={gameState.startingChips ?? 1000}
           myId={me?.id}
           onClose={() => setShowLedger(false)}
@@ -129,6 +132,15 @@ export default function PvePage({ playerName, onLeave }) {
           hands={handHistory}
           myId={me?.id}
           onClose={() => setShowHandHistory(false)}
+        />
+      )}
+      {showStats && (
+        <PveStatsModal
+          hands={handHistory}
+          myId={me?.id}
+          ledgerEntry={gameState.ledger?.find(p => p.id === me?.id)}
+          startingChips={gameState.startingChips ?? 1000}
+          onClose={() => setShowStats(false)}
         />
       )}
       {settlement && settlement.winners?.length > 0 && (

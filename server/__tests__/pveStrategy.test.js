@@ -199,6 +199,55 @@ describe('pveStrategy — 上下文调整（2026-07-28 用户反馈"很容易猜
   });
 });
 
+describe('pveStrategy — 位置调整（用户反馈"经常能赢"后新增，2026-07-30：position 参数此前只传入未消费）', () => {
+  // trash table, toCall>0 (blind differential only, not a real raise) so no
+  // merge: fold=[0,0.70), call=[0.70,0.90), raise=[0.90,1). r=0.85 lands in
+  // call at baseline for both positions — proving IP's wider open is what
+  // pushes it into raise, not coincidence.
+  it('翻前开池：同一手弱牌，IP 比 OOP 更容易加注（未面对真实加注）', () => {
+    const base = {
+      street: 'preflop', holeCards: ['7s', '2d'], toCall: 20, potSize: 30, myChips: 1000,
+      random: () => 0.85, facingRaise: false,
+    };
+    const oop = pickAction({ ...base, position: 'oop' });
+    const ip = pickAction({ ...base, position: 'ip' });
+    expect(oop.action).not.toBe('raise');
+    expect(ip.action).toBe('raise');
+  });
+
+  it('翻前面对真实加注时，IP 的开池加成不生效（facingRaise=true）', () => {
+    const base = {
+      street: 'preflop', holeCards: ['7s', '2d'], toCall: 100, potSize: 30, myChips: 1000,
+      random: () => 0.85, facingRaise: true, position: 'ip',
+    };
+    const a = pickAction(base);
+    expect(a.action).not.toBe('raise'); // 面对真实加注，IP 也不该拿垃圾牌加注
+  });
+
+  // Band for equity=0.3: fold 0.55/call 0.35/raise 0.10, toCall===0 so fold
+  // merges into call. Baseline c-bet boost alone: call=[0,0.65), raise=[0.65,1).
+  // With IP's extra c-bet boost: call=[0,0.55), raise=[0.55,1). r=0.60 sits
+  // in between — call for OOP (baseline), raise for IP (boosted).
+  it('续注：同样是续注局面，IP 比 OOP 更容易把续注延续成加注', () => {
+    const base = { street: 'flop', equity: 0.3, toCall: 0, potSize: 300, myChips: 1000, wasAggressor: true, random: () => 0.60 };
+    const oop = pickAction({ ...base, position: 'oop' });
+    const ip = pickAction({ ...base, position: 'ip' });
+    expect(oop.action).not.toBe('raise');
+    expect(ip.action).toBe('raise');
+  });
+
+  // Band for equity=0.5: fold 0.15/call 0.55/raise 0.30, toCall>0 (no merge).
+  // IP (only base facingRaise boost): fold=[0,0.25). OOP (+ extra tighten):
+  // fold=[0,0.33). r=0.30 sits in between — call for IP, fold for OOP.
+  it('面对加注：同样的局面，OOP 比 IP 更容易弃牌', () => {
+    const base = { street: 'flop', equity: 0.5, toCall: 100, potSize: 300, myChips: 1000, facingRaise: true, random: () => 0.30 };
+    const ip = pickAction({ ...base, position: 'ip' });
+    const oop = pickAction({ ...base, position: 'oop' });
+    expect(ip.action).not.toBe('fold');
+    expect(oop.action).toBe('fold');
+  });
+});
+
 describe('pveStrategy — boardTexture', () => {
   it('彩虹、不连张的公共牌判为干燥面', () => {
     expect(boardTexture(['2s', '7d', 'Kc'])).toBe('dry');

@@ -539,6 +539,23 @@
 .ledger-cell--net.net-neutral { color:#8A9C8C; }
 .ledger-note { font-family:var(--font-body); font-size:11px; color:var(--text-secondary); text-align:center; line-height:1.5; }
 
+/* ── PVE 战绩面板（用户反馈"AI 经常能赢"后新增，2026-07-30） ─────────── */
+.stats-modal { width:min(92vw, 360px); }
+.stats-summary { width:100%; display:flex; justify-content:space-between; padding:14px 4px; border-bottom:1px solid rgba(212,175,55,.12); }
+.stats-summary-item { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.stats-summary-label { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); letter-spacing:1px; }
+.stats-summary-value { font-family:var(--font-amount); font-size:18px; font-weight:700; color:var(--text-primary); }
+.stats-summary-value.net-win { color:var(--state-safe); }
+.stats-summary-value.net-lose { color:var(--state-danger); }
+.stats-summary-value.net-neutral { color:#8A9C8C; }
+.stats-section-title { align-self:flex-start; font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); letter-spacing:1.5px; margin-top:4px; }
+.stats-fold-bars { width:100%; display:flex; flex-direction:column; gap:8px; }
+.stats-fold-row { display:grid; grid-template-columns:36px 1fr 20px; gap:8px; align-items:center; }
+.stats-fold-label { font-family:var(--font-body); font-size:12px; color:var(--text-secondary); }
+.stats-fold-bar-track { height:8px; border-radius:5px; background:rgba(255,255,255,.06); overflow:hidden; }
+.stats-fold-bar-fill { height:100%; border-radius:5px; background:linear-gradient(90deg,var(--gold-200),#D4AF37); }
+.stats-fold-count { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); text-align:right; }
+
 /* ── HAND HISTORY PANEL（牌局记录 — 结果摘要，不是逐动作回放） ──
    Full-screen page that slides in from the right, not a centered modal —
    a session's worth of hands needs real scrolling room; the small shared
