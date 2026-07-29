@@ -161,13 +161,6 @@
   text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   min-width:0; flex:0 1 auto;
 }
-/* Was appended straight into .seat-name's own text ("{name}（我）"), sharing
-   its ellipsis-truncated width budget with the actual name — on a 4-char
-   name that left barely 1-2 characters visible before truncating (user
-   feedback, 2026-07-29). Own non-shrinking element instead, so the name
-   keeps its full width and "我" always shows in full regardless of name
-   length. */
-.seat-me-tag { flex:0 0 auto; font-family:var(--font-mono); font-size:10px; font-weight:700; color:var(--gold-300); }
 .avatar-card {
   width:56px; border-radius:10px; position:relative;
   border:2px solid rgba(212,175,55,.18); background:#0A1A0E;
@@ -466,7 +459,11 @@
    underneath is less obvious, but still reads as "black box" rather than
    "part of this room" (user feedback, 2026-07-29). Same fix: the existing
    --surface-raised/--surface-base pairing instead of an invented tone. */
-.modal { width:318px; background:linear-gradient(145deg,var(--surface-raised),var(--surface-base)); border:1px solid rgba(212,175,55,.32); border-radius:22px; padding:24px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:13px; box-shadow:0 24px 80px rgba(4,14,7,.65); animation:modalPop .35s cubic-bezier(.34,1.56,.64,1); }
+/* min(90vw, 340px), not a flat px width — on a narrow phone (~375px) a
+   fixed 318px left ~28px of dead margin on each side while the modal's own
+   text sat cramped inside; scaling with the viewport claims that margin
+   back for content instead (user feedback, 2026-07-29). */
+.modal { width:min(90vw, 340px); background:linear-gradient(145deg,var(--surface-raised),var(--surface-base)); border:1px solid rgba(212,175,55,.32); border-radius:22px; padding:24px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:13px; box-shadow:0 24px 80px rgba(4,14,7,.65); animation:modalPop .35s cubic-bezier(.34,1.56,.64,1); }
 @keyframes modalPop { from{opacity:0;transform:scale(.85);} to{opacity:1;transform:scale(1);} }
 .modal-title { font-family:var(--font-display); font-size:11px; color:#D4AF37; letter-spacing:4px; text-transform:uppercase; }
 .modal-winner-av { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--text-primary); border:2px solid #D4AF37; box-shadow:0 0 0 5px rgba(212,175,55,.2), 0 0 40px rgba(212,175,55,.7); }
@@ -502,7 +499,7 @@
 /* Paired side-by-side with .modal-btn-danger inside .modal-btns — matches
    its height/size instead of .modal-btn's own full-width dimensions. */
 .modal-btn--paired { width:auto; flex:1; height:46px; font-size:13px; margin-top:0; }
-.modal-body { font-family:var(--font-body); font-size:14px; color:#8A8A7A; text-align:center; line-height:1.5; }
+.modal-body { font-family:var(--font-body); font-size:15px; color:#8A8A7A; text-align:center; line-height:1.5; }
 .modal-btns { display:flex; gap:9px; width:100%; }
 /* flex:1 lives on .modal-btns' children, not the bare classes — .modal
    itself is a COLUMN flex container, so flex:1 directly on a bare
@@ -524,21 +521,23 @@
 .menu-row--danger { color:#E08080; }
 
 /* ── LEDGER MODAL（初始筹码/已借入/当前筹码/盈亏） ─────────── */
-.ledger-modal { width:356px; }
+/* Same min(vw, px) reasoning as .modal above — this one carries a 5-column
+   table, so it gets a wider ceiling to give the numbers more room. */
+.ledger-modal { width:min(96vw, 400px); }
 .ledger-table { width:100%; display:flex; flex-direction:column; gap:6px; }
 .ledger-head-row, .ledger-row { display:grid; grid-template-columns:1.35fr 0.7fr 0.7fr 0.85fr 0.9fr; gap:4px; align-items:center; }
-.ledger-head-row { font-family:var(--font-mono); font-size:8px; color:var(--text-secondary); letter-spacing:1px; padding:0 8px; }
+.ledger-head-row { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); letter-spacing:1px; padding:0 8px; }
 .ledger-row { padding:8px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:9px; }
 .ledger-row.hero { background:rgba(212,175,55,.08); border-color:rgba(212,175,55,.16); }
-.ledger-name { font-family:var(--font-body); font-size:12px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ledger-name { font-family:var(--font-body); font-size:13px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ledger-left-tag { margin-left:6px; font-family:var(--font-mono); font-size:8px; color:#8A8A7A; background:rgba(255,255,255,.06); border-radius:5px; padding:1px 5px; }
-.ledger-cell { font-family:var(--font-amount); font-size:11px; color:#C8BC9E; text-align:right; }
+.ledger-cell { font-family:var(--font-amount); font-size:12px; color:#C8BC9E; text-align:right; white-space:nowrap; }
 .ledger-cell--debt { color:#E08A4A; }
 .ledger-cell--net { font-weight:700; }
 .ledger-cell--net.net-win { color:var(--state-safe); }
 .ledger-cell--net.net-lose { color:var(--state-danger); }
 .ledger-cell--net.net-neutral { color:#8A9C8C; }
-.ledger-note { font-family:var(--font-body); font-size:10px; color:var(--text-secondary); text-align:center; line-height:1.5; }
+.ledger-note { font-family:var(--font-body); font-size:11px; color:var(--text-secondary); text-align:center; line-height:1.5; }
 
 /* ── HAND HISTORY PANEL（牌局记录 — 结果摘要，不是逐动作回放） ──
    Full-screen page that slides in from the right, not a centered modal —

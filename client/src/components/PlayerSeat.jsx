@@ -62,7 +62,6 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
     <div className={seatClass}>
       <div className="seat-name-row">
         <div className="seat-name">{player.name}</div>
-        {isMe && <span className="seat-me-tag">我</span>}
         {badge && <span className="pos-badge">{badge}</span>}
       </div>
       <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>

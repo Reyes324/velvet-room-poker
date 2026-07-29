@@ -240,7 +240,10 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // Winners can differ in which hand they won with (side-pot layers can
   // resolve to different best-hands) — de-dupe by label so a normal
   // single-winner or matching-hand split pot still only shows it once.
-  const handNameLabels = [...new Set((showdown || []).map(w => w.handNameShort).filter(Boolean))];
+  // Full handName ("两对，A和K"), not handNameShort ("两对") — matches what
+  // the settlement modal shows a beat later, so the two don't disagree on
+  // how specific the hand description is (user feedback, 2026-07-29).
+  const handNameLabels = [...new Set((showdown || []).map(w => w.handName).filter(Boolean))];
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
