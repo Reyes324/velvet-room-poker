@@ -418,11 +418,14 @@
 .preset-btn.is-clamped { opacity:.35; cursor:default; }
 .preset-btn.is-clamped:active { opacity:.35; }
 /* Left column (presets + amount readout) and the vertical slider sit side
-   by side. align-items:flex-start (not stretch) on purpose now (user
-   feedback, 2026-07-31): the slider is allowed to run taller than the left
-   column instead of being squeezed down to match it — a short track is
-   hard to drag precisely on. */
-.raise-panel-row { display:flex; gap:9px; align-items:flex-start; }
+   by side, bottom-aligned (user feedback, 2026-07-31): the slider is
+   allowed to run taller than the left column instead of being squeezed
+   down to match it — a short track is hard to drag precisely on — but the
+   extra height should stick out ABOVE the row, not leave dead space below
+   the left column before raise-bottom. flex-end anchors both columns'
+   bottoms to the same line, so raise-bottom can sit right up against the
+   left column with no gap, while only the slider rises higher above it. */
+.raise-panel-row { display:flex; gap:9px; align-items:flex-end; }
 .raise-panel-left { flex:1; display:flex; flex-direction:column; gap:6px; }
 /* Shorter than before (was min-height:56px) now that the +/- nudge buttons
    live inside this box instead of on the slider — a tall box with just a
@@ -439,7 +442,11 @@
    drag adjusts the raise amount instead of scrolling the page on mobile. */
 .raise-vslider { position:relative; flex-shrink:0; width:34px; height:150px; border-radius:17px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.22); touch-action:none; cursor:pointer; }
 .vslider-fill { position:absolute; left:0; right:0; bottom:0; border-radius:17px; background:linear-gradient(180deg,#D4AF37,#9B7410); }
-.vslider-thumb { position:absolute; left:50%; width:30px; height:30px; border-radius:50%; background:#F5E6A0; border:2px solid #D4AF37; box-shadow:0 2px 8px rgba(0,0,0,.4); transform:translate(-50%,50%); pointer-events:none; }
+/* Wider than the 34px track (was 30px, narrower than the track — the
+   track/fill's flat edges peeked out past the circle's curve on both
+   sides). Fully covers the track's width at the thumb's own position now
+   (user feedback, 2026-07-31). */
+.vslider-thumb { position:absolute; left:50%; width:40px; height:40px; border-radius:50%; background:#F5E6A0; border:2px solid #D4AF37; box-shadow:0 2px 8px rgba(0,0,0,.4); transform:translate(-50%,50%); pointer-events:none; }
 .raise-bottom { display:flex; gap:9px; }
 /* Was #203820 on a near-black gradient (~#050D06) — nearly invisible,
    real-device feedback. */
