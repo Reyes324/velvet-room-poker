@@ -440,7 +440,13 @@
    there's real room to drag on (user feedback, 2026-07-31: the old
    arrow-capped version was too cramped). touch-action:none so a vertical
    drag adjusts the raise amount instead of scrolling the page on mobile. */
-.raise-vslider { position:relative; flex-shrink:0; width:34px; height:150px; border-radius:17px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.22); touch-action:none; cursor:pointer; }
+/* margin-bottom pulls just the slider up off the shared flex-end baseline
+   (see raise-panel-row) — raise-panel-left stays flush against
+   raise-bottom below it, but the slider itself keeps a real gap from that
+   button row so a drag ending near the bottom of the track can't clip a
+   button underneath it (user feedback, 2026-07-31: was landing repeated
+   accidental taps on the button right below the track). */
+.raise-vslider { position:relative; flex-shrink:0; width:34px; height:150px; margin-bottom:16px; border-radius:17px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.22); touch-action:none; cursor:pointer; }
 .vslider-fill { position:absolute; left:0; right:0; bottom:0; border-radius:17px; background:linear-gradient(180deg,#D4AF37,#9B7410); }
 /* Wider than the 34px track (was 30px, narrower than the track — the
    track/fill's flat edges peeked out past the circle's curve on both
