@@ -1,7 +1,61 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+
+// Vertical drag slider for fine-tuning the raise amount — replaces the old
+// horizontal −/+ stepper (user feedback, 2026-07-31): that stepper's "+"
+// button sat right next to "确认加注" in the same row, and a slip while
+// nudging the amount could land on "确认加注" instead, committing a raise by
+// accident. A vertical slider on its own side column has no shared edge
+// with any confirm button at all — physically can't misfire into one.
+// Dragging anywhere on the track jumps straight to that position (common
+// slider convention); the two arrow caps nudge by exactly one `step` for
+// precise single increments.
+function VerticalSlider({ min, max, step, value, onChange }) {
+  const trackRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const range = Math.max(1, max - min);
+  const frac = Math.min(1, Math.max(0, (value - min) / range));
+
+  function valueFromClientY(clientY) {
+    const rect = trackRef.current.getBoundingClientRect();
+    // Track fills bottom-up (higher on screen = more money), matching the
+    // physical mental model of a volume/temperature slider.
+    const f = 1 - Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    const raw = min + f * (max - min);
+    return Math.min(max, Math.max(min, Math.round(raw / step) * step));
+  }
+
+  function handlePointerDown(e) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+    onChange(valueFromClientY(e.clientY));
+  }
+  function handlePointerMove(e) {
+    if (!dragging) return; // plain hover (no press yet) must not move the value
+    onChange(valueFromClientY(e.clientY));
+  }
+  function endDrag() { setDragging(false); }
+
+  return (
+    <div className="raise-vslider">
+      <div className="vslider-arrow" onClick={() => onChange(Math.min(max, value + step))}>▲</div>
+      <div
+        className="vslider-track"
+        ref={trackRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <div className="vslider-fill" style={{ height: `${frac * 100}%` }} />
+        <div className="vslider-thumb" style={{ bottom: `${frac * 100}%` }} />
+      </div>
+      <div className="vslider-arrow" onClick={() => onChange(Math.max(min, value - step))}>▼</div>
+    </div>
+  );
+}
 
 // Progressive disclosure: default 3 buttons (fold / call|check / raise▸);
-// tapping raise expands a stepper panel. Styled by shared velvet.css.
+// tapping raise expands a sizing panel. Styled by shared velvet.css.
 export default function ActionBar({ gameState, myId, onAction, disabled }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(null);
@@ -23,13 +77,13 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
   // minRaise approximates the engine's own currentBet+lastRaiseAmount rule
   // (exact for every case that matters here — see raise()'s server-side
   // validation, which is the actual authority) — this has to stay pegged to
-  // a full big blind, not the finer +/- granularity below, or a client-side
-  // "minimum" raise the stepper lets you confirm would get rejected by the
-  // server as under the real minimum.
+  // a full big blind, not the slider's finer granularity below, or a
+  // client-side "minimum" raise the slider lets you confirm would get
+  // rejected by the server as under the real minimum.
   const minRaise = Math.max(gameState.currentBet * 2, gameState.currentBet + bigBlind) || bigBlind;
-  // 用户反馈（2026-07-31）：+/- 步进按大盲（¥20）一档太粗，改成半个大盲
-  // （=小盲，¥10）——只影响这个手动微调的granularity，不影响上面的合法
-  // 最小加注额度。
+  // 用户反馈（2026-07-31）：微调粒度按大盲（¥20）一档太粗，改成半个大盲
+  // （=小盲，¥10）——只影响滑动条/箭头这个手动微调的 granularity，不影响
+  // 上面的合法最小加注额度。
   const step = Math.max(1, Math.round(bigBlind / 2));
   // Capped not just by my own stack but by the deepest stack any other
   // still-live opponent could ever match — user feedback (2026-07-28):
@@ -69,7 +123,6 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
   });
 
   function openRaise() { setAmount(minRaise); setOpen(true); }
-  function adj(d) { setAmount(a => Math.min(maxRaise, Math.max(minRaise, (a ?? minRaise) + d))); }
   function act(action, val) { onAction(action, val); setOpen(false); setAmount(null); }
 
   return (
@@ -84,28 +137,27 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
         </div>
       ) : (
         <div className="ab-raise open">
-          <div className="preset-row">
-            {potPresets.map(p => (
-              <div
-                key={p.label}
-                className={`preset-btn${p.clamped ? ' is-clamped' : (amt === p.value ? ' is-picked' : '')}`}
-                onClick={() => setAmount(p.value)}
-              >
-                {p.label}
+          <div className="raise-panel-row">
+            <div className="raise-panel-left">
+              <div className="preset-row">
+                {potPresets.map(p => (
+                  <div
+                    key={p.label}
+                    className={`preset-btn${p.clamped ? ' is-clamped' : (amt === p.value ? ' is-picked' : '')}`}
+                    onClick={() => setAmount(p.value)}
+                  >
+                    {p.label}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="stepper-row">
-            <div className="stepper">
-              <div className="step-btn" onClick={() => adj(-step)}>−</div>
-              <div className="step-val">¥{amt.toLocaleString()}</div>
-              <div className="step-btn" onClick={() => adj(step)}>+</div>
+              <div className="raise-amount">¥{amt.toLocaleString()}</div>
             </div>
-            <button className="btn b-confirm-raise b-h46" onClick={() => act('raise', amt)}>确认加注</button>
+            <VerticalSlider min={minRaise} max={maxRaise} step={step} value={amt} onChange={setAmount} />
           </div>
           <div className="raise-bottom">
             <button className="btn b-cancel b-h46" onClick={() => setOpen(false)}>← 返回</button>
-            <button className="btn b-allin b-h46" style={{ flex: 1 }} onClick={() => act('raise', maxRaise)}>全下 ALL IN</button>
+            <button className="btn b-allin b-h46" onClick={() => act('raise', maxRaise)}>全下 ALL IN</button>
+            <button className="btn b-confirm-raise b-h46" onClick={() => act('raise', amt)}>确认加注 ¥{amt.toLocaleString()}</button>
           </div>
         </div>
       )}
