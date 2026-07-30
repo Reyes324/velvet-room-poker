@@ -790,6 +790,18 @@
    "画框"视觉。 */
 .table-canvas {
   position:absolute; left:50%; top:50%;
+  /* Opening/closing the raise panel changes .action-bar's natural height,
+     which (being a flex:0 0 auto sibling of .table-zone — see comment
+     above .game-stage .action-bar) shrinks or grows the space .table-zone
+     has left, so useTableScale recomputes a new scaleX/scaleY and this
+     transform snaps to it instantly. That snap is what read as jank/lag
+     right at the moment the panel opened or closed (user feedback,
+     2026-07-31) — smoothing just the transform lets the resize itself
+     stay instant (still driven by the real ResizeObserver measurement, no
+     behavior change) while what's on screen eases into it instead of
+     popping.
+  */
+  transition: transform .25s ease;
 }
 
 /* Pot + community cards center in the vertical channel between the two seat
