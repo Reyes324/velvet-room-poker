@@ -211,6 +211,23 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
 
+  // GameEngine zeroes this.pot the instant a hand ends (the chips already
+  // moved into the winner's stack — see _endHand) and that's the very same
+  // game:state broadcast that flips phase to 'showdown', so gameState.pot
+  // reads ¥0 from the first showdown frame onward. Neither RoomPage nor
+  // PvePage's game:showdown handler threads its own `pot` field (the
+  // pre-payout amount) down into gameState, so freeze the last positive pot
+  // value seen here instead and show that through the reveal/settlement
+  // window — otherwise the felt reads as "the pot vanished" right as the
+  // winner is announced (user feedback, 2026-07-30).
+  const [frozenPot, setFrozenPot] = useState(gameState.pot);
+  // Adjusted directly during render (React's sanctioned pattern for "derive
+  // state from a prop change" — see "You Might Not Need an Effect") rather
+  // than in a useEffect: it only ever needs to happen in lockstep with this
+  // exact render, not as a separate reaction afterward.
+  if (gameState.pot > 0 && gameState.pot !== frozenPot) setFrozenPot(gameState.pot);
+  const displayedPot = isShowdown ? frozenPot : gameState.pot;
+
   // 用户反馈（2026-07-28）：最后一家跟注直接就亮牌了，看不清最后那个动作
   // 气泡（跟注了多少）——根因是"这次动作完成"和"进入摊牌"是同一条
   // game:state 广播里一起到的，没有停顿，摊牌揭示（对手手牌翻开）就跟着
@@ -244,7 +261,19 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // the settlement modal shows a beat later, so the two don't disagree on
   // how specific the hand description is (user feedback, 2026-07-29).
   const handNameLabels = [...new Set((showdown || []).map(w => w.handName).filter(Boolean))];
-  const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled;
+  // !isShowdown matters specifically for the action that ENDS a hand
+  // (fold-to-one-left, or river call straight into showdown): GameEngine
+  // deliberately leaves actionIndex/actionPlayerId untouched in that case
+  // (see its own comment on lastActionSeq — "那一刻已经没有下一个该谁"), so
+  // actionPlayerId still equals the very player who just folded/called.
+  // Combined with the 'game:state' handler resetting actionDisabled back to
+  // false on every broadcast (including this terminal one, which arrives
+  // together with game:showdown before the delayed settlement sheet shows),
+  // myTurn would otherwise flip true again for a beat — resurrecting the
+  // ActionBar for a hand that's already over (user feedback, 2026-07-30:
+  // clicking fold briefly showed the action bar again before the settlement
+  // modal appeared).
+  const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled && !isShowdown;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
   // ── Animation refs (track prev state to compute what's newly visible) ──────
@@ -330,7 +359,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // runs, making the inferred text wrong for any street-ending action (user
   // feedback, 2026-07-28).
   const prevActionSeqRef = useRef(0);
-  const [actionBubbles, setActionBubbles] = useState({});
+  const [actionBubbles, setActionBubbles] = useState({}); // { [id]: { text, key, folded, phase } }
+  // Always-fresh phase, read inside the delayed sweep below instead of the
+  // phase it closed over at schedule time — see that effect's own comment.
+  // Written in its own effect (not directly in the render body) so a ref
+  // mutation never happens during render itself.
+  const currentPhaseRef = useRef(gameState.phase);
+  useEffect(() => { currentPhaseRef.current = gameState.phase; });
 
   useEffect(() => {
     const seq = gameState.lastActionSeq ?? 0;
@@ -348,9 +383,11 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         // Persistent now — no self-clearing timeout. The bubble stays until
         // this same player's status/bet changes again (this effect re-fires
         // and overwrites their entry) or a new street/hand clears everyone
-        // (see the phase-watching effect below).
+        // (see the phase-watching effect below). Tagged with the phase it
+        // happened on — see that effect for why.
         const key = Date.now();
-        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded } }));
+        const phase = gameState.phase;
+        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, phase } }));
       }
     }
     prevActionSeqRef.current = seq;
@@ -372,17 +409,25 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       // 同一次渲染里；不加这个延迟的话，气泡刚被设置就在同一个 commit 里
       // 被这里清掉，浏览器从来没机会真的画出来（用户反馈，2026-07-28：
       // 不只是摊牌，每一条街最后一家的动作气泡都是这样消失的）。
+      //
+      // 只按 phase 标签清，不再无差别清空当前所有非弃牌气泡——这个 effect
+      // 只依赖 gameState.phase，一条街里晚到的动作（比如电脑思考了很久才
+      // 加注）可能发生在这个 timer 已经排上、但还没触发的这段时间里；旧版
+      // 触发时会把"当前这条街刚设置好的气泡"也一并冲掉，因为它不知道那是
+      // 新气泡还是上一条街的旧气泡（用户反馈，2026-07-30：转牌圈电脑加注
+      // 的气泡几乎立刻就消失了）。现在气泡自带 phase 标签，这里只清"标签
+      // 不等于目标街"的那些，同一条街内新设置的气泡永远不会被自己这条街
+      // 的 timer 误伤。
+      const targetPhase = gameState.phase;
       const t = setTimeout(() => {
-        // "弃牌" is a hand-long state, not a street-specific action like a
-        // call/raise — it used to get wiped along with everything else the
-        // moment the street advanced, so a folded player's bubble vanished
-        // even though they were still out for the rest of the hand (user
-        // feedback: looked like the fold indicator disappeared). Keep it
-        // through subsequent streets; every other bubble still clears.
+        // 街已经又往前走了（这个 timer 是给更早的街排的），交给那条更新
+        // 的街自己的 timer 去清，这里不再动手，避免把当前最新街的气泡也
+        // 当成"目标街之外"的东西清掉。
+        if (currentPhaseRef.current !== targetPhase) return;
         setActionBubbles(b => {
           const kept = {};
-          for (const p of gameState.players) {
-            if (p.status === 'folded' && b[p.id]?.folded) kept[p.id] = b[p.id];
+          for (const [id, bub] of Object.entries(b)) {
+            if (bub.folded || bub.phase === targetPhase) kept[id] = bub;
           }
           return kept;
         });
@@ -393,8 +438,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     const key = Date.now();
     for (const p of gameState.players) {
       if (p.bet <= 0) continue;
-      if (p.isSB) seeded[p.id] = { text: `小盲 ¥${p.bet.toLocaleString()}`, key };
-      else if (p.isBB) seeded[p.id] = { text: `大盲 ¥${p.bet.toLocaleString()}`, key };
+      if (p.isSB) seeded[p.id] = { text: `小盲 ¥${p.bet.toLocaleString()}`, key, phase: 'preflop' };
+      else if (p.isBB) seeded[p.id] = { text: `大盲 ¥${p.bet.toLocaleString()}`, key, phase: 'preflop' };
     }
     setActionBubbles(seeded);
   }, [gameState.phase]);
@@ -476,7 +521,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       <div className="table-oval-content">
         <Pot
           street={PHASE_LABEL[gameState.phase] ?? gameState.phase}
-          amount={gameState.pot}
+          amount={displayedPot}
           burst={justShowdown}
           handNameLabel={handNameLabels.length > 0 ? handNameLabels.join(' / ') : null}
         />

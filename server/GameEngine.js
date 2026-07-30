@@ -563,6 +563,7 @@ class GameEngine {
   getPublicState() {
     return {
       phase: this.phase,
+      bigBlind: this.bigBlind,
       pot: this.pot,
       currentBet: this.currentBet,
       communityCards: this.communityCards.map(parseCard),

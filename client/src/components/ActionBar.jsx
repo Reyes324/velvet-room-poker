@@ -16,8 +16,21 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
   // ¥1000" when the player only has ¥20 left — user feedback, 2026-07-28).
   const callAmount = Math.min(toCall, me.chips);
   const canCheck = toCall === 0;
-  const step = gameState.bigBlind || 20;
-  const minRaise = Math.max(gameState.currentBet * 2, gameState.currentBet + step) || step;
+  // bigBlind used to read as undefined here — GameEngine never actually put
+  // it in getPublicState's return value, so this always silently fell back
+  // to the literal 20. Wired through for real now (see GameEngine.js).
+  const bigBlind = gameState.bigBlind || 20;
+  // minRaise approximates the engine's own currentBet+lastRaiseAmount rule
+  // (exact for every case that matters here — see raise()'s server-side
+  // validation, which is the actual authority) — this has to stay pegged to
+  // a full big blind, not the finer +/- granularity below, or a client-side
+  // "minimum" raise the stepper lets you confirm would get rejected by the
+  // server as under the real minimum.
+  const minRaise = Math.max(gameState.currentBet * 2, gameState.currentBet + bigBlind) || bigBlind;
+  // 用户反馈（2026-07-31）：+/- 步进按大盲（¥20）一档太粗，改成半个大盲
+  // （=小盲，¥10）——只影响这个手动微调的granularity，不影响上面的合法
+  // 最小加注额度。
+  const step = Math.max(1, Math.round(bigBlind / 2));
   // Capped not just by my own stack but by the deepest stack any other
   // still-live opponent could ever match — user feedback (2026-07-28):
   // shoving more than literally anyone at the table could call always just
