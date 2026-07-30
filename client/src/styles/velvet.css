@@ -404,7 +404,7 @@
    确认加注 gets the most visual weight since it's the commit action. */
 .b-confirm-raise { flex:2; background:linear-gradient(135deg,#9B7410,#D4AF37); color:#050D06; font-size:14px; font-weight:700; box-shadow:0 4px 18px rgba(212,175,55,.28); }
 .b-cancel { flex:1; background:transparent; color:#4A6E4C; border:1px solid rgba(50,80,52,.2); font-size:12px; }
-.b-allin { flex:1; background:linear-gradient(135deg,#8A2416,#C0392B); color:#F5E6A0; border:1px solid rgba(212,175,55,.5); font-size:13px; font-weight:700; }
+.b-allin { flex:1.4; background:linear-gradient(135deg,#8A2416,#C0392B); color:#F5E6A0; border:1px solid rgba(212,175,55,.5); font-size:13px; font-weight:700; }
 .b-allin:active { filter:brightness(1.15); }
 .ab-raise { display:none; flex-direction:column; gap:6px; }
 .ab-raise.open { display:flex; }
@@ -417,22 +417,29 @@
    it silently look "picked" alongside whichever preset it collided with. */
 .preset-btn.is-clamped { opacity:.35; cursor:default; }
 .preset-btn.is-clamped:active { opacity:.35; }
-/* Left column (presets + big amount readout) and the vertical slider sit
-   side by side; align-items:stretch (flex default) makes the slider match
-   the left column's rendered height automatically — no JS measurement
-   needed. */
-.raise-panel-row { display:flex; gap:9px; }
+/* Left column (presets + amount readout) and the vertical slider sit side
+   by side. align-items:flex-start (not stretch) on purpose now (user
+   feedback, 2026-07-31): the slider is allowed to run taller than the left
+   column instead of being squeezed down to match it — a short track is
+   hard to drag precisely on. */
+.raise-panel-row { display:flex; gap:9px; align-items:flex-start; }
 .raise-panel-left { flex:1; display:flex; flex-direction:column; gap:6px; }
-.raise-amount { flex:1; min-height:56px; display:flex; align-items:center; justify-content:center; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.2); border-radius:14px; font-family:var(--font-amount); font-size:22px; font-weight:700; color:var(--text-primary); }
-.raise-vslider { width:52px; display:flex; flex-direction:column; align-items:center; gap:4px; }
-.vslider-arrow { width:100%; height:26px; display:flex; align-items:center; justify-content:center; font-size:13px; color:#D4AF37; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.2); border-radius:9px; cursor:pointer; flex-shrink:0; }
-.vslider-arrow:active { background:rgba(212,175,55,.18); }
-/* touch-action:none so a vertical drag adjusts the raise amount instead of
-   scrolling the page on mobile — this element's whole purpose IS vertical
-   dragging, so it never needs to hand that gesture to the browser. */
-.vslider-track { position:relative; flex:1; width:14px; border-radius:7px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.22); touch-action:none; cursor:pointer; }
-.vslider-fill { position:absolute; left:0; right:0; bottom:0; border-radius:7px; background:linear-gradient(180deg,#D4AF37,#9B7410); }
-.vslider-thumb { position:absolute; left:50%; width:26px; height:26px; border-radius:50%; background:#F5E6A0; border:2px solid #D4AF37; box-shadow:0 2px 8px rgba(0,0,0,.4); transform:translate(-50%,50%); pointer-events:none; }
+/* Shorter than before (was min-height:56px) now that the +/- nudge buttons
+   live inside this box instead of on the slider — a tall box with just a
+   number in it wasted the height the slider needed more (user feedback,
+   2026-07-31). */
+.raise-amount { display:flex; align-items:center; gap:6px; padding:0 6px; height:44px; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.2); border-radius:14px; }
+.raise-amount-btn { flex-shrink:0; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; color:#D4AF37; background:rgba(212,175,55,.12); cursor:pointer; }
+.raise-amount-btn:active { background:rgba(212,175,55,.24); }
+.raise-amount-val { flex:1; text-align:center; font-family:var(--font-amount); font-size:20px; font-weight:700; color:var(--text-primary); }
+/* Pure drag track now — no arrow caps (those moved onto raise-amount
+   above), and deliberately taller than raise-panel-left's own height so
+   there's real room to drag on (user feedback, 2026-07-31: the old
+   arrow-capped version was too cramped). touch-action:none so a vertical
+   drag adjusts the raise amount instead of scrolling the page on mobile. */
+.raise-vslider { position:relative; flex-shrink:0; width:34px; height:150px; border-radius:17px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.22); touch-action:none; cursor:pointer; }
+.vslider-fill { position:absolute; left:0; right:0; bottom:0; border-radius:17px; background:linear-gradient(180deg,#D4AF37,#9B7410); }
+.vslider-thumb { position:absolute; left:50%; width:30px; height:30px; border-radius:50%; background:#F5E6A0; border:2px solid #D4AF37; box-shadow:0 2px 8px rgba(0,0,0,.4); transform:translate(-50%,50%); pointer-events:none; }
 .raise-bottom { display:flex; gap:9px; }
 /* Was #203820 on a near-black gradient (~#050D06) — nearly invisible,
    real-device feedback. */

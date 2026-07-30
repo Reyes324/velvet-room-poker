@@ -6,9 +6,12 @@ import { useRef, useState } from 'react';
 // nudging the amount could land on "确认加注" instead, committing a raise by
 // accident. A vertical slider on its own side column has no shared edge
 // with any confirm button at all — physically can't misfire into one.
-// Dragging anywhere on the track jumps straight to that position (common
-// slider convention); the two arrow caps nudge by exactly one `step` for
-// precise single increments.
+// Dragging (or tapping) anywhere on the track jumps straight to that
+// position (common slider convention). Single-step nudging lives on the
+// amount readout itself now (see raise-amount below), not on this slider —
+// this stays a pure drag track, tall enough to actually drag precisely on
+// (user feedback, 2026-07-31: the old arrow-capped version was too cramped
+// to drag comfortably).
 function VerticalSlider({ min, max, step, value, onChange }) {
   const trackRef = useRef(null);
   const [dragging, setDragging] = useState(false);
@@ -36,20 +39,16 @@ function VerticalSlider({ min, max, step, value, onChange }) {
   function endDrag() { setDragging(false); }
 
   return (
-    <div className="raise-vslider">
-      <div className="vslider-arrow" onClick={() => onChange(Math.min(max, value + step))}>▲</div>
-      <div
-        className="vslider-track"
-        ref={trackRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      >
-        <div className="vslider-fill" style={{ height: `${frac * 100}%` }} />
-        <div className="vslider-thumb" style={{ bottom: `${frac * 100}%` }} />
-      </div>
-      <div className="vslider-arrow" onClick={() => onChange(Math.max(min, value - step))}>▼</div>
+    <div
+      className="raise-vslider"
+      ref={trackRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+    >
+      <div className="vslider-fill" style={{ height: `${frac * 100}%` }} />
+      <div className="vslider-thumb" style={{ bottom: `${frac * 100}%` }} />
     </div>
   );
 }
@@ -150,7 +149,11 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
                   </div>
                 ))}
               </div>
-              <div className="raise-amount">¥{amt.toLocaleString()}</div>
+              <div className="raise-amount">
+                <div className="raise-amount-btn" onClick={() => setAmount(Math.max(minRaise, amt - step))}>−</div>
+                <div className="raise-amount-val">¥{amt.toLocaleString()}</div>
+                <div className="raise-amount-btn" onClick={() => setAmount(Math.min(maxRaise, amt + step))}>+</div>
+              </div>
             </div>
             <VerticalSlider min={minRaise} max={maxRaise} step={step} value={amt} onChange={setAmount} />
           </div>
