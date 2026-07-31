@@ -4,7 +4,6 @@ import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
 import PvePage from './pages/PvePage';
 import StatesGallery from './StatesGallery';
-import ViewportDebug from './ViewportDebug';
 
 // 人机对战的"回来接着打"只在离开后不太久才有意义——用户反馈（2026-07-31）：
 // 联机房间不一样（房间是共享状态，只要房间还在就该带你回去），但人机对战
@@ -122,12 +121,6 @@ export default function App() {
   const statesParam = new URLSearchParams(window.location.search).get('states');
   if (statesParam !== null) {
     return <StatesGallery index={Number(statesParam) || 0} />;
-  }
-
-  // Temporary — see ViewportDebug.jsx's own comment. Remove once the
-  // iOS-standalone bottom-gap bug (2026-08-01) is actually fixed.
-  if (new URLSearchParams(window.location.search).get('debug') === 'viewport') {
-    return <ViewportDebug />;
   }
 
   if (pveName !== null) {

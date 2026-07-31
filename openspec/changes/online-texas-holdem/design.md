@@ -1322,6 +1322,23 @@ if (active.length < 2) { … return { ended: true, reason: '筹码不足，等�
 
 **验证**：`PveSession.test.js` 新增回归用例，直接断言 `state.ledger` 里所有玩家 `chips` 之和恒等于 `2 × startingChips`；真机 Playwright（先在修复前的代码上跑通同一个用例，复现出 ¥1,960 的错误总和，确认测试真的能抓到这个 bug，再在修复后的代码上跑通验证变回 ¥2,000）验证了牌局进行中（含玩家已跟注/加注、盲注已入池）打开账本，两人筹码之和精确等于 2000。服务端全量单测 197/197 通过；客户端构建通过。
 
+---
+
+## Bug 修复：iOS 主屏幕独立 App 模式下首屏底部白边、需划一下才消失（用户反馈，2026-07-31 起）
+
+**背景**：用户从 iPhone 主屏幕书签（"添加到主屏幕"，即 `apple-mobile-web-app-capable` 的独立 App 模式）打开翡翠厅，首屏底部有一条白边，上下滑一下页面（触发一次布局重排）之后白边就消失了；普通 Safari 标签页里打开不复现。
+
+**已尝试并放弃的方向（均已 revert，记录避免重复踩坑）**：
+1. `overscroll-behavior:none`——猜测是 iOS 橡皮筋回弹露出了页面背景之外的空白，实际只是移除了"划一下能把白边滑走"这个唯一的临时手段，问题本身没解决。
+2. `body{position:fixed;inset:0}` + `#root{height:100%}`——猜测 `100dvh` 计算比真实屏幕矮一截，改成钉死视口四边不依赖任何高度换算；用户反馈重新添加书签后白边依然在，且比第一次改动更严重（约 59pt 未绘制区域），排除"设置没生效/缓存"。两次改动均已 `git revert` 撤回。
+3. 加了一个 `/?debug=viewport` 诊断覆盖层（`ViewportDebug.jsx`），本意是没有 Mac/远程调试环境时直接把 `innerHeight`/`visualViewport`/安全区等真实数值打在屏幕上截图比对，而不是继续盲猜 CSS。最终没有走到"用户截图比对数值"这一步就换了方向查证，本次修复里已删除这个临时组件和 `App.jsx` 里的路由分支。
+
+**根因（查证，非猜测）**：这是 WebKit 一个已被追踪的引擎级 bug，不是这个项目代码写法的问题——iOS Safari 在**独立 App 模式首次启动**时，`window.innerHeight`/`100dvh` 在首帧读到的高度跟实际可见区域不一致（通常偏大），只有等某个会触发布局的事件（滚动、resize）发生后，WebKit 才会重新计算出正确值。项目里靠 `min-height:100dvh`/`height:100dvh` 撑满全屏背景的写法（`global.css` 的 `body`/`#root`、`HomePage.css` 的 `.home`、`RoomPage.css` 的 `.lobby`/`.table-view`、`velvet.css` 的 `.game-stage`），在首次启动这一刻用的正是这个偏大的错误值，背景没能盖满真实可见区域，露出浏览器默认的白色——用户手动划一下之后，WebKit 因为这次滚动触发了重新计算，高度变回正确值，白边随之消失，跟观察到的现象完全吻合。这也解释了为什么第 1、2 次尝试都没用：`overscroll-behavior` 和 `position:fixed` 都没有触碰"WebKit 用什么高度值绘制背景"这个根源，只是在跟症状的表现形式打转。纯 CSS 层面确认无解（`dvh` 本身就是为解决"地址栏收起/展开导致视口高度变化"设计的单位，但它依赖的还是 WebKit 自己算出来的高度值，首帧算错的情况下 `dvh` 一样错）。
+
+**修复**：新增 `client/src/lib/viewportHeight.js`，读 `visualViewport.height`（回退 `innerHeight`）写入 CSS 自定义属性 `--vh`（存 1% 高度，供 `calc(var(--vh) * 100)` 替换 `100dvh` 使用），在 `resize`/`orientationchange`/`visualViewport` 的 `resize` 事件上保持更新；独立 App 模式（`navigator.standalone`）下额外在首帧渲染前（`requestAnimationFrame`）做一次 1px 滚动再滚回原位，主动让 WebKit 立刻重新计算，而不是等用户自己划一下——这一步用户完全不会感知到（发生在渲染帧内，不是可见的滚动动作）。这是同一类 WebKit bug 社区广泛记录的标准公开解法（`--vh` 自定义属性模式），明确记录这是"引擎 bug 的标准 workaround"而不是"根治"——纯 CSS 层面确实没有更干净的办法，这是查证后的结论。5 处受影响的 `100dvh`/`100vh` 声明全部加了 `calc(var(--vh, 1dvh) * 100)` 的第二条声明覆盖原生 `dvh`（保留 `100dvh` 作为无 JS 环境下的兜底）。`.stage-wrap` 用 `position:fixed;inset:0` 已经是钉死在真实视口边缘、不依赖任何高度计算，未受影响、未改动。诊断覆盖层（`ViewportDebug.jsx` 及 `App.jsx` 里对应的路由分支）已随本次修复一并删除。
+
+**验证**：客户端构建通过，服务端全量单测 212/212 通过（未涉及服务端代码）。真机验证还未做——需要用户在实际 iPhone 上重新走一遍"主屏幕书签冷启动"确认白边确实消失，无法在没有真机/远程调试环境的情况下自证。
+
 - **内存存储** → 服务重启丢失所有房间。缓解：提示用户游戏中途不要刷新页面；MVP 阶段可接受。
 - **单进程 Node.js** → 并发房间多时可能成为瓶颈。缓解：小规模使用，无需水平扩展。
 - **无断线重连** → 玩家断网后无法恢复。缓解：自动将断线玩家设为 fold，游戏继续。
