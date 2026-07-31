@@ -788,37 +788,22 @@
    整个屏幕、不受这里的 transform:scale 拉伸影响。这个元素现在只是一块
    透明的定位参考画布，座位/公共牌/底池都相对它摆位，本身不再有独立的
    "画框"视觉。 */
+/* No CSS `transition` on this element's transform (or on any of the
+   counter-scaled descendants below, .table-oval-content/.player-slot/
+   .hero-section) — see useTableScale.js's own comment for why: a plain CSS
+   transition here very nearly worked (smoothed the raise-panel resize) but
+   still let seats visibly wobble off a straight path mid-animation, because
+   scaleX and the derived per-seat counter-scale are two values whose
+   PRODUCT has to stay constant at every instant, and two independently-
+   eased CSS transitions only agree at the two endpoints, not in between
+   (user feedback, 2026-07-31: "not a two-point change, other points mixed
+   in"). useTableScale now tweens scaleX/scaleY together in JS instead, so
+   this transform (and the counter-scale it feeds) are already exactly
+   correct on every single rendered frame — animating them again via CSS on
+   top of that would just double up the easing.
+*/
 .table-canvas {
   position:absolute; left:50%; top:50%;
-  /* Opening/closing the raise panel changes .action-bar's natural height,
-     which (being a flex:0 0 auto sibling of .table-zone — see comment
-     above .game-stage .action-bar) shrinks or grows the space .table-zone
-     has left, so useTableScale recomputes a new scaleX/scaleY and this
-     transform snaps to it instantly. That snap is what read as jank/lag
-     right at the moment the panel opened or closed (user feedback,
-     2026-07-31) — smoothing just the transform lets the resize itself
-     stay instant (still driven by the real ResizeObserver measurement, no
-     behavior change) while what's on screen eases into it instead of
-     popping.
-
-     Not enough on its own, though (user feedback, 2026-07-31 follow-up:
-     start/end still looked mismatched, a jump right at the end): the seats/
-     pot/hero-cards inside this canvas counter-scale by var(--csx)/(--csy) —
-     set as inline custom properties right here — to cancel this element's
-     own non-uniform stretch back down to one uniform factor (see the
-     `csx`/`csy` comment in GameTable.jsx). Custom properties resolve
-     instantly, not through this transition, so without their own matching
-     transition those descendants (.table-oval-content, .player-slot,
-     .hero-section) snapped straight to their FINAL counter-scale the
-     instant React re-rendered, while this element was still gliding toward
-     its own final scale — i.e. the content sized itself for where the
-     canvas was ABOUT to end up, then sat still while the canvas kept
-     visibly resizing around it for another beat. Giving those same
-     descendants their own `transition:transform` (same .25s ease) fixes
-     that: everything now eases together, from the same start to the same
-     end, at the same time.
-  */
-  transition: transform .25s ease;
 }
 
 /* Pot + community cards center in the vertical channel between the two seat
@@ -828,12 +813,12 @@
    the pot doesn't visually center against the WHOLE canvas (which would sit
    too low once the hero's name/chips/cards eat the bottom of it). */
 .table-canvas .table-oval { position:absolute; top:0; left:0; right:0; bottom:200px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; z-index:1; }
-.table-oval-content { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; transform:scale(var(--csx,1), var(--csy,1)); transition:transform .25s ease; }
+.table-oval-content { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; transform:scale(var(--csx,1), var(--csy,1)); }
 /* Seat rail position (left/top) still stretches non-uniformly with the
    canvas so seats spread across the widened table; the seat's own content
    (avatar, cards, badges, action bubble) counters that stretch the same way
    as .table-oval-content above. */
-.table-canvas .player-slot { position:absolute; transform:translate(-50%,-50%) scale(var(--csx,1), var(--csy,1)); transition:transform .25s ease; z-index:5; }
+.table-canvas .player-slot { position:absolute; transform:translate(-50%,-50%) scale(var(--csx,1), var(--csy,1)); z-index:5; }
 .player-slot--hero { z-index: 4; }
 /* Hero's rail seat now renders exactly like every other seat — name above
    avatar-card, badge next to name, chips in the footer — no more hidden
@@ -844,7 +829,7 @@
    now a separate flex sibling outside .table-canvas entirely, so opening the raise
    panel shrinks .table-zone (and therefore the whole table-canvas scale) instead of
    ever overlapping the hero-info pill; no more manual pixel budgeting needed here. */
-.table-canvas .hero-section { position:absolute; bottom:28px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; transform:scale(var(--csx,1), var(--csy,1)); transition:bottom .3s ease, transform .25s ease; }
+.table-canvas .hero-section { position:absolute; bottom:28px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; transform:scale(var(--csx,1), var(--csy,1)); transition:bottom .3s ease; }
 /* .settlement-sheet (bottom-anchored) reaches roughly this far up the
    canvas even after trimming its content down to just the winner — hero's
    cards sit fixed near the very bottom, so without this they'd end up
