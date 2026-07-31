@@ -3,16 +3,6 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* 用户反馈（2026-07-31）：重新添加过书签后白边依然在，排除了"设置没生效"
-   这个猜测——是真的有一块没画到的缺口，不是回弹动画露出来的、也不是缓存
-   问题。根因很可能是 100dvh 在 iOS 独立 App（主屏幕书签）模式下的计算不
-   完全可靠，body 实际渲染的高度比屏幕真实高度矮一点，缺的那一截显示成
-   默认白色。position:fixed + inset:0 不依赖任何视口单位的换算，而是直接
-   跟"当前可视区域"的四条边对齐，不会再有这种"差一点点"的缺口。
-   注意：这比之前只加 overscroll-behavior 更"重"——body 本身不再是可滚动
-   的文档根节点了。已知风险点是 HomePage 处理 iOS 键盘弹出时依赖页面本身
-   能滚动（.home--keyboard-open，见下方），这个改动之后需要真机确认那条
-   路径有没有被连带影响。 */
 html { scroll-behavior: smooth; }
 
 body {
@@ -22,9 +12,8 @@ body {
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.6;
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 body::before {
@@ -41,11 +30,7 @@ button { cursor: pointer; border: none; background: none; }
 input, button { font-family: inherit; }
 a { color: inherit; text-decoration: none; }
 
-/* height:100% (not min-height:100dvh) — body now has a definite height via
-   position:fixed;inset:0 (see body's own comment), so #root should match
-   that exactly rather than separately re-deriving "100dvh" and risking the
-   same shortfall one level down. */
-#root { height: 100%; display: flex; flex-direction: column; }
+#root { min-height: 100dvh; display: flex; flex-direction: column; }
 
 /* ── Desktop: center the mobile-portrait game as a framed column ── */
 @media (min-width: 600px) {
