@@ -3,21 +3,17 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* overscroll-behavior:none — user feedback (2026-07-31, screenshot): iOS's
-   rubber-band overscroll let the whole page get dragged up/down, revealing
-   plain white beyond the page's own background, until manually scrolled
-   back to rest. This suppresses that "bounce past the edge" behavior
-   specifically, without touching whether the page can scroll at all —
-   deliberately NOT pinning html/body with position:fixed/overflow:hidden,
-   which would be a stronger fix but risks breaking HomePage's own
-   keyboard-avoidance scrolling (.home--keyboard-open below relies on the
-   page actually being able to scroll to bring a focused field up above the
-   iOS keyboard, since 100dvh itself doesn't shrink for the keyboard — see
-   that class's own comment). Anywhere content genuinely needs to scroll
-   (hand history, lobby player list, ...) already does it in its own inner
-   overflow-y:auto container (see .hh-content/.lobby-scroll/etc in
-   velvet.css) — unaffected either way. */
-html { scroll-behavior: smooth; overscroll-behavior: none; }
+/* 用户反馈（2026-07-31）：重新添加过书签后白边依然在，排除了"设置没生效"
+   这个猜测——是真的有一块没画到的缺口，不是回弹动画露出来的、也不是缓存
+   问题。根因很可能是 100dvh 在 iOS 独立 App（主屏幕书签）模式下的计算不
+   完全可靠，body 实际渲染的高度比屏幕真实高度矮一点，缺的那一截显示成
+   默认白色。position:fixed + inset:0 不依赖任何视口单位的换算，而是直接
+   跟"当前可视区域"的四条边对齐，不会再有这种"差一点点"的缺口。
+   注意：这比之前只加 overscroll-behavior 更"重"——body 本身不再是可滚动
+   的文档根节点了。已知风险点是 HomePage 处理 iOS 键盘弹出时依赖页面本身
+   能滚动（.home--keyboard-open，见下方），这个改动之后需要真机确认那条
+   路径有没有被连带影响。 */
+html { scroll-behavior: smooth; }
 
 body {
   /* ambient felt — fills desktop margins around the centered portrait stage */
@@ -26,9 +22,9 @@ body {
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.6;
-  min-height: 100dvh;
-  overflow-x: hidden;
-  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
 }
 
 body::before {
@@ -45,7 +41,11 @@ button { cursor: pointer; border: none; background: none; }
 input, button { font-family: inherit; }
 a { color: inherit; text-decoration: none; }
 
-#root { min-height: 100dvh; display: flex; flex-direction: column; }
+/* height:100% (not min-height:100dvh) — body now has a definite height via
+   position:fixed;inset:0 (see body's own comment), so #root should match
+   that exactly rather than separately re-deriving "100dvh" and risking the
+   same shortfall one level down. */
+#root { height: 100%; display: flex; flex-direction: column; }
 
 /* ── Desktop: center the mobile-portrait game as a framed column ── */
 @media (min-width: 600px) {
