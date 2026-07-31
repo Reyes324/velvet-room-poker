@@ -53,6 +53,22 @@ class PveSession {
     // For the idle-session reaper (server/index.js) — same touch()
     // convention Room already uses, not a bare property poked from outside.
     this.lastActivityAt = Date.now();
+    // Mirrors Room.lastShowdown (RoomManager.js) — "stored for reconnection
+    // during settlement wait". Without this, a human who closes/backgrounds
+    // the tab mid-showdown (very easy to do: the settlement sheet only
+    // appears ~1.4s after the hand ends, and a backgrounded mobile tab can
+    // get discarded/reloaded well before that) comes back to a session
+    // that's still sitting in the SAME finished hand (isOver() still true,
+    // readyNext() never got called) — pve:start's resume path re-sends
+    // game:state showing that state, but never re-fires game:showdown,
+    // since that's normally only emitted once, at the moment the hand
+    // actually ended. The client's game:state handler resets its own
+    // showdown/settlement state on every broadcast (see PvePage.jsx), so
+    // without a re-sent game:showdown the UI has nothing left to trigger
+    // the settlement sheet — it sits on "正在比牌…" forever (user feedback,
+    // 2026-07-31, screenshot). set in index.js's pveHandleResult when a
+    // hand ends, cleared in _dealNewHand below when the next one starts.
+    this.lastShowdown = null;
     this._dealNewHand();
   }
 
@@ -82,6 +98,7 @@ class PveSession {
 
   _dealNewHand() {
     this._syncChipsFromGame();
+    this.lastShowdown = null;
     // Solo mode still has no separate "borrow or leave" decision UI to
     // build (unlike multiplayer's 借一底 flow) — a bust just gets topped
     // back up automatically so the human can keep playing without

@@ -154,5 +154,42 @@ describe('集成测试 — PVE 人机对战', () => {
       // chips+bet (their total commitment) sums back to the starting stack.
       expect(fresh.players.every(p => p.chips + p.bet === 1000)).toBe(true);
     });
+
+    it('断线发生在摊牌之后、下一手开始之前 → 重连要重新收到 game:showdown，不能卡在"正在比牌"（用户反馈，2026-07-31）', async () => {
+      const c1 = await connect();
+      const state1 = waitFor(c1, 'game:state');
+      c1.emit('pve:start', { playerName: 'Frank', pveId: 'p-showdown-resume-1' });
+      let s = await state1;
+
+      const showdownPromise = waitFor(c1, 'game:showdown', 15000);
+      let guard = 0;
+      while (guard < 50 && s.phase !== 'showdown') {
+        guard += 1;
+        const isMyTurn = s.players.find(p => p.id === s.actionPlayerId && p.holeCards?.[0]);
+        if (!isMyTurn) { s = await waitFor(c1, 'game:state', 5000); continue; }
+        const me = s.players.find(p => p.id === s.actionPlayerId);
+        const toCall = s.currentBet - me.bet;
+        const nextState = waitFor(c1, 'game:state', 5000);
+        c1.emit('pve:action', { action: toCall > 0 ? 'call' : 'check' });
+        s = await nextState;
+      }
+      const firstShowdown = await showdownPromise;
+
+      // Simulate closing the tab BEFORE the (client-side, 1.4s-delayed)
+      // settlement sheet ever appeared — readyNext() never got called, so
+      // the session is still parked on this exact finished hand.
+      c1.disconnect();
+      await new Promise(r => setTimeout(r, 100));
+
+      const c2 = await connect();
+      const state2 = waitFor(c2, 'game:state');
+      const showdown2 = waitFor(c2, 'game:showdown', 5000);
+      c2.emit('pve:start', { playerName: '', pveId: 'p-showdown-resume-1' });
+      const resumedState = await state2;
+      const resumedShowdown = await showdown2;
+
+      expect(resumedState.phase).toBe('showdown');
+      expect(resumedShowdown.winners).toEqual(firstShowdown.winners);
+    }, 20000);
   });
 });

@@ -45,15 +45,20 @@ function createServer() {
     if (!result || result.error) return;
     pveBroadcastState(session);
     if (result.showdown) {
+      // Stashed on the session (mirrors Room.lastShowdown) so a resume
+      // (pve:start on an existing session — see that handler below) can
+      // re-send this exact payload if the human reconnects before ever
+      // getting past this hand's settlement — otherwise the client is left
+      // waiting on a game:showdown that will never come again. Cleared in
+      // PveSession._dealNewHand() once the next hand actually starts.
+      session.lastShowdown = {
+        winners: result.winners,
+        pot: result.pot,
+        settle: result.settle,
+        foldWin: result.foldWin,
+      };
       const socketId = pveActiveSocket.get(session.humanId);
-      if (socketId) {
-        io.to(socketId).emit('game:showdown', {
-          winners: result.winners,
-          pot: result.pot,
-          settle: result.settle,
-          foldWin: result.foldWin,
-        });
-      }
+      if (socketId) io.to(socketId).emit('game:showdown', session.lastShowdown);
 
       // Mirrors handleActionResult's room.handHistory.push below, but
       // simpler: PVE only ever has the one human viewer, so there's no
@@ -684,6 +689,14 @@ function createServer() {
         session.touch();
       }
       pveBroadcastState(session);
+      // Resuming mid-showdown (session never advanced past the finished
+      // hand because the human closed/backgrounded the tab before its
+      // settlement sheet ever showed) — pveBroadcastState above already
+      // sent the post-showdown game:state, but that alone left the client
+      // stuck on "正在比牌…" forever with nothing to trigger its settlement
+      // flow (see PveSession's lastShowdown comment for the full story).
+      // Re-fire the same game:showdown this hand already sent once.
+      if (session.isOver() && session.lastShowdown) socket.emit('game:showdown', session.lastShowdown);
       pveRunAiLoop(pveId); // heads-up: AI may be dealer/SB and act first, or may owe a move from before the disconnect
     });
 

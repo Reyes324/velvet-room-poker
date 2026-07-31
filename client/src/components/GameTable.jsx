@@ -393,6 +393,32 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     prevActionSeqRef.current = seq;
   }, [gameState]);
 
+  // The action that ENDS a hand (river call straight into showdown, or a
+  // fold-to-one-left) gets tagged with gameState.phase as of THAT broadcast
+  // — which is already 'showdown' by then (GameEngine flips phase inside
+  // the very same fold()/call() dispatch — see its own lastActionSeq
+  // comment). The sweep effect below only clears bubbles tagged with a
+  // phase OTHER than the current one, so a bubble tagged 'showdown' reads
+  // as "belongs to the current street" and is never swept on its own — it
+  // was sitting there through the ENTIRE reveal + settlement sheet,
+  // overlapping the opponent's just-revealed cards (user feedback,
+  // 2026-07-31, screenshot). That last bubble briefly showing right as
+  // showdown starts is deliberate though — see the comment above on
+  // revealPhase (2026-07-28: the reveal itself is delayed exactly so this
+  // bubble gets a beat to be seen before the flip covers it) — so this
+  // can't just hide every showdown bubble on sight, only once it's
+  // overstayed that welcome. settlementOpen (true once the settlement
+  // sheet has actually slid up, ~1.4s later) is the right signal: it's
+  // gone from "this bubble is the whole point of the pause" to "this
+  // bubble is now stale and in the way of the reveal + hand-summary
+  // panel". Fold bubbles stay exempt — a folded player's cards are never
+  // shown, so there's nothing for that bubble to cover.
+  function visibleBubble(id) {
+    const b = actionBubbles[id];
+    if (!b) return undefined;
+    return (settlementOpen && !b.folded) ? undefined : b;
+  }
+
   // Persistent action bubbles represent "what happened this street" — clear
   // them all when the street (or the whole hand) advances, otherwise a
   // "跟注 ¥20" from preflop would still be sitting there during the flop.
@@ -575,7 +601,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             isWinner={winnerNames.has(me.name)}
             gamePhase={revealPhase}
             color={colorForId(me.id)}
-            bubble={actionBubbles[me.id]}
+            bubble={visibleBubble(me.id)}
             poked={pokedSeat?.targetId === me.id}
           />
         </div>
@@ -609,7 +635,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               isWinner={winnerNames.has(p.name)}
               gamePhase={revealPhase}
               color={colorForId(p.id)}
-              bubble={actionBubbles[p.id]}
+              bubble={visibleBubble(p.id)}
               cardsSide={cardsSide}
               bubbleSide={bubbleSide}
               onPoke={() => onPoke?.(p.id)}
