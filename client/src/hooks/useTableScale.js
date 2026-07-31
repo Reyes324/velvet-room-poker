@@ -36,7 +36,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 // cancels the outer scale exactly throughout the whole motion, not just at
 // the start and end. (No CSS `transition` on any of these transforms
 // anymore — see velvet.css.)
-const TWEEN_MS = 250;
+const TWEEN_MS = 180; // 用户反馈（2026-07-31）：250ms 感觉偏慢，缩短一点
 function easeOutCubic(t) { return 1 - (1 - t) ** 3; }
 
 export function useTableScale(containerRef, refW, refH) {

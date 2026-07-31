@@ -9,6 +9,14 @@
     <meta name="theme-color" content="#17331E" />
     <meta name="apple-mobile-web-app-title" content="翡翠厅" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- 用户反馈（2026-07-31，截图）：加到主屏幕后，状态栏那一整条是白的，
+         跟下面深绿色的页面完全不搭。根因：apple-mobile-web-app-capable 只
+         负责"以独立 App 模式打开"，状态栏那一条本身是 iOS 原生绘制的一块
+         区域，默认不透明，页面的 CSS 根本画不到那里——不管 body/html 背景
+         设成什么颜色都没用。要让状态栏"消失"、把这块区域也交给页面自己的
+         内容（配合 viewport-fit=cover）去画，必须显式声明
+         apple-mobile-web-app-status-bar-style 为 black-translucent。 -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>翡翠厅</title>
   </head>

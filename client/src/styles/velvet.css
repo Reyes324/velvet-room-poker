@@ -398,7 +398,7 @@
    感不统一——按钮瞬间跳到位、桌面还在肉眼可见地继续变化，两条"时间线"对
    不上，看起来就像哪里卡了一下、错位了一下。这里给按钮排也加一个短促的
    淡入，让两侧至少同时开始"动起来"，不再是一个瞬间定格、一个还在爬。 */
-.ab-main { display:flex; gap:9px; animation:actionRowIn .18s ease both; }
+.ab-main { display:flex; gap:9px; animation:actionRowIn .14s ease both; }
 @keyframes actionRowIn { from { opacity:0; } to { opacity:1; } }
 .btn { border-radius:26px; font-family:var(--font-display); font-weight:600; display:flex; align-items:center; justify-content:center; letter-spacing:1px; cursor:pointer; transition:opacity .15s; }
 .btn:active { opacity:.75; }
@@ -415,7 +415,7 @@
 .b-allin { flex:1.4; background:linear-gradient(135deg,#8A2416,#C0392B); color:#F5E6A0; border:1px solid rgba(212,175,55,.5); font-size:13px; font-weight:700; }
 .b-allin:active { filter:brightness(1.15); }
 .ab-raise { display:none; flex-direction:column; gap:6px; }
-.ab-raise.open { display:flex; animation:actionRowIn .18s ease both; }
+.ab-raise.open { display:flex; animation:actionRowIn .14s ease both; }
 .preset-row { display:flex; gap:6px; }
 .preset-btn { flex:1; height:38px; border-radius:13px; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.18); color:#C8B888; font-family:var(--font-mono); font-size:12px; display:flex; align-items:center; justify-content:center; letter-spacing:.2px; cursor:pointer; white-space:nowrap; transition:background .15s,border-color .15s,color .15s; }
 .preset-btn:active { opacity:.7; }
