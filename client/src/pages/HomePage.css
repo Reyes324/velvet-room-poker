@@ -155,6 +155,25 @@
 }
 .home-pve-link:active { opacity: .6; }
 
+/* Small, deliberately unobtrusive — top-right corner, well clear of the
+   centered card and .home-pve-link at the bottom. See HomePage.jsx's own
+   comment on why this exists (iOS home-screen "app" mode has no built-in
+   reload). */
+.home-refresh-link {
+  position: absolute;
+  top: max(env(safe-area-inset-top, 0px), var(--sp-4));
+  right: var(--sp-4);
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  opacity: .6;
+  cursor: pointer;
+}
+.home-refresh-link:active { opacity: .3; }
+
 .btn-primary {
   flex: 1;
   height: var(--control-h);

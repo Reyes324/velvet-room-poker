@@ -149,6 +149,14 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
         // 跟多人房间混用。
         <div className="home-pve-link" onClick={() => onPve(name.trim())}>人机对战</div>
       )}
+      {/* 用户反馈（2026-07-31）：加到 iOS 主屏幕的书签是"独立 App"模式打开的
+          （见 index.html 的 apple-mobile-web-app-capable），没有 Safari 那套
+          地址栏/下拉刷新——切到后台再切回来，系统很多时候只是把原来那个
+          网页视图原样唤醒，不会重新请求，停留在上次冷启动时加载的版本。
+          用户不知道怎么"刷新"，这里给一个明确的手动入口。放在最外层、不受
+          mode 影响，任何界面状态下都能点到。GameTable 里游戏进行中也有一个
+          对应的菜单项，同一个诉求。 */}
+      <div className="home-refresh-link" onClick={() => window.location.reload()}>刷新</div>
     </div>
   );
 }
