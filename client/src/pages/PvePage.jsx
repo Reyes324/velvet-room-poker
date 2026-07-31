@@ -47,6 +47,11 @@ export default function PvePage({ playerName, onLeave }) {
       setSettlement(null);
       setActionDisabled(false);
       clearTimeout(settlementTimerRef.current);
+      // Keeps App.jsx's cold-start resume window (PVE_RESUME_WINDOW_MS)
+      // anchored to real activity, not just whenever pve:start last ran —
+      // a session that's been sitting untouched should age out even if the
+      // tab technically never closed (user feedback, 2026-07-31).
+      localStorage.setItem('vr_pveLastActive', String(Date.now()));
     },
     'game:showdown': ({ winners, foldWin }) => {
       setShowdown(winners);

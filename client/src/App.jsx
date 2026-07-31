@@ -5,6 +5,15 @@ import RoomPage from './pages/RoomPage';
 import PvePage from './pages/PvePage';
 import StatesGallery from './StatesGallery';
 
+// 人机对战的"回来接着打"只在离开后不太久才有意义——用户反馈（2026-07-31）：
+// 联机房间不一样（房间是共享状态，只要房间还在就该带你回去），但人机对战
+// 纯粹是自己一个人的会话，隔了很久再打开书签，直接回首页反而更符合直觉，
+// 不用被"上次那盘还没走完"这件事绑住。窗口长度跟服务端 PveSession 的空闲
+// 回收时间（server/index.js 的 PVE_IDLE_TTL_MS）保持一致——超过这个时间，
+// 服务端那边的对局本来就已经被清掉了，客户端再尝试"恢复"也只是拿到一局
+// 全新的，不如干脆回首页，语义更诚实。
+const PVE_RESUME_WINDOW_MS = 30 * 60 * 1000;
+
 export default function App() {
   const [room, setRoom] = useState(null); // { code, playerId, playerName } | { autoJoinCode }
   // Deliberately a separate piece of state from `room`, not folded into it —
@@ -42,9 +51,27 @@ export default function App() {
     // (a saved room session always wins if somehow both markers are stale
     // at once). playerName is passed as '' — server's pve:start resumes an
     // existing session by pveId and ignores the name in that case.
-    if (localStorage.getItem('vr_pveActive') && !room && pveName === null) {
-      setPveName('');
-      return;
+    //
+    // Unlike a multiplayer room (shared state — if the room's still there,
+    // go back to it, full stop, no matter how long it's been), PVE resume
+    // is gated on PVE_RESUME_WINDOW_MS (user feedback, 2026-07-31): it's a
+    // solo session, so coming back well after PVE_RESUME_WINDOW_MS should
+    // land on the home page like any fresh visit, not drag you back into a
+    // hand from ages ago. lastActive is written by PvePage on every
+    // game:state it receives (see that file), so it tracks real activity,
+    // not just "when pve:start last ran".
+    const pveActive = localStorage.getItem('vr_pveActive');
+    const pveLastActive = Number(localStorage.getItem('vr_pveLastActive') ?? 0);
+    if (pveActive && !room && pveName === null) {
+      if (Date.now() - pveLastActive < PVE_RESUME_WINDOW_MS) {
+        setPveName('');
+        return;
+      }
+      // Stale — the server would've already reaped this session anyway
+      // (PVE_IDLE_TTL_MS, same window). Clear the markers so this doesn't
+      // keep re-checking a resume that's never going to happen.
+      localStorage.removeItem('vr_pveActive');
+      localStorage.removeItem('vr_pveLastActive');
     }
 
     if (urlCode && !room) {
@@ -73,17 +100,20 @@ export default function App() {
     // room supersedes it, so a later cold start shouldn't try to resume a
     // PVE session that's no longer the point.
     localStorage.removeItem('vr_pveActive');
+    localStorage.removeItem('vr_pveLastActive');
     window.history.pushState({}, '', '/');
     setRoom(null);
   }
 
   function handlePve(name) {
     localStorage.setItem('vr_pveActive', '1');
+    localStorage.setItem('vr_pveLastActive', String(Date.now()));
     setPveName(name);
   }
 
   function handlePveLeave() {
     localStorage.removeItem('vr_pveActive');
+    localStorage.removeItem('vr_pveLastActive');
     setPveName(null);
   }
 

@@ -3,7 +3,21 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { scroll-behavior: smooth; }
+/* overscroll-behavior:none — user feedback (2026-07-31, screenshot): iOS's
+   rubber-band overscroll let the whole page get dragged up/down, revealing
+   plain white beyond the page's own background, until manually scrolled
+   back to rest. This suppresses that "bounce past the edge" behavior
+   specifically, without touching whether the page can scroll at all —
+   deliberately NOT pinning html/body with position:fixed/overflow:hidden,
+   which would be a stronger fix but risks breaking HomePage's own
+   keyboard-avoidance scrolling (.home--keyboard-open below relies on the
+   page actually being able to scroll to bring a focused field up above the
+   iOS keyboard, since 100dvh itself doesn't shrink for the keyboard — see
+   that class's own comment). Anywhere content genuinely needs to scroll
+   (hand history, lobby player list, ...) already does it in its own inner
+   overflow-y:auto container (see .hh-content/.lobby-scroll/etc in
+   velvet.css) — unaffected either way. */
+html { scroll-behavior: smooth; overscroll-behavior: none; }
 
 body {
   /* ambient felt — fills desktop margins around the centered portrait stage */
@@ -14,6 +28,7 @@ body {
   line-height: 1.6;
   min-height: 100dvh;
   overflow-x: hidden;
+  overscroll-behavior: none;
 }
 
 body::before {
