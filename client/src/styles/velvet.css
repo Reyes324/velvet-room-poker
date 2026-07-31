@@ -391,7 +391,15 @@
    reusing it here keeps every "surface fades to shadow" moment in the app
    consistent instead of each spot inventing its own near-black. */
 .action-bar { position:absolute; bottom:0; left:0; right:0; padding:8px 14px 12px; background:linear-gradient(to top,var(--surface-base) 68%,transparent); z-index:40; animation:slideUp .42s cubic-bezier(.34,1.56,.64,1) both; }
-.ab-main { display:flex; gap:9px; }
+/* 用户反馈（2026-07-31，实测截图逐帧核对）：点"加注▸"/"← 返回"切换时，
+   按钮这一排是 React 直接换挂载的两个不同元素（不是同一个元素切 class），
+   一直是瞬间切换、没有过渡；但上方桌面的缩放是有意做成 ~250ms 缓动的（见
+   useTableScale.js）。逐帧量出来桌面缩放本身是平滑的，问题是这两者的时间
+   感不统一——按钮瞬间跳到位、桌面还在肉眼可见地继续变化，两条"时间线"对
+   不上，看起来就像哪里卡了一下、错位了一下。这里给按钮排也加一个短促的
+   淡入，让两侧至少同时开始"动起来"，不再是一个瞬间定格、一个还在爬。 */
+.ab-main { display:flex; gap:9px; animation:actionRowIn .18s ease both; }
+@keyframes actionRowIn { from { opacity:0; } to { opacity:1; } }
 .btn { border-radius:26px; font-family:var(--font-display); font-weight:600; display:flex; align-items:center; justify-content:center; letter-spacing:1px; cursor:pointer; transition:opacity .15s; }
 .btn:active { opacity:.75; }
 .b-h52 { height:46px; } .b-h46 { height:42px; }
@@ -407,7 +415,7 @@
 .b-allin { flex:1.4; background:linear-gradient(135deg,#8A2416,#C0392B); color:#F5E6A0; border:1px solid rgba(212,175,55,.5); font-size:13px; font-weight:700; }
 .b-allin:active { filter:brightness(1.15); }
 .ab-raise { display:none; flex-direction:column; gap:6px; }
-.ab-raise.open { display:flex; }
+.ab-raise.open { display:flex; animation:actionRowIn .18s ease both; }
 .preset-row { display:flex; gap:6px; }
 .preset-btn { flex:1; height:38px; border-radius:13px; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.18); color:#C8B888; font-family:var(--font-mono); font-size:12px; display:flex; align-items:center; justify-content:center; letter-spacing:.2px; cursor:pointer; white-space:nowrap; transition:background .15s,border-color .15s,color .15s; }
 .preset-btn:active { opacity:.7; }
@@ -802,8 +810,12 @@
    correct on every single rendered frame — animating them again via CSS on
    top of that would just double up the easing.
 */
+/* left/top are set inline (GameTable.jsx) instead of a plain `50%` here —
+   see that inline style's own comment for why (a plain `50%` recomputes
+   instantly off .table-zone's real size, out of sync with the JS-tweened
+   scale). */
 .table-canvas {
-  position:absolute; left:50%; top:50%;
+  position:absolute;
 }
 
 /* Pot + community cards center in the vertical channel between the two seat

@@ -544,6 +544,23 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         className="table-canvas"
         style={{
           width: `${TABLE_REF_W}px`, height: `${TABLE_REF_H}px`,
+          // left/top used to be plain CSS `50%` (see velvet.css comment on
+          // .table-canvas) — the browser recomputes a percentage against
+          // .table-zone's REAL, current pixel size, instantly, the moment
+          // that size changes (the raise panel opening/closing resizes
+          // .table-zone with no transition of its own). scale(tableScaleX,
+          // tableScaleY) is a smooth ~250ms JS tween (useTableScale), but
+          // that instant `50%` recompute doesn't wait for it — so the
+          // whole canvas snapped to its new center FIRST, in one frame, and
+          // only THEN eased its scale from there. User feedback (2026-07-31,
+          // confirmed by scrubbing a screen recording frame-by-frame): "点
+          // 击的瞬间桌布元素突然换了位置，然后再执行动画" — a position jump,
+          // not (just) a scale jank. Deriving left/top from the SAME
+          // tweened tableScaleX/tableScaleY instead keeps position and
+          // scale locked to the same interpolated value on every single
+          // frame — there's no separate "real" size for the browser to
+          // jump to ahead of the animation anymore.
+          left: `${tableScaleX * TABLE_REF_W / 2}px`, top: `${tableScaleY * TABLE_REF_H / 2}px`,
           transform: `translate(-50%, -50%) scale(${tableScaleX}, ${tableScaleY})`,
           '--csx': csx, '--csy': csy,
         }}
