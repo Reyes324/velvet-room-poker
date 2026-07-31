@@ -702,7 +702,7 @@
    出的正是这个背景色，纯黑跟绿呢桌布反差大就是"边框感"的来源。改成跟首
    页同一套调亮后的 token 渐变，两个问题一起解决：大厅背景色系统一；牌桌
    页顶栏/操作栏底下的留白色调跟桌布本身更接近，不再像单独镶了一圈黑框。 */
-.game-stage { position:relative; width:100%; height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:radial-gradient(ellipse at 50% 45%, var(--felt-700) 0%, var(--felt-900) 55%, var(--surface-base) 100%); }
+.game-stage { position:relative; width:100%; height:100dvh; height:calc(var(--vh, 1dvh) * 100); display:flex; flex-direction:column; overflow:hidden; background:radial-gradient(ellipse at 50% 45%, var(--felt-700) 0%, var(--felt-900) 55%, var(--surface-base) 100%); }
 .game-stage .top-bar { position:relative; flex:0 0 auto; padding:14px 14px 10px; padding-top:max(env(safe-area-inset-top,0px),14px); display:flex; justify-content:space-between; align-items:center; z-index:10; }
 
 /* 用户追问（2026-07-28）：桌布边框能不能去掉、纹理是不是该布满全屏。

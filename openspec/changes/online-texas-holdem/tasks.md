@@ -874,3 +874,12 @@
 - [x] 65.1 根因：`PveSession.getStateForPlayer()` 把账本用的 `debt` 合并进了实时牌局 `state.players[].chips`（已扣本手实时下注），账本显示的"当前筹码"因此在牌局进行中偷偷漏掉了 pot 里的钱
 - [x] 65.2 新增独立 `state.ledger` 字段，数据源 `this.players`（只在手数边界同步），`state.players` 恢复为纯实时牌局数据不再被账本借用；`PvePage.jsx` 的 `LedgerModal` 改吃 `gameState.ledger`
 - [x] 65.3 `PveSession.test.js` 新增回归用例断言 `state.ledger` 筹码之和恒为 `2×startingChips`；真机 Playwright 先在修复前代码复现 ¥1,960 的错误总和确认测试有效，再在修复后验证变回 ¥2,000。服务端 197/197 单测通过，客户端构建通过
+
+## 66. Bug 修复：iOS 主屏幕独立 App 模式首屏底部白边（用户反馈，2026-07-31）
+
+设计决策见 design.md「Bug 修复：iOS 主屏幕独立 App 模式下首屏底部白边、需划一下才消失」。此前三轮猜测性修复（overscroll-behavior、position:fixed、强制重排トリック）均已撤回未提交，这次改为先查证根因（WebKit 独立 App 模式首帧视口高度误算的已知引擎 bug）再实现标准 workaround。
+
+- [x] 66.1 新增 `client/src/lib/viewportHeight.js`：读 `visualViewport.height`（回退 `innerHeight`）写入 CSS 自定义属性 `--vh`（1% 高度），监听 `resize`/`orientationchange`/`visualViewport resize` 保持更新；`navigator.standalone` 时首帧前额外做一次不可感知的 1px 滚动+滚回，主动触发 WebKit 重新计算
+- [x] 66.2 `main.jsx` 在 render 前调用 `initViewportHeightFix()`
+- [x] 66.3 5 处受影响的 `100dvh` 声明（`global.css` 的 `body`/`#root`、`HomePage.css` 的 `.home`、`RoomPage.css` 的 `.lobby`/`.table-view`、`velvet.css` 的 `.game-stage`）追加 `calc(var(--vh, 1dvh) * 100)` 覆盖声明，保留原 `100dvh` 作为无 JS 兜底；`.stage-wrap`（`position:fixed;inset:0`，不依赖高度计算）确认无需改动
+- [ ] 66.4 真机验证待用户在实际 iPhone 主屏幕书签冷启动场景确认白边消失（无远程调试环境，无法自证）；客户端构建通过、服务端 211/211 单测通过（未涉及服务端代码）
