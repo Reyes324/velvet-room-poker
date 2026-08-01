@@ -883,4 +883,7 @@
 - [x] 66.2 `main.jsx` 在 render 前调用 `initViewportHeightFix()`
 - [x] 66.3 5 处受影响的 `100dvh` 声明（`global.css` 的 `body`/`#root`、`HomePage.css` 的 `.home`、`RoomPage.css` 的 `.lobby`/`.table-view`、`velvet.css` 的 `.game-stage`）追加 `calc(var(--vh, 1dvh) * 100)` 覆盖声明，保留原 `100dvh` 作为无 JS 兜底；`.stage-wrap`（`position:fixed;inset:0`，不依赖高度计算）确认无需改动
 - [x] 66.4 删除临时诊断覆盖层：`ViewportDebug.jsx` 及 `App.jsx` 里 `/?debug=viewport` 对应的路由分支
-- [ ] 66.5 真机验证待用户在实际 iPhone 主屏幕书签冷启动场景确认白边消失（无远程调试环境，无法自证）；客户端构建通过、服务端 212/212 单测通过（未涉及服务端代码）
+- [x] 66.5 真机验证：`--vh` 修复未解决问题，用户反馈白边依旧，且指出更早版本"只有顶部有白边、不严重"跟现在"底部一大片"明显不是同一严重程度
+- [x] 66.6 按时间线复查 `client/index.html`/`global.css` 全部改动（而非继续猜 CSS），定位真正根因：`995aa4a`（2026-07-31）引入的 `apple-mobile-web-app-status-bar-style: black-translucent` 让 WebView 改成动态算"整屏减安全区"而不是"整屏减固定状态栏"，是 WebKit 首帧视口高度误算 bug 明显更容易触发的场景；此后三轮改动（`overscroll-behavior`/`position:fixed`/`--vh`）都没动过这一行，触发条件从未被移除
+- [x] 66.7 `client/index.html` 移除 `black-translucent`，回退到默认不透明状态栏——用"状态栏没融入深色主题"的视觉代价换掉真实布局 bug，符合 CLAUDE.md「正确性 > 视觉打磨」优先级；`--vh` JS 修复保留作为额外保险。客户端构建通过
+- [ ] 66.8 真机验证待用户在实际 iPhone 主屏幕书签冷启动场景确认白边消失、状态栏回退为普通白条（预期代价）

@@ -9,14 +9,16 @@
     <meta name="theme-color" content="#17331E" />
     <meta name="apple-mobile-web-app-title" content="翡翠厅" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <!-- 用户反馈（2026-07-31，截图）：加到主屏幕后，状态栏那一整条是白的，
-         跟下面深绿色的页面完全不搭。根因：apple-mobile-web-app-capable 只
-         负责"以独立 App 模式打开"，状态栏那一条本身是 iOS 原生绘制的一块
-         区域，默认不透明，页面的 CSS 根本画不到那里——不管 body/html 背景
-         设成什么颜色都没用。要让状态栏"消失"、把这块区域也交给页面自己的
-         内容（配合 viewport-fit=cover）去画，必须显式声明
-         apple-mobile-web-app-status-bar-style 为 black-translucent。 -->
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- 曾在 2026-07-31 短暂设为 black-translucent，让页面接管状态栏区域、
+         配合深色主题——但这个模式下 WebView 要动态算「整屏减安全区」的可视
+         高度，而不是「整屏减一条固定状态栏」，是 WebKit 那个「首帧视口高度
+         算不准、要等一次滚动才修正」的 bug 明显更容易触发、也更严重的场景
+         （2026-08-01 追查：独立 App 模式底部大片白边正是从切到
+         black-translucent 之后才变严重的，此前只有状态栏本身是没适配深色
+         主题的白条，不算功能性 bug）。改回默认（不声明该 meta，等价于
+         default/opaque），换回一条稳定不跳变的原生状态栏，用视觉上的
+         「状态栏没跟深色主题走」换掉一个真实的布局 bug——按项目优先级，
+         正确性优先于这层视觉打磨。 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>翡翠厅</title>
   </head>
