@@ -65,6 +65,19 @@ export default function App() {
     const pveLastActive = Number(localStorage.getItem('vr_pveLastActive') ?? 0);
     if (pveActive && !room && pveName === null) {
       if (Date.now() - pveLastActive < PVE_RESUME_WINDOW_MS) {
+        // Final-review finding (2026-08-02): pveSeatCount defaults to 2 and
+        // was never restored here, so if the server process actually
+        // restarted (routine on this project's Render free-tier hosting —
+        // see CLAUDE.md) while the client still thought it could resume,
+        // pve:start would find no existing session and silently create a
+        // brand-new one at whatever seatCount this cold-start request
+        // happened to send — always 2, downgrading a 4/6/8-seat table to
+        // heads-up with no explanation. Restore the seat count the player
+        // actually chose (handlePve persists it below), falling back to 2
+        // only if the value is missing/invalid.
+        const savedSeatCount = Number(localStorage.getItem('vr_pveSeatCount'));
+        const validSeatCounts = [2, 4, 6, 8];
+        setPveSeatCount(validSeatCounts.includes(savedSeatCount) ? savedSeatCount : 2);
         setPveName('');
         return;
       }
@@ -102,6 +115,7 @@ export default function App() {
     // PVE session that's no longer the point.
     localStorage.removeItem('vr_pveActive');
     localStorage.removeItem('vr_pveLastActive');
+    localStorage.removeItem('vr_pveSeatCount');
     window.history.pushState({}, '', '/');
     setRoom(null);
   }
@@ -109,6 +123,11 @@ export default function App() {
   function handlePve(name, seatCount) {
     localStorage.setItem('vr_pveActive', '1');
     localStorage.setItem('vr_pveLastActive', String(Date.now()));
+    // Persisted alongside vr_pveActive so a cold-start resume (see the
+    // effect above) can request the same table size the player actually
+    // chose, instead of silently falling back to the pveSeatCount state
+    // default (2) on a fresh page load.
+    localStorage.setItem('vr_pveSeatCount', String(seatCount ?? 2));
     setPveName(name);
     setPveSeatCount(seatCount ?? 2);
   }
@@ -116,6 +135,7 @@ export default function App() {
   function handlePveLeave() {
     localStorage.removeItem('vr_pveActive');
     localStorage.removeItem('vr_pveLastActive');
+    localStorage.removeItem('vr_pveSeatCount');
     setPveName(null);
   }
 

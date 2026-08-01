@@ -6,6 +6,12 @@ const { RoomManager } = require('./RoomManager');
 const { parseCard } = require('./GameEngine');
 const { PveSession } = require('./PveSession');
 
+// 固定四档，非法/缺省一律回退单挑——不接受任意人数。Module scope (not
+// re-allocated per pve:start call) and coerced with Number() before the
+// .includes() check below, so a client sending "4" (string) doesn't
+// silently fall back to heads-up just because `"4" !== 4`.
+const VALID_SEAT_COUNTS = [2, 4, 6, 8];
+
 function createServer() {
   const app = express();
   const server = http.createServer(app);
@@ -97,6 +103,17 @@ function createServer() {
   function pveRunAiLoop(pveId) {
     const session = pveSessions.get(pveId);
     if (!session || !session.isAiTurn()) return;
+    // Base 0.5-2s "拟人延迟" (design.md) was tuned for exactly one AI
+    // opponent (heads-up). At 8-max, up to 7 AI seats can each take a turn
+    // per street across up to 4 streets, so the unscaled delay could stack
+    // up to ~a minute of pure waiting in a single hand — final-review
+    // finding (2026-08-02). Scale the delay down as the AI seat count
+    // grows (divided by sqrt of seat count, so heads-up is untouched and
+    // 8-max lands around a third of the original wait) but never below
+    // 300ms, so it still reads as a deliberate "thinking" pause rather
+    // than instant/robotic action.
+    const scale = Math.sqrt(session.aiSeats.length);
+    const delay = Math.max(300, (500 + Math.random() * 1500) / scale);
     setTimeout(() => {
       const s = pveSessions.get(pveId);
       if (!s || !s.isAiTurn()) return;
@@ -104,7 +121,7 @@ function createServer() {
       const r = s.aiAction();
       if (r) pveHandleResult(s, r.result);
       pveRunAiLoop(pveId);
-    }, 500 + Math.random() * 1500); // 拟人延迟 0.5-2s，见 design.md
+    }, delay);
   }
 
   // Sweeps sessions nobody's come back to in a while — mirrors the spirit
@@ -679,9 +696,8 @@ function createServer() {
       let session = pveSessions.get(pveId);
       if (!session) {
         const name = (playerName || '').trim() || '玩家';
-        // 固定四档，非法/缺省一律回退单挑——不接受任意人数。
-        const VALID_SEAT_COUNTS = [2, 4, 6, 8];
-        const count = VALID_SEAT_COUNTS.includes(seatCount) ? seatCount : 2;
+        const numericSeatCount = Number(seatCount);
+        const count = VALID_SEAT_COUNTS.includes(numericSeatCount) ? numericSeatCount : 2;
         session = new PveSession(pveId, name, { seatCount: count });
         session.touch();
         pveSessions.set(pveId, session);

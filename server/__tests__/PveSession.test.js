@@ -326,6 +326,63 @@ describe('PveSession — readyNext / 结算与筹码结转', () => {
   });
 });
 
+describe('PveSession — 庄家轮转（final review 回归：多坐位桌上按钮从不轮转到第 1 位以外）', () => {
+  // Drives whatever hand is currently in progress to a fast, deterministic
+  // end via straight folds (last player standing wins, no showdown needed —
+  // see GameEngine._activePlayers()/its <=1 check), so this test only cares
+  // about dealerIndex bookkeeping across many hands, not real strategy.
+  const foldStrategy = { computeEquity: () => 0.5, pickAction: () => ({ action: 'fold' }) };
+
+  function playHandsAndCollectDealers(seatCount) {
+    const s = new PveSession('me', 'Alice', {
+      startingChips: 1000, bigBlind: 20, strategy: foldStrategy, store: fakeStore, seatCount,
+    });
+    const seenDealers = new Set();
+    for (let hand = 0; hand < s.players.length; hand++) {
+      seenDealers.add(s.dealerIndex);
+      let guard = 0;
+      while (!s.isOver() && guard < 20) {
+        if (s.isAiTurn()) s.aiAction();
+        else s.humanAction('fold');
+        guard += 1;
+      }
+      expect(s.isOver()).toBe(true);
+      if (hand < s.players.length - 1) s.readyNext();
+    }
+    return seenDealers;
+  }
+
+  it('4 人桌：连续 4 手，每个坐位都至少当过一次庄', () => {
+    const seenDealers = playHandsAndCollectDealers(4);
+    expect(seenDealers).toEqual(new Set([0, 1, 2, 3]));
+  });
+
+  it('8 人桌：连续 8 手，每个坐位都至少当过一次庄', () => {
+    const seenDealers = playHandsAndCollectDealers(8);
+    expect(seenDealers).toEqual(new Set([0, 1, 2, 3, 4, 5, 6, 7]));
+  });
+
+  it('单挑（seatCount=2）：新的 (x+1)%2 轮转规则跟改动前的 1-x 产出完全一致的交替序列（不只是代数上相信，是真跑出来对比）', () => {
+    fakeStrategy.pickAction.mockReturnValue({ action: 'fold' }); // AI always folds too — 'check' can be illegal when it's the pre-hand SB facing a toCall
+    const s = makeSession(); // seatCount defaults to 2
+    const dealers = [s.dealerIndex];
+    for (let hand = 0; hand < 5; hand++) {
+      let guard = 0;
+      while (!s.isOver() && guard < 20) {
+        if (s.isAiTurn()) s.aiAction();
+        else s.humanAction('fold');
+        guard += 1;
+      }
+      expect(s.isOver()).toBe(true);
+      s.readyNext();
+      dealers.push(s.dealerIndex);
+    }
+    // Old formula 1-x applied to the same starting sequence would produce
+    // exactly this: 0,1,0,1,0,1 — assert the new (x+1)%2 formula matches it.
+    expect(dealers).toEqual([0, 1, 0, 1, 0, 1]);
+  });
+});
+
 describe('PveSession — 真实策略引擎跑完整局（烟雾测试，不注入假策略）', () => {
   it('用真实 pveStrategy 连续打 20 手，全程不抛异常、不产生非法动作、每手最终都能 showdown 或弃牌结束', () => {
     const s = new PveSession('me', 'Alice', { startingChips: 1000, bigBlind: 20 });

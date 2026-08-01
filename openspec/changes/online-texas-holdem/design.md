@@ -1386,7 +1386,7 @@ if (active.length < 2) { … return { ended: true, reason: '筹码不足，等�
 
 三档账本盈亏总和均精确为 0（等价于 `sum(ledger[].chips) === seatCount × startingChips` 在手数边界成立），三个 page 全程 `pageerror`/console error 均为空数组，摊牌结算弹窗正确出现且赢家结算金额与账本变化一致。**结果：PASS。**
 
-**已知细节/待查**：4 人档账本弹窗里英雄行（"Tester（我）"）的原始 DOM 文本读出来是 `¥1,000−¥1,000¥1,000−¥1,000`，跟 AI 各行统一的 `¥1,000—¥XXX−¥YY` 格式不一致（像是 `LedgerModal` 对"（我）"这一行多拼了一段重复文本节点）。总和验证不受影响（−1000 与其余三家 +1056−10−46 的总和依然精确为 0），本次未深入排查是否是渲染层的小 bug，留给以后顺手看一眼。
+**复核（final review，2026-08-02）**：上一条"已知细节/待查"是误判，已排查清楚，不是 bug。`LedgerModal.jsx` 每行本来就是四个格子（初始/已借/当前/盈亏）依次渲染，原始 DOM 文本提取天然就是四段数字无分隔符拼接；`¥1,000−¥1,000¥1,000−¥1,000` 精确对应 初始=¥1,000、已借=−¥1,000、当前=¥1,000、盈亏=−¥1,000。它跟 AI 各行文本"看起来不一样"，纯粹是因为英雄这一手补过一次买入（`debt>0`），"已借"格子显示的是真实负数金额，而没借过的 AI 行那一格显示的是占位符 `—`——不是 `LedgerModal` 多拼了文本节点，四个格子的渲染逻辑对所有行完全一致（见 `client/src/components/LedgerModal.jsx` 第 30-34 行）。总和验证结论不受影响。
 
 *Step 2（8-max 座位视觉验证）*：同一个 8 人局，等发牌动画/座位飞入动画完全结束（≥1.2s）后，用 `getBoundingClientRect()` 量 8 个 `.player-slot`（含英雄）在 1280×720 视口下的真实渲染坐标，程序化跑视口裁切扫描（`left/top < 0` 或 `right/bottom > viewport`）和两两矩形相交扫描（同 design.md 前述 9-max 密集桌验证用的同一套方法）。实测原始输出：
 
@@ -1410,6 +1410,10 @@ RAW_OVERLAPS=[]
 （数值截断到小数点后 2 位，方便阅读；原始 JSON 精度更高，与本表一致。）第一个 box（英雄座位，43.54px 宽、居中偏下）与其余 7 个 AI 座位（两栏贴边分布，左栏 4 个 `left≈61.44`、右栏 3 个 `left≈1068.37`）全部落在 `[0,1280]×[0,720]` 视口内（`RAW_CLIPPED=[]`），`C(8,2)=28` 对两两矩形相交扫描全部为零重叠（`RAW_OVERLAPS=[]`）。配套截图确认视觉上 7 个 AI 名字互不相同（对应"不放回随机抽取"逻辑）、常规两栏贴边布局在 8 人桌下依然成立，没有触发既有的"密集桌摊牌揭示牌与公共牌重叠"已知限制（这一手没有走到摊牌就已经弃牌收场，该已知限制留在原记录里，本次未新增复现）。**结果：PASS，未发现 clipping/overlap，未发现需要单独立项的 bug。**（复核时重跑同一脚本，坐标与首次验证逐字节一致，确认布局是确定性的、不是偶然通过。）
 
 服务端全量单测 230/230 通过（4 项任务累计新增的测试均在其中）；客户端构建通过（68 模块）。验证脚本本身未提交：一次性脚本实际写在仓库内的 `e2e/_tmp-pve-verify*.spec.js`（外加根目录一个临时 `pve-verify*.config.js`），跑完即删除，`git status` 确认未留痕迹、未纳入版本控制（不是跑在 `/tmp`/scratchpad 下，此前记录有误）。
+
+**final review 复核（2026-08-02）**：final review 提到 `server/__tests__/integration.test.js` 里可能存在一个跟 `room:end-game` 相关的偶发计时 flake（`expected 'playing' to be 'waiting'`）。连续跑了几次 `npm test`（全量套件，含本次新增的 233 个用例）后确认复现：某一次全量跑出现 2 个失败，均在 `integration.test.js`——其中一个正是 `room:end-game → 双方收到 hostEnded 的 game:ended，且筹码不清零` 这条，报错就是 `expected 'playing' to be 'waiting'`；单独只跑 `integration.test.js`（不跟其余 8 个测试文件一起跑）连续 4 次全部 27/27 绿，说明是全量套件下的资源/计时竞态，不是这条用例本身逻辑错。`integration.test.js` 和它依赖的 `RoomManager.js` 均确认不在本分支改动范围内（`git diff --stat` 核对：本分支只碰了 `PveSession.js`/`index.js`/`pveStrategy.js`/`App.jsx` 等 PVE 相关文件），是既有多人联机测试的独立 flake，跟本次 PVE 多对手改动无关。**"230/230 全绿"这条结论据此改写**：全量套件应理解为"233 个用例（原 230 + 本轮修复新增 3 个庄家轮转回归），其中 `integration.test.js` 有 1 个已知偶发 flake（`room:end-game`/`expected 'playing' to be 'waiting'`，全量跑时偶发、单独跑必过），不是无条件的每次全绿"，tasks.md 里 67.5 的对应描述同步这个措辞。
+
+**已知/接受的简化——多人桌位置模型（final review 记录，2026-08-02）**：`PveSession.aiAction()` 算 `position` 时只有 `aiIdx === this.game.dealerIndex ? 'ip' : 'oop'` 这一个二元判断——heads-up（2 人）下这刚好精确（庄家就是唯一的 in-position 玩家），但 4/6/8 人桌一样沿用这个判断，导致每手最多只有一个 AI 坐位判定为 `ip`，其余坐位（包括紧挨庄家右侧、实际上后面还有人要行动的坐位）全部被当成 `oop`，会经由 `pveStrategy.js` 的 `OOP_FACING_RAISE_TIGHTEN` 统一收紧——这在多人桌是一种粗糙近似，不是真实的相对位置（比如没有区分 UTG/HJ/CO 等）。这不是本轮要修的 bug，而是设计阶段就明确的取舍：上面"结论摘要"里已经写了"不做多人桌翻前范围收紧（照搬单挑范围表）"，这条只是把它在实现层面的具体后果（position 判断的二元退化）也写清楚，避免以后有人读到 `aiAction()` 以为是遗漏。真要做，需要把 `position` 从二元 ip/oop 换成基于"庄家开始数到该坐位、还剩几家没行动"的相对位置分档，属于后续单独立项的范围。
 
 - **内存存储** → 服务重启丢失所有房间。缓解：提示用户游戏中途不要刷新页面；MVP 阶段可接受。
 - **单进程 Node.js** → 并发房间多时可能成为瓶颈。缓解：小规模使用，无需水平扩展。

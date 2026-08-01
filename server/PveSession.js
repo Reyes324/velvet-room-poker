@@ -1,8 +1,7 @@
 const { GameEngine } = require('./GameEngine');
 const pveStrategy = require('./pveStrategy');
+const { STYLES } = pveStrategy;
 const { defaultStore, MAX_HAND_HISTORY } = require('./pveStore');
-
-const { STYLES } = require('./pveStrategy');
 
 const AI_ID = '__ai__'; // legacy single-AI id — kept exact for seatCount=2 (heads-up, the default)
 const AI_NAME = '电脑';
@@ -15,7 +14,15 @@ const AI_NAME_POOL = ['老K', '赌神', '扑克脸', '幸运星', '黑桃A', '�
 function pickAiNames(count, random) {
   const pool = [...AI_NAME_POOL];
   const picked = [];
-  for (let i = 0; i < count; i++) {
+  // Safety net, not a real code path today: seatCount is capped at 8 (7 AI
+  // seats max) everywhere it's validated (server/index.js's
+  // VALID_SEAT_COUNTS), and the name pool has exactly 8 entries, so
+  // count > pool.length can't currently happen. Clamping here makes that
+  // 8-name/7-seat coupling explicit rather than an assumption baked
+  // silently into the loop below (which would otherwise push `undefined`
+  // names once the pool ran dry).
+  const safeCount = Math.min(count, pool.length);
+  for (let i = 0; i < safeCount; i++) {
     const idx = Math.floor(random() * pool.length);
     picked.push(pool.splice(idx, 1)[0]);
   }
@@ -152,7 +159,16 @@ class PveSession {
         p.chips = this.startingChips;
       }
     }
-    if (this.handNumber > 0) this.dealerIndex = 1 - this.dealerIndex;
+    // Rotate the button through every seat (matches RoomManager's own
+    // rotation: `(prevIdx + 1) % active.length`) — NOT the old `1 -
+    // this.dealerIndex` heads-up-only toggle, which only ever flipped
+    // between seats 0 and 1 and left every other seat (including,
+    // sometimes, the human) never posting a blind on 4/6/8-seat tables.
+    // For seatCount===2 this produces the exact same alternation as
+    // before: (0+1)%2===1===1-0, (1+1)%2===0===1-1 — see
+    // PveSession.test.js's dealer-rotation tests for a runtime proof, not
+    // just this algebra.
+    if (this.handNumber > 0) this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
     this.handNumber += 1;
     this.game = new GameEngine(this.players, this.dealerIndex, this.bigBlind);
   }
