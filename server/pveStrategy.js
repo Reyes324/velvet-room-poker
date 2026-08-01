@@ -147,8 +147,12 @@ const OOP_FACING_RAISE_TIGHTEN = 0.08; // OOP 面对加注比 IP 更该谨慎：
 // "这个坐位是什么性格"而不是"当前局面"——不改变 preflopTier/bandFor 的
 // 分档判断本身。单挑模式不传 style（值为 null/未知字符串），行为跟改动
 // 前完全一致。四组 delta 都刻意让 fold+call+raise 的调整量相加为 0，
-// 保证不触发 adjustDistribution 的负值裁剪/重归一化，纯粹是概率质量在
-// 三个桶之间挪动。
+// 在基线桶的所有分量都不为 0 时可以纯粹是概率质量在三个桶之间挪动，不
+// 触发 adjustDistribution 的负值裁剪/重归一化。但在高胜率（>85%）或翻前
+// premium 的场景中，基线 fold=0.00，aggressive/bluffer/callingStation 的
+// 负 fold delta 会被裁剪到 0，触发重归一化——结果仍是一个有效的规范化分布
+// 但效果会略微缩水。这是同 adjustDistribution 一致的安全处理，不会产生
+// 无效或崩溃。
 const STYLE_DELTAS = {
   steady:         { fold:  0.06, call: -0.02, raise: -0.04 }, // 稳健型：更容易弃牌，少加注
   aggressive:     { fold: -0.05, call: -0.07, raise:  0.12 }, // 激进型：更少弃牌也更少跟注，多加注

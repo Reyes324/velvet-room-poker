@@ -302,6 +302,51 @@ describe('pveStrategy — 风格微调（多人机对战新增，2026-08-02）',
   it('STYLES 导出四个风格键名，供 PveSession 随机分配', () => {
     expect(STYLES).toEqual(['steady', 'aggressive', 'bluffer', 'callingStation']);
   });
+
+  it('高胜率（fold=0.00 的桶）下，负 fold delta 的 style（aggressive/bluffer/callingStation）仍产生有效分布（裁剪后重归一化，效果缩水但无效）', () => {
+    // equity > 0.85 hits POSTFLOP_BANDS[5]: {fold: 0.00, call: 0.20, raise: 0.80}
+    // aggressive delta: {fold: -0.05, call: -0.07, raise: 0.12}
+    // Raw after delta: fold=-0.05→clipped to 0, call=0.13, raise=0.92
+    // After renormalization: sum=1.05 → {fold:0, call≈0.123, raise≈0.877}
+    // The result should still produce valid actions and sane distributions.
+    const highEquity = {
+      street: 'flop', equity: 0.90, toCall: 100, currentBet: 100, potSize: 300, myChips: 1000,
+    };
+
+    // Test styles with negative fold delta across multiple random values
+    for (const style of ['aggressive', 'bluffer', 'callingStation']) {
+      for (let r = 0; r < 1; r += 0.25) {
+        const result = pickAction({ ...highEquity, random: () => r, style });
+        // Action must be valid and in expected set
+        expect(['fold', 'call', 'raise']).toContain(result.action);
+        // If action is 'raise', raiseTo must be valid (within legal bounds)
+        if (result.action === 'raise') {
+          expect(result.raiseTo).toBeGreaterThanOrEqual(0);
+          expect(result.raiseTo).toBeLessThanOrEqual(highEquity.myChips + highEquity.currentBet);
+        }
+      }
+    }
+  });
+
+  it('翻前 premium 手牌（fold=0.00）下，激进/诈唬/跟注型也产生有效分布', () => {
+    // premium table: {fold: 0.00, call: 0.20, raise: 0.80}
+    // aggressive: {fold: -0.05, call: -0.07, raise: 0.12}
+    // After clipping: {fold: 0, call: 0.13, raise: 0.92}, renormalized
+    const premium = {
+      street: 'preflop', holeCards: ['As', 'Ac'], equity: 0.88, toCall: 20, potSize: 30, myChips: 1000,
+    };
+
+    for (const style of ['aggressive', 'bluffer', 'callingStation']) {
+      for (let r = 0; r < 1; r += 0.25) {
+        const result = pickAction({ ...premium, random: () => r, style });
+        expect(['fold', 'call', 'raise']).toContain(result.action);
+        if (result.action === 'raise') {
+          expect(result.raiseTo).toBeGreaterThanOrEqual(0);
+          expect(result.raiseTo).toBeLessThanOrEqual(premium.myChips + premium.toCall);
+        }
+      }
+    }
+  });
 });
 
 describe('pveStrategy — boardTexture', () => {
