@@ -888,3 +888,13 @@
 - [x] 66.7 `client/index.html` 移除 `black-translucent`，回退到默认不透明状态栏——用"状态栏没融入深色主题"的视觉代价换掉真实布局 bug，符合 CLAUDE.md「正确性 > 视觉打磨」优先级；`--vh` JS 修复保留作为额外保险。客户端构建通过
 - [x] 66.8 真机验证：用户重新添加书签冷启动确认底部白边已消失；状态栏回退为普通白条（预期代价），用户反馈"顶部的白边还会在"——确认这是状态栏本身没适配深色主题，不是布局 bug 复发
 - [x] 66.9 用户要求状态栏也换深色：`client/index.html` 的 `apple-mobile-web-app-status-bar-style` 从不声明（default）改成 `black`（非 `black-translucent`）——只改状态栏本身背景/图标颜色，不让页面接管状态栏区域、不改变 WebView 可视区域计算方式，理论上不会重新触发首帧视口高度 bug。客户端构建通过；效果和是否真的不复发白边，待真机验证
+
+## 67. PVE 多人机对战：单挑扩展到 2/4/6/8 人桌（用户需求，2026-08-02）
+
+设计决策见 design.md「PVE 多人机对战：单挑扩展到 2/4/6/8 人桌」，完整方案见 `docs/superpowers/specs/2026-08-02-pve-multi-opponent-design.md`。
+
+- [x] 67.1 `pveStrategy.js` 新增按风格（稳健/激进/诈唬/跟注型）微调 fold/call/raise 概率的 `STYLE_DELTAS` 表，`pickAction()` 新增可选 `style` 参数（默认 `null`，单挑行为不变）；单测覆盖各风格微调方向
+- [x] 67.2 `PveSession.js` 从单一 `aiId`/`aiName` 改为 `aiSeats` 数组：构造函数新增 `seatCount` 参数（默认 2），按人数生成对应数量 AI 坐位，风格随机分配、名字从固定 8 人池不重复抽取；`isAiTurn()`/`aiAction()` 改为按坐位集合判断/取对应风格；单测覆盖 4/6/8 人坐位数量、AI 轮转、筹码守恒
+- [x] 67.3 `server/index.js` 的 `pve:start` payload 新增 `seatCount` 字段透传给 `new PveSession(...)`；`pveRunAiLoop` 等既有通用循环无需改动
+- [x] 67.4 `client/src/pages/HomePage.jsx` 新增选人数步骤（单挑/4人/6人/8人四个卡片），选完调用 `onPve(name, seatCount)`；`App.jsx`/`PvePage.jsx` 透传到 `pve:start`
+- [x] 67.5 真机验证（Playwright，见 design.md 对应小节）：4/6/8 人各打完整一手到摊牌结算，三档账本盈亏总和均为精确 0，三个 page 全程零 JS/console error；8 人桌座位 `getBoundingClientRect()` 实测零裁切、零重叠。服务端全量单测 230/230 通过，客户端构建通过。未发现需要单独立项的 bug
