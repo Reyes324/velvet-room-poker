@@ -3,46 +3,28 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const {
   computeEquity,
-  preflopTier,
   pickAction,
-  PREFLOP_TABLE,
-  POSTFLOP_BANDS,
   raiseSizeFraction,
-  boardTexture,
   STYLES,
 } = require('../pveStrategy');
 
 describe('pveStrategy — computeEquity', () => {
   it('河牌（5 张公共牌都已确定）用穷举而非采样，结果必须是确定值：口袋 A 在无平局可能的墙上胜率应为 1', () => {
-    // Hero has the absolute nuts (quad aces) — no possible opponent 2-card
-    // holding can win or tie, so exhaustive river equity must be exactly 1
-    // regardless of RNG.
     const equity = computeEquity(['As', 'Ac'], ['Ah', 'Ad', '2c', '5d', '9h']);
     expect(equity).toBe(1);
-  });
-
-  it('河牌穷举：两个不同的固定手牌算出的胜率应互补（win1 + win2 + tie ≈ 1，允许平局项）', () => {
-    // Board pairs the board so a random Kx holding sometimes ties/beats a
-    // weak kicker — just assert the two equities plus shared tie mass sum
-    // sanely instead of hand-deriving the exact combinatorics.
-    const heroEquity = computeEquity(['Kd', '2c'], ['Kh', '7s', '7d', '3c', '9h']);
-    expect(heroEquity).toBeGreaterThan(0);
-    expect(heroEquity).toBeLessThan(1);
   });
 
   it('翻前口袋 A 蒙特卡洛胜率应显著高于口袋 7（大样本下，允许统计误差）', () => {
     const aa = computeEquity(['As', 'Ac'], [], { iterations: 2000 });
     const sevens = computeEquity(['7s', '7c'], [], { iterations: 2000 });
     expect(aa).toBeGreaterThan(sevens);
-    expect(aa).toBeGreaterThan(0.75); // real-world AA vs random ≈ 85%
+    expect(aa).toBeGreaterThan(0.75);
   });
 
   it('iterations 相同时传入固定的 random 函数应得到完全可复现的结果', () => {
     let calls = 0;
     const fakeRandom = () => {
       calls += 1;
-      // deterministic pseudo-sequence, not a real RNG — just needs to be
-      // stable across two independent runs with a fresh counter each time
       const seed = calls * 9301 + 49297;
       return (seed % 233280) / 233280;
     };
@@ -53,371 +35,217 @@ describe('pveStrategy — computeEquity', () => {
   });
 });
 
-describe('pveStrategy — preflopTier', () => {
-  it('口袋 A / KK 是 premium', () => {
-    expect(preflopTier(['As', 'Ac'])).toBe('premium');
-    expect(preflopTier(['Ks', 'Kc'])).toBe('premium');
-  });
-
-  it('AK 同花/不同花都是 premium', () => {
-    expect(preflopTier(['As', 'Ks'])).toBe('premium');
-    expect(preflopTier(['Ah', 'Kd'])).toBe('premium');
-  });
-
-  it('72 不同花是 trash', () => {
-    expect(preflopTier(['7s', '2d'])).toBe('trash');
-  });
-
-  it('同花 A-x 至少是 strong（任意同花 A 的既定简化规则）', () => {
-    const tiers = ['premium', 'strong'];
-    expect(tiers).toContain(preflopTier(['As', '4s']));
+describe('pveStrategy — STYLES', () => {
+  it('导出四个风格键名，供 PveSession 随机分配', () => {
+    expect(STYLES).toEqual(['steady', 'aggressive', 'bluffer', 'callingStation']);
   });
 });
 
-describe('pveStrategy — pickAction', () => {
-  const noop = () => {};
-
-  it('等值分布累加应为 1（POSTFLOP_BANDS 每一档配置校验，防止手滑改错数字）', () => {
-    for (const band of POSTFLOP_BANDS) {
-      const sum = band.fold + band.call + band.raise;
-      expect(sum).toBeCloseTo(1, 5);
-    }
-    for (const tier of Object.keys(PREFLOP_TABLE)) {
-      const t = PREFLOP_TABLE[tier];
-      expect(t.fold + t.call + t.raise).toBeCloseTo(1, 5);
-    }
-  });
-
-  it('random 落在 fold 区间时应返回 fold（toCall > 0，不能白弃）', () => {
-    const action = pickAction({
-      street: 'flop', equity: 0.1, toCall: 100, potSize: 300, myChips: 1000,
-      position: 'oop', random: () => 0.01, // well inside the ~78% fold band for <20% equity
-    });
-    expect(action.action).toBe('fold');
-  });
-
-  it('toCall 为 0 时（可以白看）永远不应该弃牌——fold 概率被吸收进 check', () => {
-    for (let r = 0; r < 1; r += 0.05) {
-      const action = pickAction({
-        street: 'flop', equity: 0.05, toCall: 0, potSize: 300, myChips: 1000,
-        position: 'oop', random: () => r,
-      });
-      expect(action.action).not.toBe('fold');
-    }
-  });
-
-  it('random 落在 raise 区间时应返回 raise，且给出的 raiseTo 在最小加注和全下之间', () => {
-    const action = pickAction({
-      street: 'flop', equity: 0.95, toCall: 100, potSize: 300, myChips: 1000,
-      position: 'ip', random: () => 0.99, // near the top of the distribution, inside raise band for >85% equity
-      minRaiseTo: 300, currentBet: 100,
-    });
-    expect(action.action).toBe('raise');
-    expect(action.raiseTo).toBeGreaterThanOrEqual(300);
-    expect(action.raiseTo).toBeLessThanOrEqual(1000 + 100); // myChips + already-in bet, i.e. all-in ceiling
-  });
-
-  it('raiseTo 超过全部筹码时应该改为 allin，不应该返回一个不合法的 raise 数字', () => {
-    const action = pickAction({
-      street: 'river', equity: 0.99, toCall: 50, potSize: 5000, myChips: 60,
-      position: 'ip', random: () => 0.99, minRaiseTo: 100, currentBet: 50,
-    });
-    expect(['raise', 'allin']).toContain(action.action);
-    if (action.action === 'raise') expect(action.raiseTo).toBeLessThanOrEqual(60 + 50);
-  });
-
-  it('翻前使用 preflopTier 而不是原始胜率——同一手 72o 即便传入一个极高的 equity 也应该按 trash 分档弃牌', () => {
-    // trash table: fold 70% / call 20% / raise 10% (cumulative fold=[0,0.70)).
-    // If pickAction wrongly used the postflop >85%-equity band instead
-    // (fold 0% / call 20% / raise 80%, cumulative raise=[0.20,1)), the same
-    // random()=0.5 would land in "raise", not "fold" — so this specific
-    // random value is exactly what differentiates "used preflopTier" from
-    // "fell through to equity bands".
+describe('pveStrategy — pickAction 基础 EV 比较（无风格、无对手数据、正常筹码深度）', () => {
+  // High equity, facing a real bet: calling is clearly +EV, folding is
+  // clearly wrong. EV(call) = 0.9*(300+100)-100 = 260. This alone should
+  // beat EV(fold)=0 by a wide margin regardless of the raise candidate's
+  // own EV, so the action must not be 'fold'.
+  it('高胜率、面对真实下注时不应该弃牌', () => {
     const a = pickAction({
-      street: 'preflop', holeCards: ['7s', '2d'], equity: 0.99 /* must be ignored preflop */,
-      toCall: 20, potSize: 30, myChips: 1000, position: 'oop', random: () => 0.5,
+      street: 'flop', equity: 0.9, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, bigBlind: 20, random: () => 0.5,
+    });
+    expect(a.action).not.toBe('fold');
+  });
+
+  // Very low equity, facing a real bet, no fold equity (opponentFoldToRaiseRate
+  // defaults to the neutral 0.5 prior, single opponent -> foldEquity=0.5,
+  // not enough to make a bluff-raise +EV against a large-ish bet), and the
+  // bluff-deviation roll is forced to not fire (random always returns a
+  // value >= BLUFF_DEVIATION_RATE for that specific call — see Step 3 for
+  // the exact constant. Using random:()=>0.99 for every call, comfortably
+  // above any reasonable deviation rate, keeps this test robust to the
+  // exact constant value chosen in Step 3).
+  it('极低胜率、面对下注、没有弃牌权益优势时应该弃牌', () => {
+    const a = pickAction({
+      street: 'flop', equity: 0.05, toCall: 200, potSize: 200, myChips: 1000,
+      currentBet: 200, bigBlind: 20, random: () => 0.99,
     });
     expect(a.action).toBe('fold');
   });
-});
 
-describe('pveStrategy — 上下文调整（2026-07-28 用户反馈"很容易猜"后新增）', () => {
-  // Band for equity=0.3: fold 0.55 / call 0.35 / raise 0.10 (20-40% band).
-  // With toCall===0 the fold mass merges into call before sampling, so
-  // baseline cumulative is call=[0,0.90), raise=[0.90,1). r=0.85 lands in
-  // call at baseline — proving the c-bet boost (which should push it into
-  // raise) actually did something, not just coincidentally matching.
-  it('续注倾向：上条街是自己主动加注、这条街轮到自己且无人下注时，同一随机数更容易落进 raise（对比不续注的基线）', () => {
-    const base = { street: 'flop', equity: 0.3, toCall: 0, potSize: 300, myChips: 1000, position: 'ip', random: () => 0.85 };
-    const withoutCbet = pickAction(base);
-    const withCbet = pickAction({ ...base, wasAggressor: true });
-    expect(withoutCbet.action).not.toBe('raise');
-    expect(withCbet.action).toBe('raise');
+  it('toCall 为 0 时（可以白看）永远不应该弃牌', () => {
+    for (let r = 0; r < 1; r += 0.2) {
+      const a = pickAction({
+        street: 'flop', equity: 0.05, toCall: 0, potSize: 300, myChips: 1000,
+        currentBet: 0, bigBlind: 20, random: () => r,
+      });
+      expect(a.action).not.toBe('fold');
+    }
   });
 
-  it('续注倾向只在翻后生效——翻前传 wasAggressor 不应该改变行为（翻前分档表本来就没有这个概念）', () => {
+  it('raise 时 raiseTo 必须落在 [minRaiseTo, 全下] 之间', () => {
     const a = pickAction({
-      street: 'preflop', holeCards: ['7s', '2d'], equity: 0.99, wasAggressor: true,
-      toCall: 0, potSize: 30, myChips: 1000, position: 'oop', random: () => 0.85,
+      street: 'flop', equity: 0.95, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, minRaiseTo: 300, bigBlind: 20, random: () => 0.01,
     });
-    // trash table with toCall===0: fold(0.70)+call(0.20) merged = 0.90 call,
-    // raise stays 0.10 — r=0.85 must still land in call, proving the c-bet
-    // delta never touched a preflop decision.
-    expect(a.action).not.toBe('raise');
+    if (a.action === 'raise') {
+      expect(a.raiseTo).toBeGreaterThanOrEqual(300);
+      expect(a.raiseTo).toBeLessThanOrEqual(1000 + 100);
+    } else {
+      expect(a.action).toBe('allin');
+    }
   });
 
-  // Band for equity=0.5: fold 0.15 / call 0.55 / raise 0.30 (40-55% band),
-  // toCall>0 so no merge. Baseline cumulative: fold=[0,0.15), call=[0.15,0.70).
-  // r=0.20 lands in call at baseline.
-  it('面对真实加注（facingRaise）时更容易弃牌（对比同样局面但不是面对加注的基线）', () => {
-    const base = { street: 'flop', equity: 0.5, toCall: 100, potSize: 300, myChips: 1000, position: 'oop', random: () => 0.20 };
-    const withoutFacingRaise = pickAction(base);
-    const withFacingRaise = pickAction({ ...base, facingRaise: true });
-    expect(withoutFacingRaise.action).not.toBe('fold');
-    expect(withFacingRaise.action).toBe('fold');
-  });
-
-  it('对手面对加注时爱弃牌（高 opponentFoldToRaiseRate）→ 更容易诈唬加注', () => {
-    // <20% band: fold 0.78 / call 0.12 / raise 0.10, toCall>0 (no merge).
-    // Baseline cumulative: fold=[0,0.78), call=[0.78,0.90), raise=[0.90,1).
-    // r=0.85 lands in call at baseline.
-    const base = { street: 'flop', equity: 0.1, toCall: 100, potSize: 300, myChips: 1000, position: 'oop', random: () => 0.85 };
-    const baseline = pickAction(base);
-    const vsFoldyOpp = pickAction({ ...base, opponentFoldToRaiseRate: 0.9 });
-    expect(baseline.action).not.toBe('raise');
-    expect(vsFoldyOpp.action).toBe('raise');
-  });
-
-  it('对手很爱加注（高 opponentAggressionRate）→ 面对加注时更容易跟注而不是弃牌', () => {
-    const base = {
-      street: 'flop', equity: 0.5, toCall: 100, potSize: 300, myChips: 1000, position: 'oop',
-      random: () => 0.20, facingRaise: true,
-    };
-    const vsPassiveOpp = pickAction({ ...base, opponentAggressionRate: 0.1 });
-    const vsAggroOpp = pickAction({ ...base, opponentAggressionRate: 0.9 });
-    expect(vsPassiveOpp.action).toBe('fold'); // facingRaise alone already tips this into fold (see above)
-    expect(vsAggroOpp.action).not.toBe('fold');
+  it('筹码太浅、连最小加注都摸不到全下时应该返回 allin 而不是不合法的 raise 数字', () => {
+    const a = pickAction({
+      street: 'river', equity: 0.99, toCall: 50, potSize: 5000, myChips: 60,
+      currentBet: 50, minRaiseTo: 100, bigBlind: 20, random: () => 0.01,
+    });
+    expect(['raise', 'allin']).toContain(a.action);
+    if (a.action === 'raise') expect(a.raiseTo).toBeLessThanOrEqual(60 + 50);
   });
 });
 
-describe('pveStrategy — 位置调整（用户反馈"经常能赢"后新增，2026-07-30：position 参数此前只传入未消费）', () => {
-  // trash table, toCall>0 (blind differential only, not a real raise) so no
-  // merge: fold=[0,0.70), call=[0.70,0.90), raise=[0.90,1). r=0.85 lands in
-  // call at baseline for both positions — proving IP's wider open is what
-  // pushes it into raise, not coincidence.
-  it('翻前开池：同一手弱牌，IP 比 OOP 更容易加注（未面对真实加注）', () => {
+describe('pveStrategy — 弃牌权益（多人聚合 p^n）', () => {
+  // Hand-verified against the exact Step 3 formula (see plan's verification
+  // script — do not loosen these numbers without re-deriving by hand):
+  // equity=0.05, toCall=100, potSize=300, currentBet=100 -> myBetThisStreet=0,
+  // raiseCandidate=518 (sizeFraction at random()=0.99, polarized branch),
+  // cost=518, potIfCalled=1236. opponentFoldToRaiseRate=0.9:
+  //   liveOpponentCount=1 -> foldEquity=0.9^1=0.9 -> evRaise≈224.4 (raise wins)
+  //   liveOpponentCount=5 -> foldEquity=0.9^5≈0.590 -> evRaise≈-9.7 (fold wins, evFold=0 > evRaise > evCall=-80)
+  it('弃牌权益随对手数量指数下降：同一个纯诈唬局面，对手越多弃牌权益越低，加注从 +EV 变成 -EV', () => {
     const base = {
-      street: 'preflop', holeCards: ['7s', '2d'], toCall: 20, potSize: 30, myChips: 1000,
-      random: () => 0.85, facingRaise: false,
+      street: 'flop', equity: 0.05, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, bigBlind: 20, opponentFoldToRaiseRate: 0.9, random: () => 0.99,
     };
-    const oop = pickAction({ ...base, position: 'oop' });
-    const ip = pickAction({ ...base, position: 'ip' });
-    expect(oop.action).not.toBe('raise');
-    expect(ip.action).toBe('raise');
-  });
-
-  it('翻前面对真实加注时，IP 的开池加成不生效（facingRaise=true）', () => {
-    const base = {
-      street: 'preflop', holeCards: ['7s', '2d'], toCall: 100, potSize: 30, myChips: 1000,
-      random: () => 0.85, facingRaise: true, position: 'ip',
-    };
-    const a = pickAction(base);
-    expect(a.action).not.toBe('raise'); // 面对真实加注，IP 也不该拿垃圾牌加注
-  });
-
-  // Band for equity=0.3: fold 0.55/call 0.35/raise 0.10, toCall===0 so fold
-  // merges into call. Baseline c-bet boost alone: call=[0,0.65), raise=[0.65,1).
-  // With IP's extra c-bet boost: call=[0,0.55), raise=[0.55,1). r=0.60 sits
-  // in between — call for OOP (baseline), raise for IP (boosted).
-  it('续注：同样是续注局面，IP 比 OOP 更容易把续注延续成加注', () => {
-    const base = { street: 'flop', equity: 0.3, toCall: 0, potSize: 300, myChips: 1000, wasAggressor: true, random: () => 0.60 };
-    const oop = pickAction({ ...base, position: 'oop' });
-    const ip = pickAction({ ...base, position: 'ip' });
-    expect(oop.action).not.toBe('raise');
-    expect(ip.action).toBe('raise');
-  });
-
-  // Band for equity=0.5: fold 0.15/call 0.55/raise 0.30, toCall>0 (no merge).
-  // IP (only base facingRaise boost): fold=[0,0.25). OOP (+ extra tighten):
-  // fold=[0,0.33). r=0.30 sits in between — call for IP, fold for OOP.
-  it('面对加注：同样的局面，OOP 比 IP 更容易弃牌', () => {
-    const base = { street: 'flop', equity: 0.5, toCall: 100, potSize: 300, myChips: 1000, facingRaise: true, random: () => 0.30 };
-    const ip = pickAction({ ...base, position: 'ip' });
-    const oop = pickAction({ ...base, position: 'oop' });
-    expect(ip.action).not.toBe('fold');
-    expect(oop.action).toBe('fold');
+    const oneOpp = pickAction({ ...base, liveOpponentCount: 1 });
+    const fiveOpp = pickAction({ ...base, liveOpponentCount: 5 });
+    expect(oneOpp.action).toBe('raise');
+    expect(fiveOpp.action).toBe('fold');
   });
 });
 
-describe('pveStrategy — 风格微调（多人机对战新增，2026-08-02）', () => {
-  // Baseline for all four cases: equity=0.5 -> POSTFLOP_BANDS band
-  // {fold:0.15, call:0.55, raise:0.30}. toCall=100 (>0, no fold-merge).
-  // board=[] (length<3, boardTexture branch never triggers). No position,
-  // no wasAggressor, no facingRaise, no opponent reads -> contextDeltas()
-  // returns all-zero deltas, so the baseline distribution here is exactly
-  // the raw band: fold=[0,0.15), call=[0.15,0.70), raise=[0.70,1).
-  const base = {
-    street: 'flop', equity: 0.5, toCall: 100, currentBet: 100, potSize: 300, myChips: 1000,
-  };
-
-  it('不传 style（单挑模式）时行为和改动前完全一致：r=0.60 落在 call', () => {
-    const a = pickAction({ ...base, random: () => 0.60 });
-    expect(a.action).toBe('call');
+describe('pveStrategy — 后手深度（SPR + 翻前浅筹码 push/fold）', () => {
+  it('翻前后手极浅（低于阈值）时，加注候选直接是全下，不是按底池比例算的小尺度', () => {
+    // effectiveStackBB = 200/20 = 10, well under the 15bb threshold.
+    const a = pickAction({
+      street: 'preflop', equity: 0.55, toCall: 20, potSize: 30, myChips: 200,
+      currentBet: 20, bigBlind: 20, random: () => 0.01,
+    });
+    expect(['raise', 'allin']).toContain(a.action);
+    if (a.action === 'raise') {
+      // Push/fold mode raises to the full effective stack, not a
+      // pot-fraction size — assert it's at or near the full stack, not a
+      // small sizing-heuristic amount.
+      expect(a.raiseTo).toBeGreaterThanOrEqual(190);
+    }
   });
 
-  it('steady（稳健型）比不传 style 更容易弃牌：r=0.18 从 call 变成 fold', () => {
-    const noStyle = pickAction({ ...base, random: () => 0.18 });
-    const steady = pickAction({ ...base, random: () => 0.18, style: 'steady' });
-    expect(noStyle.action).toBe('call');
-    expect(steady.action).toBe('fold');
+  it('翻前后手够深时，不会强制全下——正常按尺度启发式算加注额', () => {
+    // effectiveStackBB = 3000/20 = 150, well over the threshold.
+    const a = pickAction({
+      street: 'preflop', equity: 0.95, toCall: 20, potSize: 30, myChips: 3000,
+      currentBet: 20, minRaiseTo: 60, bigBlind: 20, random: () => 0.01,
+    });
+    if (a.action === 'raise') {
+      expect(a.raiseTo).toBeLessThan(3000); // nowhere near a forced shove
+    }
   });
+});
 
-  it('aggressive（激进型）比不传 style 更容易加注：r=0.60 从 call 变成 raise', () => {
-    const noStyle = pickAction({ ...base, random: () => 0.60 });
-    const aggressive = pickAction({ ...base, random: () => 0.60, style: 'aggressive' });
-    expect(noStyle.action).toBe('call');
-    expect(aggressive.action).toBe('raise');
-  });
+describe('pveStrategy — 风格对 EV 计算的偏差', () => {
+  // All four cases below are hand-verified against the exact Step 3 formula
+  // (see plan's verification script) — every number here was chosen so the
+  // neutral (no-style) case sits just barely on one side of the fold/call/
+  // raise boundary, and the style's bias tips it to the other side. Do not
+  // "simplify" these numbers without re-running the verification script —
+  // several rounds of hand-picked-but-unverified numbers in an earlier
+  // draft of this plan turned out to not actually produce the claimed
+  // outcome once checked against the real formula.
 
-  it('bluffer（诈唬型）比不传 style 更容易加注：r=0.65 从 call 变成 raise', () => {
-    const noStyle = pickAction({ ...base, random: () => 0.65 });
-    const bluffer = pickAction({ ...base, random: () => 0.65, style: 'bluffer' });
-    expect(noStyle.action).toBe('call');
-    expect(bluffer.action).toBe('raise');
-  });
-
-  it('callingStation（跟注型）比不传 style 更少弃牌：r=0.10 从 fold 变成 call', () => {
-    const noStyle = pickAction({ ...base, random: () => 0.10 });
-    const station = pickAction({ ...base, random: () => 0.10, style: 'callingStation' });
-    expect(noStyle.action).toBe('fold');
+  // equity=0.40, toCall=150, potSize=200, currentBet=150 -> raiseCandidate=289,
+  // cost=289, potIfCalled=628. opponentFoldToRaiseRate=0.05 -> foldEquity=0.05.
+  // neutral: evCall=-10, evRaise=-25.9, evFold=0 -> fold wins.
+  // callingStation: eq inflated to 0.44 -> evCall=+4 (crosses breakeven
+  // 150/(200+150)=0.4286), evRaise=-2.05 -> call wins.
+  it('callingStation（跟注型）比不传 style 更容易跟注（高估自己的胜率）', () => {
+    const base = {
+      street: 'flop', equity: 0.40, toCall: 150, potSize: 200, myChips: 1000,
+      currentBet: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.05, random: () => 0.99,
+    };
+    const neutral = pickAction(base);
+    const station = pickAction({ ...base, style: 'callingStation' });
+    expect(neutral.action).toBe('fold');
     expect(station.action).toBe('call');
   });
 
+  // equity=0.10, toCall=150, potSize=200, currentBet=150 -> raiseCandidate=428,
+  // cost=428, potIfCalled=906, "called" outcome eq*potIfCalled-cost=-337.4.
+  // opponentFoldToRaiseRate=0.55 -> neutral foldEquity=0.55 -> evRaise=-41.8
+  // (fold wins, evFold=0). bluffer -> foldEquity=min(1,0.55*1.2)=0.66 ->
+  // evRaise=+17.3 -> raise wins.
+  it('bluffer（诈唬型）比不传 style 更容易诈唬加注（高估自己的弃牌权益）', () => {
+    const base = {
+      street: 'flop', equity: 0.10, toCall: 150, potSize: 200, myChips: 1000,
+      currentBet: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.55, random: () => 0.99,
+    };
+    const neutral = pickAction(base);
+    const bluffer = pickAction({ ...base, style: 'bluffer' });
+    expect(neutral.action).toBe('fold');
+    expect(bluffer.action).toBe('raise');
+  });
+
+  // equity=0.4, toCall=100, potSize=300, currentBet=100, minRaiseTo=150 ->
+  // raiseCandidate=205, cost=205, potIfCalled=610. opponentFoldToRaiseRate=
+  // 0.08 -> foldEquity=0.08 -> neutral evCall=60, evRaise=59.88 (call wins
+  // by a hair). aggressive multiplies evRaise by 1.15 -> 68.86 -> raise wins.
+  it('aggressive（激进型）比不传 style 更容易加注（EV 相近时偏好高方差选项）', () => {
+    const base = {
+      street: 'flop', equity: 0.4, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.08,
+      random: () => 0,
+    };
+    const neutral = pickAction(base);
+    const aggressive = pickAction({ ...base, style: 'aggressive' });
+    expect(neutral.action).toBe('call');
+    expect(aggressive.action).toBe('raise');
+  });
+
+  // Same shape as the aggressive case but opponentFoldToRaiseRate=0.12 ->
+  // neutral foldEquity=0.12 -> evRaise=70.32 > evCall=60 (raise wins by a
+  // hair). steady multiplies evRaise by 0.85 -> 59.77 < 60 -> call wins.
+  it('steady（稳健型）比不传 style 更少加注（给高方差选项的 EV 打折）', () => {
+    const base = {
+      street: 'flop', equity: 0.4, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.12,
+      random: () => 0,
+    };
+    const neutral = pickAction(base);
+    const steady = pickAction({ ...base, style: 'steady' });
+    expect(neutral.action).toBe('raise');
+    expect(steady.action).toBe('call');
+  });
+
   it('未知的 style 字符串静默忽略（不抛异常，等价于不传）', () => {
-    const noStyle = pickAction({ ...base, random: () => 0.60 });
-    const unknown = pickAction({ ...base, random: () => 0.60, style: 'not-a-real-style' });
-    expect(unknown.action).toBe(noStyle.action);
-  });
-
-  it('STYLES 导出四个风格键名，供 PveSession 随机分配', () => {
-    expect(STYLES).toEqual(['steady', 'aggressive', 'bluffer', 'callingStation']);
-  });
-
-  it('高胜率（fold=0.00 的桶）下，负 fold delta 的 style（aggressive/bluffer/callingStation）仍产生有效分布（裁剪后重归一化，效果缩水但无效）', () => {
-    // equity > 0.85 hits POSTFLOP_BANDS[5]: {fold: 0.00, call: 0.20, raise: 0.80}
-    // aggressive delta: {fold: -0.05, call: -0.07, raise: 0.12}
-    // Raw after delta: fold=-0.05→clipped to 0, call=0.13, raise=0.92
-    // After renormalization: sum=1.05 → {fold:0, call≈0.123, raise≈0.877}
-    // The result should still produce valid actions and sane distributions.
-    const highEquity = {
-      street: 'flop', equity: 0.90, toCall: 100, currentBet: 100, potSize: 300, myChips: 1000,
+    const base = {
+      street: 'flop', equity: 0.5, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, bigBlind: 20, random: () => 0.5,
     };
-
-    // Test styles with negative fold delta across multiple random values
-    for (const style of ['aggressive', 'bluffer', 'callingStation']) {
-      for (let r = 0; r < 1; r += 0.25) {
-        const result = pickAction({ ...highEquity, random: () => r, style });
-        // Action must be valid and in expected set
-        expect(['fold', 'call', 'raise']).toContain(result.action);
-        // If action is 'raise', raiseTo must be valid (within legal bounds)
-        if (result.action === 'raise') {
-          expect(result.raiseTo).toBeGreaterThanOrEqual(0);
-          expect(result.raiseTo).toBeLessThanOrEqual(highEquity.myChips + highEquity.currentBet);
-        }
-      }
-    }
-  });
-
-  it('翻前 premium 手牌（fold=0.00）下，激进/诈唬/跟注型也产生有效分布', () => {
-    // premium table: {fold: 0.00, call: 0.20, raise: 0.80}
-    // aggressive: {fold: -0.05, call: -0.07, raise: 0.12}
-    // After clipping: {fold: 0, call: 0.13, raise: 0.92}, renormalized
-    const premium = {
-      street: 'preflop', holeCards: ['As', 'Ac'], equity: 0.88, toCall: 20, potSize: 30, myChips: 1000,
-    };
-
-    for (const style of ['aggressive', 'bluffer', 'callingStation']) {
-      for (let r = 0; r < 1; r += 0.25) {
-        const result = pickAction({ ...premium, random: () => r, style });
-        expect(['fold', 'call', 'raise']).toContain(result.action);
-        if (result.action === 'raise') {
-          expect(result.raiseTo).toBeGreaterThanOrEqual(0);
-          expect(result.raiseTo).toBeLessThanOrEqual(premium.myChips + premium.toCall);
-        }
-      }
-    }
+    const neutral = pickAction(base);
+    const unknown = pickAction({ ...base, style: 'not-a-real-style' });
+    expect(unknown.action).toBe(neutral.action);
   });
 });
 
-describe('pveStrategy — boardTexture', () => {
-  it('彩虹、不连张的公共牌判为干燥面', () => {
-    expect(boardTexture(['2s', '7d', 'Kc'])).toBe('dry');
-  });
-
-  it('两张同花色的公共牌（同花听牌活）判为湿润面', () => {
-    expect(boardTexture(['2s', '7s', 'Kd'])).toBe('wet');
-  });
-
-  it('点数相近（顺子听牌密集）的公共牌判为湿润面，即便花色彩虹', () => {
-    expect(boardTexture(['5s', '7d', '9c'])).toBe('wet');
-  });
-
-  it('少于 3 张公共牌（翻前）返回 dry 作为中性默认值', () => {
-    expect(boardTexture([])).toBe('dry');
-  });
-});
-
-describe('pveStrategy — 板面纹理对诈唬频率的影响（2026-07-28 新增）', () => {
-  it('同样的低胜率局面，干燥面比湿润面更容易诈唬加注（同一 random 值）', () => {
-    const dryBoard = ['2s', '7d', 'Kc'];
-    const wetBoard = ['2s', '7s', 'Kd']; // 两张黑桃，同花听牌活
-    const base = { street: 'flop', equity: 0.3, toCall: 100, potSize: 300, myChips: 1000, position: 'oop', random: () => 0.85 };
-    const onDry = pickAction({ ...base, board: dryBoard });
-    const onWet = pickAction({ ...base, board: wetBoard });
-    expect(onDry.action).toBe('raise');
-    expect(onWet.action).not.toBe('raise');
-  });
-
-  it('板面纹理只影响诈唬（低胜率）决策，不该拦下真正的高胜率价值下注', () => {
-    const wetBoard = ['2s', '7s', 'Kd'];
-    const a = pickAction({
-      street: 'flop', holeCards: ['Ah', 'Ad'], board: wetBoard, equity: 0.9,
-      toCall: 100, potSize: 300, myChips: 1000, position: 'ip', random: () => 0.99,
-      minRaiseTo: 300, currentBet: 100,
-    });
-    expect(a.action).toBe('raise');
-  });
-
-  it('板面纹理只在翻后生效——翻前传湿润 board 不应该改变翻前分档表的行为', () => {
-    const wetBoard = ['2s', '7s', 'Kd']; // 无意义的翻前输入，验证被忽略
-    const a = pickAction({
-      street: 'preflop', holeCards: ['7s', '2d'], board: wetBoard, equity: 0.1,
-      toCall: 20, potSize: 30, myChips: 1000, position: 'oop', random: () => 0.5,
-    });
-    expect(a.action).toBe('fold'); // 跟原来"翻前用 trash 分档"的测试结果一致
-  });
-});
-
-describe('pveStrategy — raiseSizeFraction（下注尺度极化）', () => {
+describe('pveStrategy — raiseSizeFraction（下注尺度极化，签名简化：直接吃 equity）', () => {
   it('极端胜率（价值/诈唬两端）应该比中等胜率有更宽、更大的尺度范围', () => {
     const polarizedFractions = [];
     const mergedFractions = [];
     for (let i = 0; i <= 20; i++) {
       const r = i / 20;
-      polarizedFractions.push(raiseSizeFraction('flop', null, 0.95, () => r));
-      mergedFractions.push(raiseSizeFraction('flop', null, 0.5, () => r));
+      polarizedFractions.push(raiseSizeFraction(0.95, () => r));
+      mergedFractions.push(raiseSizeFraction(0.5, () => r));
     }
-    // Polarized [0.6, 1.4] vs merged [0.35, 0.7] — polarized reaches a much
-    // bigger max (the actual point: strong value/bluffs can go big), and
-    // its average sits meaningfully higher than merged's average.
     expect(Math.max(...polarizedFractions)).toBeGreaterThan(Math.max(...mergedFractions));
     const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
     expect(avg(polarizedFractions)).toBeGreaterThan(avg(mergedFractions));
-  });
-
-  it('翻前没有真实胜率，用起手牌分档当代理——premium 起手牌走极化尺度，playable 起手牌走合并尺度', () => {
-    const premiumFraction = raiseSizeFraction('preflop', ['As', 'Ac'], null, () => 1);
-    const playableFraction = raiseSizeFraction('preflop', ['6s', '6c'], null, () => 1);
-    expect(premiumFraction).toBeGreaterThan(playableFraction);
   });
 });

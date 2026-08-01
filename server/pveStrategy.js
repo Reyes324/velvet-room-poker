@@ -1,84 +1,25 @@
 const { Hand } = require('pokersolver');
-const { makeDeck, RANKS } = require('./GameEngine');
+const { makeDeck } = require('./GameEngine');
+// No rank/suit helpers here anymore — preflopTier/boardTexture (the only
+// consumers) were deleted along with the table-driven machinery they
+// existed for; don't reintroduce them as unused dead code.
 
 // ═══════════════════════════════════════════════════════════════════════
 // PVE (人机对战) 决策引擎 — 单人模式专用，不被多人房间引用。
 //
-// 设计依据见 openspec/changes/online-texas-holdem/design.md「新增：单人
-// 人机对战（PVE）模式」：扑克作为信息不完整零和博弈的均衡解（GTO）在大量
-// 决策点上本身就是一个概率分布，不是确定动作——专业解牌器算出来的答案经
-// 常是"这手牌 70% 加注、30% 弃牌"。下面两张表就是这个结论的简化近似（胜率
-// 分档代替真正求解均衡），刻意把"打法"完全收敛成数据，不散落在决策流程里
-// ——以后要调紧/调松，改这两张表的数字，不用碰 pickAction 本身。
+// 设计依据见 docs/superpowers/specs/2026-08-02-pve-ev-driven-ai-design.md：
+// 每个动作直接算期望价值（EV）——胜率 × 底池赔率 × 弃牌权益 × 后手深度——
+// 选 EV 最高的那个，而不是像之前那样查一张手工调过的概率表再抽样。旧的
+// PREFLOP_TABLE/POSTFLOP_BANDS/contextDeltas/STYLE_DELTAS 那套"分档 + 具名
+// 调整量叠加"的机制整体替换掉，不是在它旁边再加一层。
 // ═══════════════════════════════════════════════════════════════════════
 
-const RANK_VALUE = Object.fromEntries(RANKS.map((r, i) => [r, i])); // '2'→0 … 'A'→12
-
-function rankOf(card) { return card[0]; }
-function suitOf(card) { return card[1]; }
-
-// 翻前起手牌分档：heads-up（1v1）本身就该打得比全桌宽很多——这里的分档
-// 是标准起手牌强度表的一个粗粒度简化，不是全桌保守范围。
-function preflopTier(holeCards) {
-  const [a, b] = holeCards;
-  const [rA, rB] = [rankOf(a), rankOf(b)];
-  const [vA, vB] = [RANK_VALUE[rA], RANK_VALUE[rB]];
-  const hi = Math.max(vA, vB), lo = Math.min(vA, vB);
-  const suited = suitOf(a) === suitOf(b);
-  const isPair = vA === vB;
-  const gap = hi - lo - 1; // 0 = connectors, e.g. Q-J
-
-  const A = RANK_VALUE['A'], K = RANK_VALUE['K'], Q = RANK_VALUE['Q'], J = RANK_VALUE['J'], T = RANK_VALUE['T'];
-
-  if (isPair && vA >= T) return 'premium'; // TT+
-  if ((hi === A && lo === K)) return 'premium'; // AK suited or offsuit
-
-  if (isPair && vA >= RANK_VALUE['7']) return 'strong'; // 77-99
-  if (hi === A && (lo === Q || lo === J)) return 'strong'; // AQ/AJ
-  if (hi === K && lo === Q && suited) return 'strong'; // KQs
-  if (hi === A && suited) return 'strong'; // any suited ace (Axs)
-
-  if (isPair) return 'playable'; // 22-66
-  if (hi === K && suited) return 'playable'; // Kxs
-  if (hi === Q && lo === J) return 'playable'; // QJ
-  if (hi === J && lo === T) return 'playable'; // JT
-  if (suited && gap <= 1 && hi >= RANK_VALUE['5']) return 'playable'; // suited (near-)connectors
-
-  if (hi >= J && lo >= RANK_VALUE['9']) return 'marginal'; // broadway-ish offsuit
-  if (suited && gap <= 2) return 'marginal';
-
-  return 'trash';
-}
-
-const PREFLOP_TABLE = {
-  premium:  { fold: 0.00, call: 0.20, raise: 0.80 },
-  strong:   { fold: 0.05, call: 0.45, raise: 0.50 },
-  playable: { fold: 0.20, call: 0.50, raise: 0.30 },
-  marginal: { fold: 0.45, call: 0.40, raise: 0.15 },
-  trash:    { fold: 0.70, call: 0.20, raise: 0.10 },
-};
-
-// 翻后：按胜率分档映射到动作概率，而不是硬阈值 if-else——"低胜率也留一点
-// 小概率加注"是在做 range balance（诈唬跟价值下注在下注方式上不可区分），
-// 不是为了随机而随机。`max` 是该档的胜率上限（含），按顺序取第一个命中的。
-const POSTFLOP_BANDS = [
-  { max: 0.20, fold: 0.78, call: 0.12, raise: 0.10 },
-  { max: 0.40, fold: 0.55, call: 0.35, raise: 0.10 },
-  { max: 0.55, fold: 0.15, call: 0.55, raise: 0.30 },
-  { max: 0.70, fold: 0.03, call: 0.47, raise: 0.50 },
-  { max: 0.85, fold: 0.00, call: 0.30, raise: 0.70 },
-  { max: 1.01, fold: 0.00, call: 0.20, raise: 0.80 }, // >85%，含 100%
-];
-
-function bandFor(equity) {
-  return POSTFLOP_BANDS.find(b => equity <= b.max) ?? POSTFLOP_BANDS[POSTFLOP_BANDS.length - 1];
-}
-
-// ─── 胜率计算 ──────────────────────────────────────────────────────────
+// ─── 胜率计算（不变）────────────────────────────────────────────────────
 // board.length===5（河牌，无未知公共牌）时用穷举而不是采样：剩余未知的只
-// 有对手的 2 张底牌，C(45,2)≈990 种组合，穷举比蒙特卡洛更快也更准确，还
-// 让河牌胜率变成一个确定值，方便测试和调试。翻前/翻牌/转牌阶段公共牌还没
-// 完全揭晓，改用蒙特卡洛采样（iterations 次），random 可注入以便测试复现。
+// 有对手的 2 张底牌，C(45,2)≈990 种组合，穷举比蒙特卡洛更快也更准确。翻前
+// /翻牌/转牌阶段公共牌还没完全揭晓，改用蒙特卡洛采样（iterations 次），
+// random 可注入以便测试复现。现在翻前也用这个函数算真实胜率（board=[]），
+// 不再走单独的起手牌分档表。
 function computeEquity(holeCards, board, opts = {}) {
   const { iterations = 300, random = Math.random } = opts;
   const known = new Set([...holeCards, ...board]);
@@ -99,7 +40,7 @@ function computeEquity(holeCards, board, opts = {}) {
     return total === 0 ? 1 : (win + tie / 2) / total;
   }
 
-  const needed = 5 - board.length; // community cards still to come, dealt to BOTH hands identically per trial
+  const needed = 5 - board.length;
   let win = 0, tie = 0;
   for (let n = 0; n < iterations; n++) {
     const pool = [...remaining];
@@ -120,215 +61,138 @@ function computeEquity(holeCards, board, opts = {}) {
   return (win + tie / 2) / iterations;
 }
 
-// ─── 上下文调整（用户实测反馈"很容易猜"后新增，2026-07-28）──────────────
-// 光有分档概率表还不够——真人玩家会记得自己这手牌之前做过什么、会看对手
-// 打法调整、下注尺度会按"这是价值下注还是诈唬"而不是均匀分布。下面几个
-// 调整量都是独立、具名的常量（不是散落的魔法数字），每个对应一条具体的
-// 可读牌理由，调紧/调松改这几个数字就够。
-const CBET_RAISE_BOOST = 0.25;      // 续注倾向：上一条街是自己主动加注、这条街率先行动时，把这么多概率从 call 挪去 raise
-const FACING_RAISE_FOLD_BOOST = 0.10; // 尊重真实加注：面对真加注（不只是盲注差额）时，把这么多概率从 call 挪去 fold
-const BLUFF_VS_FOLDY_SCALE = 0.4;   // 对手爱弃牌就多诈唬：(对手面对加注的弃牌率 - 0.5) * 此系数，从 fold 挪去 raise（可为负，对方是跟注站时反而少诈唬）
-const CALL_VS_AGGRO_SCALE = 0.4;    // 对手爱加注就多跟注：面对加注时，(对手加注频率 - 0.35) * 此系数，从 fold 挪去 call
-const DRY_BOARD_BLUFF_BOOST = 0.12; // 干燥面更适合诈唬（对手很少中牌）：胜率偏低时，把这么多概率从 fold 挪去 raise
-const WET_BOARD_BLUFF_PENALTY = 0.12; // 湿润面（同花/顺子听牌多）诈唬不划算：胜率偏低时，把这么多概率从 raise 挪回 fold
-const BLUFF_EQUITY_CEILING = 0.40;  // 板面纹理只影响"这是不是诈唬"这类决策——胜率高于这个值就是真价值下注，不该被板面干湿改变要不要下注
-
-// 位置调整（用户反馈"经常能赢"后新增，2026-07-30）：`position` 参数此前一直
-// 算出来传进 pickAction，却从没被消费——IP（庄家位，后行动，信息优势）该打
-// 得比 OOP 更宽、续注更有信心；OOP 面对加注（先行动，信息劣势，跟注后还要
-// 再多扛一条街）该更谨慎。三条都是独立、具名的调整量，跟上面几条上下文调整
-// 同一个模式，不是散落的魔法数字。
-const IP_PREFLOP_OPEN_BOOST = 0.08;  // IP 翻前开池（未面对真实加注）比 OOP 打得更宽：把这么多概率从 fold 挪去 raise
-const IP_CBET_EXTRA_BOOST = 0.10;    // IP 续注比 OOP 续注更有效（对手要在信息劣势下先动）：在已有的续注加成之上再多给一点
-const OOP_FACING_RAISE_TIGHTEN = 0.08; // OOP 面对加注比 IP 更该谨慎：在已有的"面对真实加注"调整之上再多收紧
-
-// 风格微调（多电脑对战新增，2026-08-02）：给同桌的多个 AI 坐位增加打法
-// 辨识度用的，跟 contextDeltas 是同一种"具名微调量"模式，只是维度换成
-// "这个坐位是什么性格"而不是"当前局面"——不改变 preflopTier/bandFor 的
-// 分档判断本身。单挑模式不传 style（值为 null/未知字符串），行为跟改动
-// 前完全一致。四组 delta 都刻意让 fold+call+raise 的调整量相加为 0，
-// 在基线桶的所有分量都不为 0 时可以纯粹是概率质量在三个桶之间挪动，不
-// 触发 adjustDistribution 的负值裁剪/重归一化。但在高胜率（>85%）或翻前
-// premium 的场景中，基线 fold=0.00，aggressive/bluffer/callingStation 的
-// 负 fold delta 会被裁剪到 0，触发重归一化——结果仍是一个有效的规范化分布
-// 但效果会略微缩水。这是同 adjustDistribution 一致的安全处理，不会产生
-// 无效或崩溃。
-const STYLE_DELTAS = {
-  steady:         { fold:  0.06, call: -0.02, raise: -0.04 }, // 稳健型：更容易弃牌，少加注
-  aggressive:     { fold: -0.05, call: -0.07, raise:  0.12 }, // 激进型：更少弃牌也更少跟注，多加注
-  bluffer:        { fold: -0.08, call:  0.00, raise:  0.08 }, // 诈唬型：弃牌概率直接让给加注，跟注频率不变
-  callingStation:  { fold: -0.10, call:  0.13, raise: -0.03 }, // 跟注型：明显更少弃牌、更多跟注
+// ─── 风格 → EV 计算的认知偏差（多人机对战沿用，2026-08-02 改成偏差参数）──
+// 风格不再加减概率表，而是对 EV 计算的输入做偏差——诈唬型高估自己的弃牌
+// 权益、跟注型高估自己的胜率、激进型给高方差动作（raise）的 EV 加成、
+// 稳健型给高方差动作打折扣。单挑模式 style 是 null，四个偏差都不生效。
+const STYLE_EV_BIAS = {
+  steady:         { varianceScale: 0.85 },  // 高方差（raise）动作的 EV 打折，模拟风险厌恶
+  aggressive:     { varianceScale: 1.15 },  // 高方差（raise）动作的 EV 加成，更容易选 raise
+  bluffer:        { foldEquityMultiplier: 1.2 }, // 高估自己的弃牌权益
+  callingStation: { equityMultiplier: 1.1 },     // 高估自己的胜率（封顶 1.0）
 };
-const STYLES = Object.keys(STYLE_DELTAS);
+const STYLES = Object.keys(STYLE_EV_BIAS);
 
-// 板面干湿判断：只看两个最主要的驱动因素——是否已经有同花听牌（2 张以上
-// 同花色公共牌）、牌面是否连张（存在两张公共牌点数相差 ≤4，順子听牌密
-// 度高）。刻意不看对子（成同花顺/葫芦的次要因素，MVP 简化不计）——二元
-// 判断（湿/干）足够驱动诈唬频率这一件事，不需要连续的"湿润度"分数。
-function boardTexture(board) {
-  if (board.length < 3) return 'dry'; // 翻前/还没发公共牌，中性，不触发额外惩罚
-  const suitCounts = {};
-  for (const c of board) suitCounts[suitOf(c)] = (suitCounts[suitOf(c)] || 0) + 1;
-  const maxSuitCount = Math.max(...Object.values(suitCounts));
-  const ranks = [...new Set(board.map(c => RANK_VALUE[rankOf(c)]))].sort((a, b) => a - b);
-  let connected = false;
-  for (let i = 0; i < ranks.length && !connected; i++) {
-    for (let j = i + 1; j < ranks.length; j++) {
-      if (ranks[j] - ranks[i] <= 4) { connected = true; break; }
-    }
-  }
-  return (maxSuitCount >= 2 || connected) ? 'wet' : 'dry';
+// 无 oppStats 数据时的中性先验——不假设对手特别爱弃牌或特别爱跟注。
+const DEFAULT_FOLD_PRIOR = 0.5;
+// 翻前有效后手（单位：大盲）低于这个阈值时，直接进入 push/fold 模式：
+// 加注候选固定为全下，不再用尺度启发式算一个"加一点点"的数字——按底池
+// 比例算的尺度在筹码这么浅的时候天然算不出接近全下的数，不加这个特判，
+// 浅筹码根本不会自然收敛到标准的 push/fold 打法。
+const SHORT_STACK_BB_THRESHOLD = 15;
+// EV-最优动作是弃牌、且自己胜率明显偏低时，保留这么大的概率不按最优走、
+// 改成诈唬式加注——避免"胜率一低就必弃牌"这种能被一眼看穿的规律。
+const BLUFF_DEVIATION_RATE = 0.08;
+const BLUFF_EQUITY_CEILING = 0.30;
+
+// 弃牌权益：单个对手的基础估计（默认先验，或已有的 oppStats 数据），乘上
+// 风格偏差，再按"剩余所有活跃对手当一个整体"聚合成 p^n——人越多，全员
+// 弃牌的概率天然指数下降，不用逐个对手单独建模。
+function estimateFoldEquity({ opponentFoldToRaiseRate, liveOpponentCount = 1, style = null }) {
+  let p = opponentFoldToRaiseRate ?? DEFAULT_FOLD_PRIOR;
+  const bias = STYLE_EV_BIAS[style];
+  if (bias?.foldEquityMultiplier) p *= bias.foldEquityMultiplier;
+  p = Math.min(1, Math.max(0, p));
+  const n = Math.max(1, liveOpponentCount);
+  return Math.pow(p, n);
 }
 
-function adjustDistribution(dist, deltas) {
-  let { fold, call, raise } = dist;
-  fold = Math.max(0, fold + (deltas.fold ?? 0));
-  call = Math.max(0, call + (deltas.call ?? 0));
-  raise = Math.max(0, raise + (deltas.raise ?? 0));
-  const sum = fold + call + raise;
-  return sum === 0 ? dist : { fold: fold / sum, call: call / sum, raise: raise / sum };
+// 跟注型高估自己的胜率——只影响它自己怎么看待这手牌，不影响真实胜率计算
+// 本身（computeEquity 算出来的数是客观的）。
+function styledEquity(equity, style) {
+  const bias = STYLE_EV_BIAS[style];
+  if (!bias?.equityMultiplier) return equity;
+  return Math.min(1, equity * bias.equityMultiplier);
 }
-
-function contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate, position }) {
-  const deltas = { fold: 0, call: 0, raise: 0 };
-  const ip = position === 'ip';
-
-  // 翻前开池：IP 没面对真实加注时打得更宽，OOP 维持基线不变。
-  if (street === 'preflop' && ip && !facingRaise) {
-    deltas.fold -= IP_PREFLOP_OPEN_BOOST;
-    deltas.raise += IP_PREFLOP_OPEN_BOOST;
-  }
-
-  // 续注（c-bet）：上条街是自己在加注、这条街轮到自己且没人下注——不管翻牌
-  // 有没有连到，真实玩家大概率会延续攻势，不是每条街都从零重新算胜率。
-  if (street !== 'preflop' && wasAggressor && toCall === 0) {
-    deltas.call -= CBET_RAISE_BOOST;
-    deltas.raise += CBET_RAISE_BOOST;
-    if (ip) {
-      deltas.call -= IP_CBET_EXTRA_BOOST;
-      deltas.raise += IP_CBET_EXTRA_BOOST;
-    }
-  }
-
-  // 板面干湿：只在"这手牌明显不是真价值"（胜率偏低，raise 只能是诈唬）
-  // 的场景下才有意义——胜率够高时该不该下注是牌力说了算，跟板面干湿无关。
-  // 要求 board.length>=3（真正翻牌以后才有意义的公共牌）而不是只判断
-  // `board` 真值——`pickAction` 里 board 默认是 `[]`，如果只判断真值，
-  // 没传 board 的旧调用方会被 boardTexture([]) 的"dry"默认值悄悄叠加一
-  // 层从未要求过的诈唬加成（实测踩过这个坑：两个已有的上下文调整测试因
-  // 此意外变成"raise"，才发现这里的默认值语义有问题）。
-  if (street !== 'preflop' && board.length >= 3 && equity != null && equity <= BLUFF_EQUITY_CEILING) {
-    if (boardTexture(board) === 'dry') {
-      deltas.fold -= DRY_BOARD_BLUFF_BOOST;
-      deltas.raise += DRY_BOARD_BLUFF_BOOST;
-    } else {
-      deltas.raise -= WET_BOARD_BLUFF_PENALTY;
-      deltas.fold += WET_BOARD_BLUFF_PENALTY;
-    }
-  }
-
-  if (facingRaise) {
-    deltas.call -= FACING_RAISE_FOLD_BOOST;
-    deltas.fold += FACING_RAISE_FOLD_BOOST;
-    if (!ip) {
-      deltas.call -= OOP_FACING_RAISE_TIGHTEN;
-      deltas.fold += OOP_FACING_RAISE_TIGHTEN;
-    }
-
-    if (opponentAggressionRate != null) {
-      const bump = (opponentAggressionRate - 0.35) * CALL_VS_AGGRO_SCALE;
-      deltas.fold -= bump;
-      deltas.call += bump;
-    }
-  }
-
-  if (opponentFoldToRaiseRate != null) {
-    const bump = (opponentFoldToRaiseRate - 0.5) * BLUFF_VS_FOLDY_SCALE;
-    deltas.fold -= bump;
-    deltas.raise += bump;
-  }
-
-  return deltas;
-}
-
-// 翻前给不了真实胜率（还没公共牌），用分档给一个粗略的数值代理，只用来
-// 决定下注尺度是"极化"还是"合并"，不影响弃牌/跟注/加注的概率本身（那个
-// 仍然是 PREFLOP_TABLE 说了算）。
-const PREFLOP_EQUITY_PROXY = { premium: 0.88, strong: 0.72, playable: 0.55, marginal: 0.38, trash: 0.18 };
 
 // 下注尺度极化：真实强牌（价值）和明显诈唬用大且浮动范围更宽的尺度
-// （0.6-1.4 倍底池)，中等牌力用偏小、偏窄的"保护性"尺度（0.35-0.7 倍底
-// 池）——这是真实的极化/合并下注范围理论的简化落地，不是一个统一的
-// 0.5-1.0 倍区间：后者本身就是最容易被摸出规律的"每次都差不多大"。
-function raiseSizeFraction(street, holeCards, equity, random) {
-  const e = street === 'preflop' ? PREFLOP_EQUITY_PROXY[preflopTier(holeCards)] : equity;
-  const polarized = e >= 0.70 || e <= 0.30;
+// （0.6-1.4 倍底池），中等牌力用偏小、偏窄的"保护性"尺度（0.35-0.7 倍底
+// 池）。直接吃 equity（翻前翻后现在都有真实胜率，不再需要按街区分/靠起
+// 手牌分档代理）。
+function raiseSizeFraction(equity, random) {
+  const polarized = equity >= 0.70 || equity <= 0.30;
   const [lo, hi] = polarized ? [0.6, 1.4] : [0.35, 0.7];
   return lo + random() * (hi - lo);
 }
 
-// ─── 动作抽样 ──────────────────────────────────────────────────────────
-// street==='preflop' 时完全忽略传入的 equity，改用 preflopTier——翻前用
-// 翻后式的原始胜率容易导致不合理的松跟注（原因见 design.md）。
+// ─── EV 计算 + 动作选择 ────────────────────────────────────────────────
 function pickAction(params) {
   const {
-    street, holeCards, board = [], equity, toCall, potSize, myChips, position,
-    random = Math.random, currentBet = toCall, minRaiseTo,
-    // 场上对手能跟到的最高上限（GameEngine.maxTotalFor 同一套口径）——不
-    // 传就是不设上限，纯向后兼容；PveSession 会传真实值，见 design.md「用
-    // 户反馈：全下应该按场上最长对手的身家封顶」。
+    street, equity, toCall, potSize, myChips, currentBet = toCall, minRaiseTo,
+    random = Math.random,
     opponentCeiling = Infinity,
-    // 上下文调整，全部可选、默认不生效（向后兼容旧调用方）：
-    wasAggressor = false, facingRaise = false,
-    opponentFoldToRaiseRate = null, opponentAggressionRate = null,
-    // 风格微调（多电脑对战），未知/未传都等价于不调整——见 STYLE_DELTAS。
+    liveOpponentCount = 1,
+    bigBlind,
+    opponentFoldToRaiseRate = null,
     style = null,
   } = params;
 
-  const baseDist = street === 'preflop'
-    ? PREFLOP_TABLE[preflopTier(holeCards)]
-    : bandFor(equity);
-  const deltas = contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate, position });
-  const styleDelta = STYLE_DELTAS[style];
-  if (styleDelta) {
-    deltas.fold += styleDelta.fold;
-    deltas.call += styleDelta.call;
-    deltas.raise += styleDelta.raise;
-  }
-  const dist = adjustDistribution(baseDist, deltas);
-
-  // 白看（toCall===0）时不可能弃牌——把 fold 的概率吸收进 call（此时等价
-  // 于 check），加注概率原样保留。
-  const fold = toCall === 0 ? 0 : dist.fold;
-  const call = toCall === 0 ? dist.fold + dist.call : dist.call;
-  const raise = dist.raise;
-
-  const r = random();
-  let bucket;
-  if (r < fold) bucket = 'fold';
-  else if (r < fold + call) bucket = 'call';
-  else bucket = 'raise';
-
-  if (bucket === 'fold') return { action: 'fold' };
-  if (bucket === 'call') return { action: toCall === 0 ? 'check' : 'call' };
-
-  // raise：尺度按 raiseSizeFraction 极化浮动（第二次调用 random() 决定具
-  // 体落点），再夹到 [minRaiseTo, 全下] 之间；夹完发现连最小加注都摸不到
-  // 全下（筹码太浅），直接报 allin，不返回一个不合法的加注数字。
   const myBetThisStreet = currentBet - toCall;
-  const maxTotal = Math.min(myChips + myBetThisStreet, opponentCeiling);
-  const sizeFraction = raiseSizeFraction(street, holeCards, equity, random);
-  const fallbackMinRaiseTo = currentBet + Math.max(1, Math.round(potSize * 0.5));
-  const wantRaiseTo = Math.round(currentBet + potSize * sizeFraction);
-  const floor = minRaiseTo ?? fallbackMinRaiseTo;
+  const maxTotal = Math.min(myChips + myBetThisStreet, opponentCeiling); // 有效后手能加到的最高总额
+  const foldEquity = estimateFoldEquity({ opponentFoldToRaiseRate, liveOpponentCount, style });
+  const eq = styledEquity(equity, style);
 
-  if (floor > maxTotal) return { action: 'allin', raiseTo: maxTotal };
-  const raiseTo = Math.min(maxTotal, Math.max(floor, wantRaiseTo));
-  return { action: 'raise', raiseTo };
+  // 加注候选额：翻前浅筹码直接全下；否则用极化尺度启发式选一个候选，不
+  // 枚举/优化连续尺度。
+  const effectiveStackBB = bigBlind ? maxTotal / bigBlind : Infinity;
+  const isShortStackPreflop = street === 'preflop' && effectiveStackBB <= SHORT_STACK_BB_THRESHOLD;
+
+  let raiseCandidate;
+  if (isShortStackPreflop) {
+    raiseCandidate = maxTotal;
+  } else {
+    const sizeFraction = raiseSizeFraction(eq, random);
+    const fallbackMinRaiseTo = currentBet + Math.max(1, Math.round(potSize * 0.5));
+    const wantRaiseTo = Math.round(currentBet + potSize * sizeFraction);
+    const floor = minRaiseTo ?? fallbackMinRaiseTo;
+    raiseCandidate = Math.min(maxTotal, Math.max(floor, wantRaiseTo));
+  }
+
+  const evFold = 0;
+  const evCall = eq * (potSize + toCall) - toCall;
+
+  // potSize 约定为"此刻真实可见的底池"（含这条街所有已下注的筹码——见
+  // PveSession 的调用方，Task 2），所以：加注到 raiseCandidate 后，自己
+  // 这条街的追加投入是 cost；假设对手跟注到同一个总额，对手的追加投入是
+  // (raiseCandidate - currentBet)；两者都加进当前 potSize 就是"若被跟注"
+  // 的最终底池。
+  const cost = raiseCandidate - myBetThisStreet;
+  const potIfCalled = potSize + cost + (raiseCandidate - currentBet);
+  let evRaise = foldEquity * potSize + (1 - foldEquity) * (eq * potIfCalled - cost);
+
+  const bias = STYLE_EV_BIAS[style];
+  if (bias?.varianceScale) evRaise *= bias.varianceScale;
+
+  let bestAction;
+  if (toCall === 0) {
+    // 白看：弃牌不是真实选项（等价于白白放弃一次免费看牌的机会），只在
+    // "加注"和"过牌"之间选。
+    bestAction = evRaise > evCall ? 'raise' : 'check';
+  } else {
+    const options = [
+      { action: 'fold', ev: evFold },
+      { action: 'call', ev: evCall },
+      { action: 'raise', ev: evRaise },
+    ];
+    options.sort((a, b) => b.ev - a.ev);
+    bestAction = options[0].action;
+  }
+
+  // 诈唬层：EV 最优是弃牌、且自己客观胜率确实很低时，小概率不按最优走。
+  if (bestAction === 'fold' && eq <= BLUFF_EQUITY_CEILING && random() < BLUFF_DEVIATION_RATE) {
+    bestAction = 'raise';
+  }
+
+  if (bestAction === 'fold') return { action: 'fold' };
+  if (bestAction === 'call') return { action: 'call' };
+  if (bestAction === 'check') return { action: 'check' };
+
+  // raise：夹到 [minRaiseTo或默认下限, 全下] 之间；连最小加注都摸不到全
+  // 下（筹码太浅）时直接报 allin，不返回不合法的加注数字。
+  if (raiseCandidate >= maxTotal) return { action: 'allin', raiseTo: maxTotal };
+  return { action: 'raise', raiseTo: raiseCandidate };
 }
 
 module.exports = {
-  computeEquity, preflopTier, pickAction, PREFLOP_TABLE, POSTFLOP_BANDS, STYLES,
-  // exported for direct unit testing / tuning visibility, not for PveSession to call directly
-  adjustDistribution, contextDeltas, raiseSizeFraction, boardTexture,
+  computeEquity, pickAction, raiseSizeFraction, STYLES,
 };
