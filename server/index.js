@@ -672,14 +672,17 @@ function createServer() {
     // pveActiveSocket, not by closing over this specific socket, so a
     // reconnect under the same pveId picks up correctly.
 
-    socket.on('pve:start', ({ playerName, pveId }) => {
+    socket.on('pve:start', ({ playerName, pveId, seatCount }) => {
       if (!pveId) return socket.emit('game:error', '缺少玩家标识');
       socketToPveId.set(socket.id, pveId);
       pveActiveSocket.set(pveId, socket.id);
       let session = pveSessions.get(pveId);
       if (!session) {
         const name = (playerName || '').trim() || '玩家';
-        session = new PveSession(pveId, name);
+        // 固定四档，非法/缺省一律回退单挑——不接受任意人数。
+        const VALID_SEAT_COUNTS = [2, 4, 6, 8];
+        const count = VALID_SEAT_COUNTS.includes(seatCount) ? seatCount : 2;
+        session = new PveSession(pveId, name, { seatCount: count });
         session.touch();
         pveSessions.set(pveId, session);
       } else {

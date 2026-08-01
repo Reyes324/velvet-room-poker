@@ -49,6 +49,22 @@ describe('集成测试 — PVE 人机对战', () => {
     expect(s.phase).toBe('preflop');
   });
 
+  it('pve:start 传 seatCount=4 时，game:state 里有 4 个玩家', async () => {
+    const c = await connect();
+    const state = waitFor(c, 'game:state');
+    c.emit('pve:start', { playerName: 'Alice', pveId: 'multi-test-1', seatCount: 4 });
+    const s = await state;
+    expect(s.players.length).toBe(4);
+  });
+
+  it('pve:start 传非法 seatCount（如 3 或缺省）时，回退到 2 人桌，不报错', async () => {
+    const c = await connect();
+    const state = waitFor(c, 'game:state');
+    c.emit('pve:start', { playerName: 'Alice', pveId: 'multi-test-2', seatCount: 3 });
+    const s = await state;
+    expect(s.players.length).toBe(2);
+  });
+
   it('没有 pveId 时 pve:start 报错，不静默用 socket.id 兜底', async () => {
     const c = await connect();
     const err = waitFor(c, 'game:error');
