@@ -142,6 +142,21 @@ const IP_PREFLOP_OPEN_BOOST = 0.08;  // IP 翻前开池（未面对真实加注�
 const IP_CBET_EXTRA_BOOST = 0.10;    // IP 续注比 OOP 续注更有效（对手要在信息劣势下先动）：在已有的续注加成之上再多给一点
 const OOP_FACING_RAISE_TIGHTEN = 0.08; // OOP 面对加注比 IP 更该谨慎：在已有的"面对真实加注"调整之上再多收紧
 
+// 风格微调（多电脑对战新增，2026-08-02）：给同桌的多个 AI 坐位增加打法
+// 辨识度用的，跟 contextDeltas 是同一种"具名微调量"模式，只是维度换成
+// "这个坐位是什么性格"而不是"当前局面"——不改变 preflopTier/bandFor 的
+// 分档判断本身。单挑模式不传 style（值为 null/未知字符串），行为跟改动
+// 前完全一致。四组 delta 都刻意让 fold+call+raise 的调整量相加为 0，
+// 保证不触发 adjustDistribution 的负值裁剪/重归一化，纯粹是概率质量在
+// 三个桶之间挪动。
+const STYLE_DELTAS = {
+  steady:         { fold:  0.06, call: -0.02, raise: -0.04 }, // 稳健型：更容易弃牌，少加注
+  aggressive:     { fold: -0.05, call: -0.07, raise:  0.12 }, // 激进型：更少弃牌也更少跟注，多加注
+  bluffer:        { fold: -0.08, call:  0.00, raise:  0.08 }, // 诈唬型：弃牌概率直接让给加注，跟注频率不变
+  callingStation:  { fold: -0.10, call:  0.13, raise: -0.03 }, // 跟注型：明显更少弃牌、更多跟注
+};
+const STYLES = Object.keys(STYLE_DELTAS);
+
 // 板面干湿判断：只看两个最主要的驱动因素——是否已经有同花听牌（2 张以上
 // 同花色公共牌）、牌面是否连张（存在两张公共牌点数相差 ≤4，順子听牌密
 // 度高）。刻意不看对子（成同花顺/葫芦的次要因素，MVP 简化不计）——二元
@@ -262,12 +277,20 @@ function pickAction(params) {
     // 上下文调整，全部可选、默认不生效（向后兼容旧调用方）：
     wasAggressor = false, facingRaise = false,
     opponentFoldToRaiseRate = null, opponentAggressionRate = null,
+    // 风格微调（多电脑对战），未知/未传都等价于不调整——见 STYLE_DELTAS。
+    style = null,
   } = params;
 
   const baseDist = street === 'preflop'
     ? PREFLOP_TABLE[preflopTier(holeCards)]
     : bandFor(equity);
   const deltas = contextDeltas({ street, board, equity, toCall, wasAggressor, facingRaise, opponentFoldToRaiseRate, opponentAggressionRate, position });
+  const styleDelta = STYLE_DELTAS[style];
+  if (styleDelta) {
+    deltas.fold += styleDelta.fold;
+    deltas.call += styleDelta.call;
+    deltas.raise += styleDelta.raise;
+  }
   const dist = adjustDistribution(baseDist, deltas);
 
   // 白看（toCall===0）时不可能弃牌——把 fold 的概率吸收进 call（此时等价
@@ -301,7 +324,7 @@ function pickAction(params) {
 }
 
 module.exports = {
-  computeEquity, preflopTier, pickAction, PREFLOP_TABLE, POSTFLOP_BANDS,
+  computeEquity, preflopTier, pickAction, PREFLOP_TABLE, POSTFLOP_BANDS, STYLES,
   // exported for direct unit testing / tuning visibility, not for PveSession to call directly
   adjustDistribution, contextDeltas, raiseSizeFraction, boardTexture,
 };

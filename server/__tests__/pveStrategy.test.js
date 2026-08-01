@@ -9,6 +9,7 @@ const {
   POSTFLOP_BANDS,
   raiseSizeFraction,
   boardTexture,
+  STYLES,
 } = require('../pveStrategy');
 
 describe('pveStrategy — computeEquity', () => {
@@ -245,6 +246,61 @@ describe('pveStrategy — 位置调整（用户反馈"经常能赢"后新增，2
     const oop = pickAction({ ...base, position: 'oop' });
     expect(ip.action).not.toBe('fold');
     expect(oop.action).toBe('fold');
+  });
+});
+
+describe('pveStrategy — 风格微调（多人机对战新增，2026-08-02）', () => {
+  // Baseline for all four cases: equity=0.5 -> POSTFLOP_BANDS band
+  // {fold:0.15, call:0.55, raise:0.30}. toCall=100 (>0, no fold-merge).
+  // board=[] (length<3, boardTexture branch never triggers). No position,
+  // no wasAggressor, no facingRaise, no opponent reads -> contextDeltas()
+  // returns all-zero deltas, so the baseline distribution here is exactly
+  // the raw band: fold=[0,0.15), call=[0.15,0.70), raise=[0.70,1).
+  const base = {
+    street: 'flop', equity: 0.5, toCall: 100, currentBet: 100, potSize: 300, myChips: 1000,
+  };
+
+  it('不传 style（单挑模式）时行为和改动前完全一致：r=0.60 落在 call', () => {
+    const a = pickAction({ ...base, random: () => 0.60 });
+    expect(a.action).toBe('call');
+  });
+
+  it('steady（稳健型）比不传 style 更容易弃牌：r=0.18 从 call 变成 fold', () => {
+    const noStyle = pickAction({ ...base, random: () => 0.18 });
+    const steady = pickAction({ ...base, random: () => 0.18, style: 'steady' });
+    expect(noStyle.action).toBe('call');
+    expect(steady.action).toBe('fold');
+  });
+
+  it('aggressive（激进型）比不传 style 更容易加注：r=0.60 从 call 变成 raise', () => {
+    const noStyle = pickAction({ ...base, random: () => 0.60 });
+    const aggressive = pickAction({ ...base, random: () => 0.60, style: 'aggressive' });
+    expect(noStyle.action).toBe('call');
+    expect(aggressive.action).toBe('raise');
+  });
+
+  it('bluffer（诈唬型）比不传 style 更容易加注：r=0.65 从 call 变成 raise', () => {
+    const noStyle = pickAction({ ...base, random: () => 0.65 });
+    const bluffer = pickAction({ ...base, random: () => 0.65, style: 'bluffer' });
+    expect(noStyle.action).toBe('call');
+    expect(bluffer.action).toBe('raise');
+  });
+
+  it('callingStation（跟注型）比不传 style 更少弃牌：r=0.10 从 fold 变成 call', () => {
+    const noStyle = pickAction({ ...base, random: () => 0.10 });
+    const station = pickAction({ ...base, random: () => 0.10, style: 'callingStation' });
+    expect(noStyle.action).toBe('fold');
+    expect(station.action).toBe('call');
+  });
+
+  it('未知的 style 字符串静默忽略（不抛异常，等价于不传）', () => {
+    const noStyle = pickAction({ ...base, random: () => 0.60 });
+    const unknown = pickAction({ ...base, random: () => 0.60, style: 'not-a-real-style' });
+    expect(unknown.action).toBe(noStyle.action);
+  });
+
+  it('STYLES 导出四个风格键名，供 PveSession 随机分配', () => {
+    expect(STYLES).toEqual(['steady', 'aggressive', 'bluffer', 'callingStation']);
   });
 });
 
