@@ -15,10 +15,13 @@
          算不准、要等一次滚动才修正」的 bug 明显更容易触发、也更严重的场景
          （2026-08-01 追查：独立 App 模式底部大片白边正是从切到
          black-translucent 之后才变严重的，此前只有状态栏本身是没适配深色
-         主题的白条，不算功能性 bug）。改回默认（不声明该 meta，等价于
-         default/opaque），换回一条稳定不跳变的原生状态栏，用视觉上的
-         「状态栏没跟深色主题走」换掉一个真实的布局 bug——按项目优先级，
-         正确性优先于这层视觉打磨。 -->
+         主题的白条，不算功能性 bug）。改回 default 后（不声明该 meta）
+         底部白边确认修好，但状态栏也跟着变回了不适配深色主题的白条。
+         2026-08-01：换成 black（非 translucent）——只把状态栏本身的背景/
+         图标换成深色，不让页面接管状态栏区域、不改变 WebView 计算可视区
+         域的方式（仍是「整屏减一条固定状态栏」），理论上不会重新触发
+         black-translucent 那个 bug；效果和风险都还没有真机验证过。 -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>翡翠厅</title>
   </head>

@@ -886,4 +886,5 @@
 - [x] 66.5 真机验证：`--vh` 修复未解决问题，用户反馈白边依旧，且指出更早版本"只有顶部有白边、不严重"跟现在"底部一大片"明显不是同一严重程度
 - [x] 66.6 按时间线复查 `client/index.html`/`global.css` 全部改动（而非继续猜 CSS），定位真正根因：`995aa4a`（2026-07-31）引入的 `apple-mobile-web-app-status-bar-style: black-translucent` 让 WebView 改成动态算"整屏减安全区"而不是"整屏减固定状态栏"，是 WebKit 首帧视口高度误算 bug 明显更容易触发的场景；此后三轮改动（`overscroll-behavior`/`position:fixed`/`--vh`）都没动过这一行，触发条件从未被移除
 - [x] 66.7 `client/index.html` 移除 `black-translucent`，回退到默认不透明状态栏——用"状态栏没融入深色主题"的视觉代价换掉真实布局 bug，符合 CLAUDE.md「正确性 > 视觉打磨」优先级；`--vh` JS 修复保留作为额外保险。客户端构建通过
-- [ ] 66.8 真机验证待用户在实际 iPhone 主屏幕书签冷启动场景确认白边消失、状态栏回退为普通白条（预期代价）
+- [x] 66.8 真机验证：用户重新添加书签冷启动确认底部白边已消失；状态栏回退为普通白条（预期代价），用户反馈"顶部的白边还会在"——确认这是状态栏本身没适配深色主题，不是布局 bug 复发
+- [x] 66.9 用户要求状态栏也换深色：`client/index.html` 的 `apple-mobile-web-app-status-bar-style` 从不声明（default）改成 `black`（非 `black-translucent`）——只改状态栏本身背景/图标颜色，不让页面接管状态栏区域、不改变 WebView 可视区域计算方式，理论上不会重新触发首帧视口高度 bug。客户端构建通过；效果和是否真的不复发白边，待真机验证
