@@ -23,6 +23,7 @@ export default function App() {
   // using that player name (only meaningful when actually creating a new
   // session — see PvePage's pve:start, which ignores it on a resume).
   const [pveName, setPveName] = useState(null);
+  const [pveSeatCount, setPveSeatCount] = useState(2);
 
   useEffect(() => {
     const pathMatch = window.location.pathname.match(/^\/room\/([0-9]{6})$/i);
@@ -105,10 +106,11 @@ export default function App() {
     setRoom(null);
   }
 
-  function handlePve(name) {
+  function handlePve(name, seatCount) {
     localStorage.setItem('vr_pveActive', '1');
     localStorage.setItem('vr_pveLastActive', String(Date.now()));
     setPveName(name);
+    setPveSeatCount(seatCount ?? 2);
   }
 
   function handlePveLeave() {
@@ -126,7 +128,7 @@ export default function App() {
   if (pveName !== null) {
     return (
       <div className="stage-wrap">
-        <PvePage playerName={pveName} onLeave={handlePveLeave} />
+        <PvePage playerName={pveName} seatCount={pveSeatCount} onLeave={handlePveLeave} />
       </div>
     );
   }

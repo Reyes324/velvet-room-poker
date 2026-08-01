@@ -144,10 +144,25 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
       </div>
       {mode === null && (
         // 找不到真人对战时自己练练手——刻意放在卡片外面、页面下方，跟"创建/
-        // 加入房间"这两个正式入口在视觉上分开一层，不经过任何房间码/邀请链接，
-        // 点了直接开局。见 design.md「新增：单人人机对战（PVE）模式」，MVP 不
-        // 跟多人房间混用。
-        <div className="home-pve-link" onClick={() => onPve(name.trim())}>人机对战</div>
+        // 加入房间"这两个正式入口在视觉上分开一层，不经过任何房间码/邀请链接。
+        // 见 design.md「新增：单人人机对战（PVE）模式」，MVP 不跟多人房间混用。
+        // 点了不直接开局，先切到 mode==='pve' 选桌形（2026-08-02 新增：支持
+        // 多电脑同桌，不再只有单挑）。
+        <div className="home-pve-link" onClick={() => setMode('pve')}>人机对战</div>
+      )}
+      {mode === 'pve' && (
+        // 风格是随机分配、对玩家不可见的（design.md 已确认），所以这里只
+        // 需要选人数，不需要选风格/难度。四档固定卡片，不开放任意数字。
+        <div className="home-pve-picker">
+          <div className="home-pve-picker-title">选择桌形</div>
+          <div className="home-pve-picker-grid">
+            <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 2)}>单挑</button>
+            <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 4)}>4 人</button>
+            <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 6)}>6 人</button>
+            <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 8)}>8 人</button>
+          </div>
+          <div className="home-pve-picker-back" onClick={() => setMode(null)}>返回</div>
+        </div>
       )}
       {/* 用户反馈（2026-07-31）：加到 iOS 主屏幕的书签是"独立 App"模式打开的
           （见 index.html 的 apple-mobile-web-app-capable），没有 Safari 那套

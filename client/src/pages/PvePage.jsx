@@ -23,7 +23,7 @@ function getPveId() {
   return id;
 }
 
-export default function PvePage({ playerName, onLeave }) {
+export default function PvePage({ playerName, seatCount, onLeave }) {
   const [gameState, setGameState] = useState(null);
   const [showdown, setShowdown] = useState(null);
   const [settlement, setSettlement] = useState(null);
@@ -72,7 +72,7 @@ export default function PvePage({ playerName, onLeave }) {
     // socket without necessarily unmounting this component. Server-side
     // pve:start resumes the existing session (matched by pveId) instead of
     // starting fresh when one's already there — see server/index.js.
-    function sync() { emit('pve:start', { playerName, pveId: getPveId() }); }
+    function sync() { emit('pve:start', { playerName, pveId: getPveId(), seatCount }); }
     sync();
     socket.on('connect', sync);
     return () => {
