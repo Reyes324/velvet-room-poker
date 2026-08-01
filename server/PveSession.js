@@ -2,8 +2,43 @@ const { GameEngine } = require('./GameEngine');
 const pveStrategy = require('./pveStrategy');
 const { defaultStore, MAX_HAND_HISTORY } = require('./pveStore');
 
-const AI_ID = '__ai__';
+const { STYLES } = require('./pveStrategy');
+
+const AI_ID = '__ai__'; // legacy single-AI id — kept exact for seatCount=2 (heads-up, the default)
 const AI_NAME = '电脑';
+// 多电脑对战新增（2026-08-02）：坐位名字池，风格对玩家不可见，名字本身
+// 也刻意不带风格暗示（比如不叫"保守老K"），避免间接泄露。
+const AI_NAME_POOL = ['老K', '赌神', '扑克脸', '幸运星', '黑桃A', '河神', '影子玩家', '常胜将军'];
+
+// 从名字池里不放回地随机抽 count 个（count 是 AI 坐位数，最多 7，池子有
+// 8 个，够用不重复）。
+function pickAiNames(count, random) {
+  const pool = [...AI_NAME_POOL];
+  const picked = [];
+  for (let i = 0; i < count; i++) {
+    const idx = Math.floor(random() * pool.length);
+    picked.push(pool.splice(idx, 1)[0]);
+  }
+  return picked;
+}
+
+function pickRandomStyle(random) {
+  return STYLES[Math.floor(random() * STYLES.length)];
+}
+
+// 单挑（seatCount===2，默认）保留改动前完全一致的行为：唯一的 AI 坐位
+// id 是 AI_ID、name 是 AI_NAME、style 是 null（pickAction 收到 null 等价
+// 于不调整，见 pveStrategy.js）。人数更多时才真正生成随机名字/风格的坐位。
+function buildAiSeats(seatCount, random) {
+  if (seatCount === 2) return [{ id: AI_ID, name: AI_NAME, style: null }];
+  const count = seatCount - 1;
+  const names = pickAiNames(count, random);
+  return names.map((name, i) => ({
+    id: `__ai_${i + 1}__`,
+    name,
+    style: pickRandomStyle(random),
+  }));
+}
 
 // One PveSession per solo game — deliberately NOT a Room and NOT held in
 // RoomManager.rooms. MVP decision (design.md「新增：单人人机对战（PVE）
@@ -14,9 +49,14 @@ const AI_NAME = '电脑';
 // the only new part is that the AI seat's actions come from pveStrategy
 // instead of a socket message.
 class PveSession {
-  constructor(humanId, humanName, { startingChips = 1000, bigBlind = 20, strategy = pveStrategy, store = defaultStore } = {}) {
+  constructor(humanId, humanName, {
+    startingChips = 1000, bigBlind = 20, strategy = pveStrategy, store = defaultStore,
+    seatCount = 2, random = Math.random,
+  } = {}) {
     this.humanId = humanId;
-    this.aiId = AI_ID;
+    this.seatCount = seatCount;
+    this.aiSeats = buildAiSeats(seatCount, random);
+    this.aiSeatIds = new Set(this.aiSeats.map(seat => seat.id));
     this.startingChips = startingChips;
     this.bigBlind = bigBlind;
     // Injectable so tests can stub decisions without fighting CJS/ESM
@@ -34,7 +74,7 @@ class PveSession {
     const saved = this.store.loadProfile(humanId);
     this.players = [
       { id: humanId, name: humanName, chips: startingChips, debt: 0 },
-      { id: AI_ID, name: AI_NAME, chips: startingChips, debt: 0 },
+      ...this.aiSeats.map(seat => ({ id: seat.id, name: seat.name, chips: startingChips, debt: 0 })),
     ];
     this.dealerIndex = 0;
     this.handNumber = 0;
@@ -126,7 +166,7 @@ class PveSession {
   }
 
   isAiTurn() {
-    return !this.isOver() && this.actionPlayerId === this.aiId;
+    return !this.isOver() && this.aiSeatIds.has(this.actionPlayerId);
   }
 
   humanAction(action, amount) {
@@ -175,7 +215,9 @@ class PveSession {
   // layer, not the decision engine.
   aiAction() {
     if (!this.isAiTurn()) return null;
-    const aiIdx = this.game.players.findIndex(p => p.id === this.aiId);
+    const actingId = this.actionPlayerId;
+    const seat = this.aiSeats.find(s => s.id === actingId);
+    const aiIdx = this.game.players.findIndex(p => p.id === actingId);
     const ai = this.game.players[aiIdx];
     const toCall = this.game.currentBet - ai.bet;
     const street = this.game.phase;
@@ -199,16 +241,17 @@ class PveSession {
       position,
       currentBet: this.game.currentBet,
       minRaiseTo: this.game.currentBet + this.game.lastRaiseAmount,
-      opponentCeiling: this.game.maxTotalFor(this.aiId),
+      opponentCeiling: this.game.maxTotalFor(actingId),
       wasAggressor,
       facingRaise,
       opponentAggressionRate,
       opponentFoldToRaiseRate,
+      style: seat.style,
     });
 
     const result = decision.action === 'raise'
-      ? this._dispatch(this.aiId, 'raise', decision.raiseTo)
-      : this._dispatch(this.aiId, decision.action);
+      ? this._dispatch(actingId, 'raise', decision.raiseTo)
+      : this._dispatch(actingId, decision.action);
     return { decision, result };
   }
 

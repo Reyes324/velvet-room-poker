@@ -76,6 +76,105 @@ describe('PveSession — 初始化', () => {
   });
 });
 
+describe('PveSession — 多电脑对战（2026-08-02 新增）', () => {
+  it('不传 seatCount（默认）时，行为跟改动前完全一致：单个 AI 坐位，id 是 AI_ID，name 是"电脑"', () => {
+    const s = makeSession();
+    expect(s.aiSeats).toEqual([{ id: AI_ID, name: '电脑', style: null }]);
+    expect(s.players).toEqual([
+      { id: 'me', name: 'Alice', chips: 1000, debt: 0 },
+      { id: AI_ID, name: '电脑', chips: 1000, debt: 0 },
+    ]);
+  });
+
+  it('seatCount=4 时，有 3 个 AI 坐位，id/name 互不重复，每个都有一个合法的 style', () => {
+    const { STYLES } = require('../pveStrategy');
+    const s = makeSession({ seatCount: 4 });
+    expect(s.aiSeats.length).toBe(3);
+    const ids = s.aiSeats.map(seat => seat.id);
+    const names = s.aiSeats.map(seat => seat.name);
+    expect(new Set(ids).size).toBe(3);
+    expect(new Set(names).size).toBe(3);
+    for (const seat of s.aiSeats) {
+      expect(STYLES).toContain(seat.style);
+    }
+    expect(s.players.length).toBe(4);
+  });
+
+  it('seatCount=8 时，有 7 个 AI 坐位', () => {
+    const s = makeSession({ seatCount: 8 });
+    expect(s.aiSeats.length).toBe(7);
+    expect(s.players.length).toBe(8);
+  });
+
+  it('AI 坐位名字全部来自固定名字池', () => {
+    const NAME_POOL = ['老K', '赌神', '扑克脸', '幸运星', '黑桃A', '河神', '影子玩家', '常胜将军'];
+    const s = makeSession({ seatCount: 8 });
+    for (const seat of s.aiSeats) {
+      expect(NAME_POOL).toContain(seat.name);
+    }
+  });
+
+  it('isAiTurn()/aiAction() 能连续处理多个 AI 坐位的行动，不会卡在同一个坐位', () => {
+    // 'call' (not the default 'check') — the first actor in a 4-max hand
+    // faces a real toCall (blind differential), and 'check' would be an
+    // illegal action there (GameEngine.check() rejects it, game state
+    // never advances, actionPlayerId never changes) — that would make this
+    // loop spin on the same seat 20 times and fail the "no seat visited
+    // twice" assertion below for the wrong reason. 'call' is always legal
+    // regardless of toCall.
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    const s = makeSession({ seatCount: 4 });
+    const aiIds = s.aiSeats.map(seat => seat.id);
+    const actedIds = [];
+    let guard = 0;
+    while (s.isAiTurn() && guard < 20) {
+      actedIds.push(s.actionPlayerId);
+      s.aiAction();
+      guard += 1;
+    }
+    expect(guard).toBeGreaterThan(0); // at least one AI seat had to act before control reaches the human
+    expect(guard).toBeLessThan(20); // didn't get stuck looping
+    expect(new Set(actedIds).size).toBe(actedIds.length); // no seat visited twice in this stretch
+    for (const id of actedIds) expect(aiIds).toContain(id);
+  });
+
+  it('aiAction() 把行动坐位自己的 style 传给 strategy.pickAction()', () => {
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.pickAction.mockClear();
+    expect(s.isAiTurn()).toBe(true);
+    const actingId = s.actionPlayerId;
+    const actingSeat = s.aiSeats.find(seat => seat.id === actingId);
+    s.aiAction();
+    expect(fakeStrategy.pickAction).toHaveBeenCalledWith(
+      expect.objectContaining({ style: actingSeat.style })
+    );
+  });
+
+  it('多人桌摊牌结算：4 人桌打到 all-in 全下比牌，筹码总量守恒', () => {
+    // Deterministic strategy: everyone shoves every action, forcing a fast
+    // all-in showdown regardless of hole cards — proves settlement/side-pot
+    // math (already covered generically by GameEngine's own tests) actually
+    // gets exercised end-to-end through PveSession with >2 players.
+    const allinStrategy = {
+      computeEquity: () => 0.5,
+      pickAction: () => ({ action: 'allin' }),
+    };
+    const s = new PveSession('me', 'Alice', {
+      startingChips: 1000, bigBlind: 20, strategy: allinStrategy, store: fakeStore, seatCount: 4,
+    });
+    // Human also shoves.
+    let guard = 0;
+    while (!s.isOver() && guard < 50) {
+      if (s.isAiTurn()) s.aiAction();
+      else s.humanAction('allin');
+      guard += 1;
+    }
+    expect(s.isOver()).toBe(true);
+    const total = s.game.players.reduce((sum, p) => sum + p.chips, 0);
+    expect(total).toBe(4 * 1000); // conserved regardless of who won the side pots
+  });
+});
+
 describe('PveSession — humanAction', () => {
   it('轮到人类时可以正常行动', () => {
     const s = makeSession();
