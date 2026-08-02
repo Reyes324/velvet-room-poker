@@ -729,21 +729,43 @@ describe('pveStrategy — 两极化对手范围（超池建模，2026-08-03）',
   it('面对两极化范围，中等牌力的胜率明显高于面对同等窄度的单调强牌范围', () => {
     // 对手范围里掺进了一块纯诈唬 -> 中等牌力抓诈唬的价值上来了。
     // 这正是"面对超池不该无脑弃牌"的量化依据。
+    // 使用种子随机生成器确保确定性：两次计算都从同一个随机序列开始，
+    // 差异纯粹来自范围形状（2026-08-04 防止 CI 随机失败）。
+    const createSeededRandom = (seed) => {
+      let state = seed;
+      return () => {
+        state = (state * 9301 + 49297) % 233280;
+        return state / 233280;
+      };
+    };
     const board = ['Th', '7c', '2d'];
     const medium = ['Tc', '9c']; // 顶对弱踢
-    const mono = computeEquity(medium, board, { iterations: 3000, opponentRangePct: 0.20 });
+    const mono = computeEquity(medium, board, {
+      iterations: 3000, opponentRangePct: 0.20, random: createSeededRandom(42),
+    });
     const polar = computeEquity(medium, board, {
-      iterations: 3000, opponentRangePct: 0.12, opponentBottomPct: 0.15,
+      iterations: 3000, opponentRangePct: 0.12, opponentBottomPct: 0.15, random: createSeededRandom(42),
     });
     expect(polar).toBeGreaterThan(mono + 0.03);
   });
 
   it('坚果级强牌几乎不受范围形状影响（对照组，证明上一条不是全局偏移）', () => {
+    // 种子随机生成器确保确定性对照组：同一个随机序列下，坚果牌对范围
+    // 形状的敏感度应远低于中等牌力（2026-08-04 防止 CI 随机失败）。
+    const createSeededRandom = (seed) => {
+      let state = seed;
+      return () => {
+        state = (state * 9301 + 49297) % 233280;
+        return state / 233280;
+      };
+    };
     const board = ['Th', '7c', '2d'];
     const nuts = ['Ts', 'Td']; // 中三条
-    const mono = computeEquity(nuts, board, { iterations: 3000, opponentRangePct: 0.20 });
+    const mono = computeEquity(nuts, board, {
+      iterations: 3000, opponentRangePct: 0.20, random: createSeededRandom(42),
+    });
     const polar = computeEquity(nuts, board, {
-      iterations: 3000, opponentRangePct: 0.12, opponentBottomPct: 0.15,
+      iterations: 3000, opponentRangePct: 0.12, opponentBottomPct: 0.15, random: createSeededRandom(42),
     });
     expect(Math.abs(polar - mono)).toBeLessThan(0.03);
   });
