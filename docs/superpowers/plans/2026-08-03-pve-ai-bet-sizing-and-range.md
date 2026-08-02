@@ -26,7 +26,7 @@
 - Test: `server/__tests__/pveStrategy.test.js`
 
 **Interfaces:**
-- Produces: 模块内新增 `sizePressure(opponentDelta, potAfterRaise): number`（不导出，仅内部用）；导出新常量 `SIZE_PRESSURE_CAP = 1.6`。`estimateFoldEquity` 新增两个可选入参 `opponentDelta`/`potAfterRaise`，两者都传时才施加尺寸调整。
+- Produces: 新增并导出 `sizePressure(opponentDelta, potAfterRaise): number` 与常量 `SIZE_PRESSURE_CAP = 1.6`。`estimateFoldEquity` 新增两个可选入参 `opponentDelta`/`potAfterRaise`，两者都传时才施加尺寸调整。
 - Consumes: 无（本轮第一个任务）。
 
 **背景（实施者必读）：** 当前 `estimateFoldEquity` 算出的弃牌权益与"加注多大"完全无关，恒为 `0.45` 左右。这导致最小加注被模型认为和满池注一样能吓走对手，`foldEquity × potSize` 这一项凭空给每次加注 +13.5 筹码的"免费收益"，于是翻前任何两张牌都是 +EV 加注。MDF（最小防守频率）是德扑标准理论：对手要跟 `B` 才能赢下 `P` 的底池时，其理论弃牌上限是 `B / P`。
@@ -39,32 +39,35 @@
 describe('pveStrategy — 尺寸感知的弃牌权益（MDF 锚定，2026-08-03）', () => {
   // sizePressure 归一化成"满池注 = 1.0"，所以理论弃牌上限 = sizePressure × 0.5。
   // 下面每一行的期望值都是德扑教科书里的 MDF 标准值，不是拍脑袋的数字。
-  // 通过 pickAction 的对外行为间接验证（sizePressure 本身不导出）。
-  function foldCeilingFor({ potSize, currentBet, raiseTo, myBetThisStreet = 0 }) {
-    const cost = raiseTo - myBetThisStreet;
-    const opponentDelta = raiseTo - currentBet;
-    return opponentDelta / (potSize + cost);
-  }
-
+  // 直接测导出的 sizePressure 本身——不要在测试里重新实现一遍这个公式，
+  // 那样只是在验证测试自己，碰不到生产代码。
   it('MDF 教科书值：满池注 0.5、半池 1/3、2 倍超池 2/3', () => {
-    expect(foldCeilingFor({ potSize: 30, currentBet: 0, raiseTo: 30 })).toBeCloseTo(0.5, 3);
-    expect(foldCeilingFor({ potSize: 30, currentBet: 0, raiseTo: 15 })).toBeCloseTo(1 / 3, 3);
-    expect(foldCeilingFor({ potSize: 30, currentBet: 0, raiseTo: 60 })).toBeCloseTo(2 / 3, 3);
+    // 满池注：底池 30、下 30 -> opponentDelta=30, potAfterRaise=30+30=60
+    expect(sizePressure(30, 60) * 0.5).toBeCloseTo(0.5, 3);
+    // 半池注：底池 30、下 15 -> opponentDelta=15, potAfterRaise=45
+    expect(sizePressure(15, 45) * 0.5).toBeCloseTo(1 / 3, 3);
+    // 2 倍超池：底池 30、下 60 -> opponentDelta=60, potAfterRaise=90
+    expect(sizePressure(60, 90) * 0.5).toBeCloseTo(2 / 3, 3);
+    // 最小加注：底池 30、currentBet 20、加到 40 -> opponentDelta=20, potAfterRaise=70
+    // 改动前这个场景拿到的弃牌权益和满池注一模一样，正是"翻前什么牌都加注"的病根。
+    expect(sizePressure(20, 70) * 0.5).toBeCloseTo(0.286, 2);
   });
 
-  it('最小加注的弃牌权益明显低于满池加注——这是"翻前什么牌都加注"的病根', () => {
-    const base = {
-      street: 'flop', equity: 0.34, toCall: 0, currentBet: 0, potSize: 100, myChips: 5000,
-      opponentCeiling: 5000, liveOpponentCount: 1, bigBlind: 20,
-      opponentFoldToRaiseRate: 0.45, style: null, facingRaise: false, random: () => 0.5,
-    };
-    // minRaiseTo 很小 -> 候选加注额被 raiseSizeFraction 推到接近满池；
-    // minRaiseTo 很大 -> 候选加注额被地板抬高。用两个尺寸对比 EV 单调性。
-    const small = pickAction({ ...base, minRaiseTo: 10 });
-    const large = pickAction({ ...base, minRaiseTo: 300 });
-    // 大尺寸拿到更高的弃牌权益，但也要付更多成本；这里只断言二者行为不同，
-    // 证明尺寸真的进入了计算（改动前两者的 foldEquity 完全相同）。
-    expect(small.raiseTo === large.raiseTo).toBe(false);
+  it('尺寸压力单调递增：加注越大，压迫力越强', () => {
+    const quarter = sizePressure(15, 75);  // 底池 60、下 15
+    const half = sizePressure(30, 90);     // 底池 60、下 30
+    const full = sizePressure(60, 120);    // 底池 60、下 60
+    expect(quarter).toBeLessThan(half);
+    expect(half).toBeLessThan(full);
+  });
+
+  it('极端超池被 SIZE_PRESSURE_CAP 封顶，不会把弃牌权益推到不合理的高位', () => {
+    expect(sizePressure(10000, 10001)).toBe(SIZE_PRESSURE_CAP);
+  });
+
+  it('退化输入返回 1（不做尺寸调整），不产生 NaN/Infinity', () => {
+    expect(sizePressure(0, 100)).toBe(1);
+    expect(sizePressure(20, 0)).toBe(1);
   });
 
   it('翻前范围回归（本轮招牌行为）：20bb 未面对加注时，强牌加注、烂牌弃牌', () => {
@@ -186,11 +189,13 @@ function estimateFoldEquity({
 module.exports = {
   computeEquity, pickAction, raiseSizeFraction, STYLES, EV_NOISE_FRACTION,
   POT_CONTROL_MURKY_LOW, POT_CONTROL_MURKY_HIGH, POT_CONTROL_DISCOUNT,
-  SIZE_PRESSURE_CAP,
+  SIZE_PRESSURE_CAP, sizePressure,
 };
 ```
 
-并在 `server/__tests__/pveStrategy.test.js` 顶部的 require 解构里加上 `SIZE_PRESSURE_CAP`。
+`sizePressure` 要导出，是为了让测试能直接对着 MDF 教科书值断言这个函数本身——如果只能通过 `pickAction` 间接观察，测试就只能在自己内部重算一遍同样的公式，那等于在验证测试自己、碰不到生产代码。
+
+并在 `server/__tests__/pveStrategy.test.js` 顶部的 require 解构里加上 `SIZE_PRESSURE_CAP` 和 `sizePressure`。
 
 - [ ] **Step 7: 跑新测试确认通过**
 
