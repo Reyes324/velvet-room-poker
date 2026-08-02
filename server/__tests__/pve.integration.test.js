@@ -72,6 +72,26 @@ describe('集成测试 — PVE 人机对战', () => {
     expect(await err).toBe('缺少玩家标识');
   });
 
+  it('pve:peek 对不存在的 pveId 返回 exists:false，不创建新会话', async () => {
+    const c = await connect();
+    const res = await new Promise((resolve) => c.emit('pve:peek', { pveId: 'no-such-session' }, resolve));
+    expect(res).toEqual({ exists: false });
+    // 确认真的没有副作用创建出一局——peek 之后再 pve:peek 同一个 pveId，
+    // 应该仍然是 exists:false（如果 peek 本身悄悄建过会话，这里就会变
+    // true）。
+    const res2 = await new Promise((resolve) => c.emit('pve:peek', { pveId: 'no-such-session' }, resolve));
+    expect(res2).toEqual({ exists: false });
+  });
+
+  it('pve:peek 对存在的会话返回 exists:true + handNumber/seatCount，只读不影响会话本身', async () => {
+    const c = await connect();
+    const state = waitFor(c, 'game:state');
+    c.emit('pve:start', { playerName: 'Alice', pveId: 'p-peek-1', seatCount: 4 });
+    await state;
+    const res = await new Promise((resolve) => c.emit('pve:peek', { pveId: 'p-peek-1' }, resolve));
+    expect(res).toEqual({ exists: true, handNumber: 1, seatCount: 4 });
+  });
+
   it('完整打一手（真人一路跟注/过牌，AI 自动行动），最终收到 game:showdown', async () => {
     const c = await connect();
     const state1 = waitFor(c, 'game:state');

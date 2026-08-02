@@ -689,6 +689,16 @@ function createServer() {
     // pveActiveSocket, not by closing over this specific socket, so a
     // reconnect under the same pveId picks up correctly.
 
+    // Read-only lookup for the homepage "继续上局" card (2026-08-02 路由
+    // 重构)——mirrors room:peek above: no side effects, doesn't touch
+    // pveSessions/pveActiveSocket, safe to call before the client commits
+    // to actually resuming.
+    socket.on('pve:peek', ({ pveId }, callback) => {
+      const session = pveId && pveSessions.get(pveId);
+      if (!session) return callback?.({ exists: false });
+      callback?.({ exists: true, handNumber: session.handNumber, seatCount: session.seatCount });
+    });
+
     socket.on('pve:start', ({ playerName, pveId, seatCount }) => {
       if (!pveId) return socket.emit('game:error', '缺少玩家标识');
       socketToPveId.set(socket.id, pveId);

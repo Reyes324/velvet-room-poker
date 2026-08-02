@@ -25,33 +25,38 @@ export default function App() {
   const [pveName, setPveName] = useState(null);
   const [pveSeatCount, setPveSeatCount] = useState(2);
 
+  // 路由重构（2026-08-02，用户反馈"主域名无论什么时候访问都应该是首页"）：
+  // 裸域名 `/` 永远只渲染首页，不再在这里做任何自动恢复——首页自己的
+  // "继续上局"卡片（HomePage.jsx）才是从 `/` 进入已有会话的唯一入口。这个
+  // effect 现在只处理"URL 本身就明确指向一个会话"的两种情况：`/room/CODE`
+  // （邀请链接，或收藏/直接访问自己之前的房间）和 `/pve`（收藏/直接访问，
+  // 或从首页卡片点进来后 pushState 到这里）——这两种都是明确的目的地导航，
+  // 跟"裸域名该不该自动带你进会话"是两个问题。
   useEffect(() => {
     const pathMatch = window.location.pathname.match(/^\/room\/([0-9]{6})$/i);
     const params = new URLSearchParams(window.location.search);
     const urlCode = (pathMatch?.[1] ?? params.get('room'))?.toUpperCase() ?? null;
+    const onPvePath = window.location.pathname === '/pve';
 
-    // Cold-start session resume: a backgrounded mobile tab is very often
-    // fully discarded by the OS, not just socket-disconnected — the next
-    // "open" is a brand new page load with no React state, so this effect
-    // (not RoomPage's own reconnect-on-socket-`connect` logic) is the only
-    // place that can catch it. Resume whenever there's a saved session and
-    // the URL doesn't point at a *different* room (a fresh invite link to
-    // another room is a legitimate new join, not a session to restore).
-    const savedPlayerId = localStorage.getItem('vr_playerId');
-    const savedRoomCode = localStorage.getItem('vr_roomCode');
-    if (savedPlayerId && savedRoomCode && (!urlCode || urlCode === savedRoomCode) && !room) {
-      window.history.replaceState({}, '', '/room/' + savedRoomCode);
-      setRoom({ code: savedRoomCode, playerId: savedPlayerId });
+    if (urlCode) {
+      const savedPlayerId = localStorage.getItem('vr_playerId');
+      const savedRoomCode = localStorage.getItem('vr_roomCode');
+      // 如果本地保存的正好是这个房间，走恢复；否则（比如一个全新的邀请
+      // 链接）走加入流程——两者都是靠 RoomPage 处理，这里只负责把正确的
+      // 初始 props 传进去。
+      if (savedPlayerId && savedRoomCode === urlCode && !room) {
+        setRoom({ code: savedRoomCode, playerId: savedPlayerId });
+      } else if (!room) {
+        setRoom({ autoJoinCode: urlCode });
+      }
       return;
     }
 
     // Same idea, for PVE — user feedback (2026-07-28): closing the browser
     // mid-hand and coming back showed "对局不存在", the exact rough edge
-    // the room-resume logic above exists to avoid for multiplayer. Only
-    // checked once room-resume above didn't already claim this cold start
-    // (a saved room session always wins if somehow both markers are stale
-    // at once). playerName is passed as '' — server's pve:start resumes an
-    // existing session by pveId and ignores the name in that case.
+    // the room-resume logic above exists to avoid for multiplayer.
+    // playerName is passed as '' — server's pve:start resumes an existing
+    // session by pveId and ignores the name in that case.
     //
     // Unlike a multiplayer room (shared state — if the room's still there,
     // go back to it, full stop, no matter how long it's been), PVE resume
@@ -61,10 +66,10 @@ export default function App() {
     // hand from ages ago. lastActive is written by PvePage on every
     // game:state it receives (see that file), so it tracks real activity,
     // not just "when pve:start last ran".
-    const pveActive = localStorage.getItem('vr_pveActive');
-    const pveLastActive = Number(localStorage.getItem('vr_pveLastActive') ?? 0);
-    if (pveActive && !room && pveName === null) {
-      if (Date.now() - pveLastActive < PVE_RESUME_WINDOW_MS) {
+    if (onPvePath && pveName === null) {
+      const pveActive = localStorage.getItem('vr_pveActive');
+      const pveLastActive = Number(localStorage.getItem('vr_pveLastActive') ?? 0);
+      if (pveActive && Date.now() - pveLastActive < PVE_RESUME_WINDOW_MS) {
         // Final-review finding (2026-08-02): pveSeatCount defaults to 2 and
         // was never restored here, so if the server process actually
         // restarted (routine on this project's Render free-tier hosting —
@@ -81,21 +86,19 @@ export default function App() {
         setPveName('');
         return;
       }
-      // Stale — the server would've already reaped this session anyway
-      // (PVE_IDLE_TTL_MS, same window). Clear the markers so this doesn't
-      // keep re-checking a resume that's never going to happen.
+      // No resumable session (stale, or a fresh direct visit to /pve with
+      // nothing saved) — the server would've already reaped a stale one
+      // anyway (PVE_IDLE_TTL_MS, same window). Clear the markers, bounce
+      // back to the actual home route so this doesn't sit on a blank /pve.
       localStorage.removeItem('vr_pveActive');
       localStorage.removeItem('vr_pveLastActive');
-    }
-
-    if (urlCode && !room) {
-      setRoom({ autoJoinCode: urlCode });
+      window.history.replaceState({}, '', '/');
     }
   }, []);
 
   // Browser back button → go home
   useEffect(() => {
-    function onPop() { setRoom(null); }
+    function onPop() { setRoom(null); setPveName(null); }
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
@@ -128,6 +131,7 @@ export default function App() {
     // chose, instead of silently falling back to the pveSeatCount state
     // default (2) on a fresh page load.
     localStorage.setItem('vr_pveSeatCount', String(seatCount ?? 2));
+    window.history.pushState({}, '', '/pve');
     setPveName(name);
     setPveSeatCount(seatCount ?? 2);
   }
@@ -136,6 +140,7 @@ export default function App() {
     localStorage.removeItem('vr_pveActive');
     localStorage.removeItem('vr_pveLastActive');
     localStorage.removeItem('vr_pveSeatCount');
+    window.history.pushState({}, '', '/');
     setPveName(null);
   }
 

@@ -13,6 +13,11 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   const [error, setError] = useState('');
   const [inviterName, setInviterName] = useState(null);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  // 路由重构（2026-08-02，用户反馈"主域名不要静默自动恢复"）：裸域名不再
+  // 自动带你回上一个会话，而是这里异步 peek 一次确认会话还在，确认了才
+  // 展示"继续上局"卡片，由用户自己点进去。null = 还没查/查完发现没有；
+  // 有会话时是 { type: 'room', code } 或 { type: 'pve', handNumber, seatCount }。
+  const [resumeCard, setResumeCard] = useState(null);
 
   useEffect(() => {
     if (initialCode) {
@@ -71,6 +76,49 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
     if (socket.connected) peek(); else socket.once('connect', peek);
   }, [initialCode]);
 
+  // "继续上局"卡片——确认存在才展示，不存在就静默清掉本地标记。房间/PVE
+  // 在本地始终互斥（同一时间最多一个标记），所以最多查一个、最多展示一
+  // 张卡片。跟上面的邀请链接 peek 是同一个只读查询模式，不影响服务端状态。
+  useEffect(() => {
+    if (initialCode) return; // 邀请链接场景走的是加入流程，不需要"继续上局"
+    const savedRoomCode = localStorage.getItem('vr_roomCode');
+    const pveActive = localStorage.getItem('vr_pveActive');
+    if (!savedRoomCode && !pveActive) return;
+
+    function peekResume() {
+      if (savedRoomCode) {
+        socket.emit('room:peek', { code: savedRoomCode }, (res) => {
+          if (res && !res.error) {
+            setResumeCard({ type: 'room', code: savedRoomCode });
+          } else {
+            localStorage.removeItem('vr_roomCode');
+          }
+        });
+        return;
+      }
+      const pveId = localStorage.getItem('vr_playerId');
+      socket.emit('pve:peek', { pveId }, (res) => {
+        if (res?.exists) {
+          setResumeCard({ type: 'pve', handNumber: res.handNumber, seatCount: res.seatCount });
+        } else {
+          localStorage.removeItem('vr_pveActive');
+          localStorage.removeItem('vr_pveLastActive');
+          localStorage.removeItem('vr_pveSeatCount');
+        }
+      });
+    }
+    if (socket.connected) peekResume(); else socket.once('connect', peekResume);
+  }, [initialCode]);
+
+  function handleResumeClick() {
+    if (resumeCard?.type === 'room') {
+      const playerId = localStorage.getItem('vr_playerId');
+      onJoined(resumeCard.code, playerId);
+    } else if (resumeCard?.type === 'pve') {
+      onPve('', resumeCard.seatCount);
+    }
+  }
+
   function getPlayerId() {
     let id = localStorage.getItem('vr_playerId');
     if (!id) { id = genId(); localStorage.setItem('vr_playerId', id); }
@@ -99,6 +147,14 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
           <p className="home-invite">
             {inviterName ? <>「<strong>{inviterName}</strong>」邀请你加入战局</> : '受邀加入战局'}
           </p>
+        )}
+
+        {mode === null && resumeCard && (
+          <button className="home-resume-card" onClick={handleResumeClick}>
+            {resumeCard.type === 'room'
+              ? `继续上局：房间 ${resumeCard.code}`
+              : `继续上局：人机对战（第 ${resumeCard.handNumber} 手）`}
+          </button>
         )}
 
         <div className="home-form">
