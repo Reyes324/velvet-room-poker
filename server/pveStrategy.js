@@ -369,7 +369,7 @@ function raiseSizeFraction(equity, random) {
 // ─── EV 计算 + 动作选择 ────────────────────────────────────────────────
 function pickAction(params) {
   const {
-    street, equity, toCall, potSize, myChips, currentBet = toCall, minRaiseTo,
+    street, equity, equityIfCalled, toCall, potSize, myChips, currentBet = toCall, minRaiseTo,
     random = Math.random,
     opponentCeiling = Infinity,
     liveOpponentCount = 1,
@@ -387,6 +387,17 @@ function pickAction(params) {
   // 来判断 realizedEquity 要不要打折（SPR 很低≈快摊牌了，不用折）。
   const sprAfterCall = (potSize + toCall) > 0 ? (myChips - toCall) / (potSize + toCall) : Infinity;
   const realEq = realizedEquity(eq, street, sprAfterCall);
+
+  // 组件 C（2026-08-03）：evCall 和 evRaise 面对的对手范围不一样——跟注面
+  // 对的是"对手已经下注了"的范围，而加注面对的是"愿意来跟我加注的人"，后
+  // 者必然强于随机。调用方（PveSession）算两次胜率分别传入；不传时退回
+  // equity，与改动前逐位一致。
+  //
+  // 注意这里对两个胜率都统一施加 styledEquity——风格偏差是"我怎么看待自己
+  // 的牌力"，对两条分支应当一视同仁；而范围本身用的是客观胜率（由调用方
+  // 用真实 equity 算好），不受风格滤镜影响。
+  const eqIfCalled = styledEquity(equityIfCalled ?? equity, style);
+  const realEqIfCalled = realizedEquity(eqIfCalled, street, sprAfterCall);
 
   // 加注候选额：翻前浅筹码直接全下；否则用极化尺度启发式选一个候选，不
   // 枚举/优化连续尺度。
@@ -467,7 +478,7 @@ function pickAction(params) {
   const potIfCalled = raiseCandidate < currentBet
     ? Math.max(0, potSize + cost + liveOpponentCount * opponentDelta)
     : potSize + cost + opponentDelta;
-  let evRaise = foldEquity * potSize + (1 - foldEquity) * (realEq * potIfCalled - cost);
+  let evRaise = foldEquity * potSize + (1 - foldEquity) * (realEqIfCalled * potIfCalled - cost);
 
   // 池控制风险折扣（见上面 POT_CONTROL_* 常量的注释）：只在"不算坚果也不
   // 算明显该弃"的模糊胜率区间、且这个 raise 本身算出来是正 EV 时才打折——

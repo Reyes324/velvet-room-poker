@@ -770,3 +770,30 @@ describe('pveStrategy — 两极化对手范围（超池建模，2026-08-03）',
     expect(Math.abs(polar - mono)).toBeLessThan(0.03);
   });
 });
+
+describe('pveStrategy — 加注的选择效应（equityIfCalled，2026-08-03）', () => {
+  const base = {
+    street: 'preflop', toCall: 20, currentBet: 20, potSize: 30, myChips: 400,
+    minRaiseTo: 40, opponentCeiling: 400, liveOpponentCount: 1, bigBlind: 20,
+    opponentFoldToRaiseRate: null, style: null, facingRaise: false, random: () => 0.5,
+  };
+
+  it('不传 equityIfCalled 时，行为与只传 equity 完全一致（向后兼容）', () => {
+    const a = pickAction({ ...base, equity: 0.55 });
+    const b = pickAction({ ...base, equity: 0.55, equityIfCalled: 0.55 });
+    expect(a).toEqual(b);
+  });
+
+  it('被跟注时胜率更低会压制加注：同一手牌，只因为"跟我的人更强"就从加注变弃牌', () => {
+    // T2o：对随机牌 0.417，对前 30% 只有 0.308（设计文档里的实测值）。
+    const naive = pickAction({ ...base, equity: 0.417 });
+    const aware = pickAction({ ...base, equity: 0.417, equityIfCalled: 0.308 });
+    expect(naive.action).toBe('raise');
+    expect(aware.action).toBe('fold');
+  });
+
+  it('强牌不受影响：AA 对随机 0.859、对前 30% 0.836，两种算法都加注', () => {
+    const aware = pickAction({ ...base, equity: 0.859, equityIfCalled: 0.836 });
+    expect(aware.action).toBe('raise');
+  });
+});
