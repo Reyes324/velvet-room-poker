@@ -430,6 +430,66 @@ describe('pveStrategy — computeEquity 的 opponentRangePct 行为（Finding 1 
   });
 });
 
+describe('pveStrategy — 感知噪声（用户需求，2026-08-02："加一点随机色彩、加点情绪，让这个比较像人类"）', () => {
+  it('不传 noiseFraction（默认 0）时行为跟改动前完全一致：同一个近似打平的局面，多个不同 random 序列都应该得到同一个结果', () => {
+    // equity=0.4/toCall=100/potSize=300/currentBet=100/minRaiseTo=150/
+    // opponentFoldToRaiseRate=0.08 是"aggressive 风格对 EV 计算的偏差"那组
+    // 测试里已经手算验证过的近似打平局面（evCall=60, evRaise≈59.88，call
+    // 微弱领先）——默认不开噪声时，不管 random 序列是什么，结果必须稳定是
+    // call，因为 gaussianNoise 在 stdDev<=0 时直接返回 0，根本不消耗
+    // random()。
+    const base = {
+      street: 'flop', equity: 0.4, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.08,
+    };
+    const seqs = [[0], [0.99], [0.5], [0.1, 0.9, 0.2]];
+    for (const seq of seqs) {
+      let i = 0;
+      const random = () => seq[i++ % seq.length];
+      expect(pickAction({ ...base, random }).action).toBe('call');
+    }
+  });
+
+  it('开启噪声后，同一个近似打平的局面换不同 random 序列会得到不同结果——EV 接近的边界决策不再是"一刀切"', () => {
+    const base = {
+      street: 'flop', equity: 0.4, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.08,
+      noiseFraction: 0.15,
+    };
+    const outcomes = new Set();
+    const seqs = [
+      [0.1, 0.9, 0.2, 0.8, 0.3, 0.7],
+      [0.9, 0.1, 0.8, 0.2, 0.7, 0.3],
+      [0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+      [0.99, 0.01, 0.01, 0.99, 0.5, 0.5],
+    ];
+    for (const seq of seqs) {
+      let i = 0;
+      const random = () => seq[i++ % seq.length];
+      outcomes.add(pickAction({ ...base, random }).action);
+    }
+    expect(outcomes.size).toBeGreaterThan(1);
+  });
+
+  it('开启噪声后，EV 差距悬殊的决策（比如 95% 胜率的坚果）几乎不受影响，多个 random 序列都应该稳定得到同一个结果', () => {
+    const decisive = {
+      street: 'flop', equity: 0.95, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, bigBlind: 20, noiseFraction: 0.15,
+    };
+    const seqs = [
+      [0.1, 0.9, 0.2, 0.8, 0.3, 0.7],
+      [0.9, 0.1, 0.8, 0.2, 0.7, 0.3],
+      [0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+      [0.99, 0.01, 0.01, 0.99, 0.5, 0.5],
+    ];
+    for (const seq of seqs) {
+      let i = 0;
+      const random = () => seq[i++ % seq.length];
+      expect(pickAction({ ...decisive, random }).action).toBe('raise');
+    }
+  });
+});
+
 describe('pveStrategy — raiseSizeFraction（下注尺度极化，签名简化：直接吃 equity）', () => {
   it('极端胜率（价值/诈唬两端）应该比中等胜率有更宽、更大的尺度范围', () => {
     const polarizedFractions = [];

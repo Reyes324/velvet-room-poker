@@ -1,6 +1,6 @@
 const { GameEngine } = require('./GameEngine');
 const pveStrategy = require('./pveStrategy');
-const { STYLES } = pveStrategy;
+const { STYLES, EV_NOISE_FRACTION } = pveStrategy;
 const { defaultStore, MAX_HAND_HISTORY } = require('./pveStore');
 
 const AI_ID = '__ai__'; // legacy single-AI id — kept exact for seatCount=2 (heads-up, the default)
@@ -273,6 +273,11 @@ class PveSession {
       opponentFoldToRaiseRate,
       style: seat.style,
       facingRaise,
+      // 感知噪声（用户需求，2026-08-02："加一点随机色彩、加点情绪，让这个
+      // 比较像人类"）——pickAction 默认不开（noiseFraction=0，保持所有单
+      // 测的精确边界值不变），真实对局这里显式开启。EV 差距悬殊的决策几乎
+      // 不受影响，EV 接近的边界决策不再是"一刀切"。
+      noiseFraction: EV_NOISE_FRACTION,
     });
 
     const result = decision.action === 'raise'

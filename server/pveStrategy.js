@@ -216,6 +216,32 @@ const SHORT_STACK_BB_THRESHOLD = 15;
 const BLUFF_DEVIATION_RATE = 0.04;
 const BLUFF_EQUITY_CEILING = 0.30;
 
+// 感知噪声（用户需求，2026-08-02："加一点随机色彩、加点情绪，让这个比较
+// 像人类"）：真人玩家哪怕真心想赢，判断也不是像计算器一样精确——会有情绪
+// 波动、会看错、会觉得"这把感觉不太对"。给 fold/call/raise 三个算出来的
+// EV 各自加一点跟底池成比例的高斯噪声，再比大小，而不是直接比精确值：
+// EV 差距悬殊的决策几乎不受影响（一点噪声翻不动大的差距），EV 接近的边界
+// 决策会自然变得不那么可预测——包括"强牌几乎从不过牌/慢打"这类此前纯粹
+// 靠公式精确比较导致的"一刀切"，不需要再专门写一条"强牌偶尔慢打"的特判
+// 规则，是同一个机制的自然结果。
+//
+// 默认不开启（noiseFraction=0，stdDev<=0 时直接返回 0、不消耗 random()），
+// 对现有所有不传这个参数的调用方（包括这个文件里几十个手算验证过边界值
+// 的单元测试）完全不影响——PveSession.aiAction() 给真实对局的决策显式传入
+// 这个值来开启，不作为 pickAction 的默认行为。0.15 是"噪声标准差 = 底池的
+// 15%"，量级上跟诈唬层的 BLUFF_DEVIATION_RATE 是同一类"小幅、不主导决策"
+// 的调整，不是拍脑袋。
+const EV_NOISE_FRACTION = 0.15;
+
+function gaussianNoise(random, stdDev) {
+  if (stdDev <= 0) return 0;
+  // Box-Muller 变换：两个独立均匀分布样本 -> 一个标准正态分布样本。
+  const u1 = Math.max(random(), 1e-12); // 避免 u1===0 时 log(0) 变成 -Infinity
+  const u2 = random();
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return z * stdDev;
+}
+
 // 胜率实现率（2026-08-02 最终审查修复新增）：computeEquity 算出的是"现在
 // 摊牌"的静态胜率，但后面往往还有牌要发、还有街要打——烂牌很难把纸面胜率
 // 真正兑现成筹码，这个折扣此前完全没建模，是"AI 几乎从不弃牌"的根因之一
@@ -286,6 +312,7 @@ function pickAction(params) {
     opponentFoldToRaiseRate = null,
     style = null,
     facingRaise = false,
+    noiseFraction = 0, // 感知噪声标准差 = potSize × 这个比例；0 = 不开启，精确比较（默认，向后兼容）
   } = params;
 
   const myBetThisStreet = currentBet - toCall;
@@ -382,20 +409,28 @@ function pickAction(params) {
     evRaise = evRaise > 0 ? evRaise * bias.varianceScale : evRaise / bias.varianceScale;
   }
 
+  // 感知噪声只用于"选哪个动作"这一步的比较，不改 evFold/evCall/evRaise
+  // 这几个变量本身——诈唬层下面用的还是 eq（未打噪声的客观胜率），跟"是否
+  // 要诈唬"这个判断脱钩，噪声只影响"EV 接近时选哪边"。
+  const noiseStdDev = potSize * noiseFraction;
+  const perceivedFold = evFold + gaussianNoise(random, noiseStdDev);
+  const perceivedCall = evCall + gaussianNoise(random, noiseStdDev);
+  const perceivedRaise = evRaise + gaussianNoise(random, noiseStdDev);
+
   let bestAction;
   if (toCall === 0) {
     // 白看：弃牌不是真实选项（等价于白白放弃一次免费看牌的机会），只在
     // "加注"和"过牌"之间选。
-    bestAction = evRaise > evCall ? 'raise' : 'check';
+    bestAction = perceivedRaise > perceivedCall ? 'raise' : 'check';
   } else {
     const options = [
-      { action: 'fold', ev: evFold },
-      { action: 'raise', ev: evRaise },
+      { action: 'fold', ev: perceivedFold },
+      { action: 'raise', ev: perceivedRaise },
     ];
     // 浅筹码 push/fold 模式：只比较 fold vs all-in，call 不是真实选项——加
     // 注候选在这个分支已经被强制设成全下（见上面 isShortStackPreflop 分
     // 支），这本来就是个"弃还是梭哈"的二选一决策。
-    if (!isShortStackPreflop) options.push({ action: 'call', ev: evCall });
+    if (!isShortStackPreflop) options.push({ action: 'call', ev: perceivedCall });
     options.sort((a, b) => b.ev - a.ev);
     bestAction = options[0].action;
   }
@@ -420,5 +455,5 @@ function pickAction(params) {
 }
 
 module.exports = {
-  computeEquity, pickAction, raiseSizeFraction, STYLES,
+  computeEquity, pickAction, raiseSizeFraction, STYLES, EV_NOISE_FRACTION,
 };

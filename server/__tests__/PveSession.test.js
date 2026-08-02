@@ -138,6 +138,15 @@ describe('PveSession — 多电脑对战（2026-08-02 新增）', () => {
     for (const id of actedIds) expect(aiIds).toContain(id);
   });
 
+  it('aiAction() 给真实对局的决策传入非零 noiseFraction（感知噪声，用户需求 2026-08-02"加点情绪"），不是 pickAction 默认的 0', () => {
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.pickAction.mockClear();
+    expect(s.isAiTurn()).toBe(true);
+    s.aiAction();
+    const callArgs = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(callArgs.noiseFraction).toBeGreaterThan(0);
+  });
+
   it('aiAction() 把行动坐位自己的 style 传给 strategy.pickAction()', () => {
     const s = makeSession({ seatCount: 4 });
     fakeStrategy.pickAction.mockClear();
