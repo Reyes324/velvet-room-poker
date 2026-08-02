@@ -85,7 +85,17 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
       )}
       {poked && <div className="action-bubble poke-bubble" style={bubbleStyle(bubbleSide)}>戳了戳</div>}
 
-      {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && (
+      {/* GameEngine.getStateForPlayer masks other seats' cards as [null, null]
+          (same length as a real 2-card hand) whenever the viewer themselves
+          folded this hand, even at real showdown — deliberate, matching
+          earlier feedback that a folded player shouldn't keep watching
+          others' hands resolve. `.length === 2` alone can't tell that apart
+          from real revealed cards, and used to crash here trying to read
+          `.raw` off `null` (2026-08-02 production crash: 4-seat PVE, human
+          folds, AI-vs-AI showdown renders for the folded viewer, blank
+          screen — root-caused from an on-screen error report after adding
+          the error boundary's copy-to-clipboard). */}
+      {isShowdown && !folded && !isMe && player.holeCards?.length === 2 && player.holeCards[0] != null && (
         <div className="reveal" style={sideStyle(cardsSide)}>
           {player.holeCards.map((c, i) => (
             <Card

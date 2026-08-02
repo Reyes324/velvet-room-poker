@@ -89,3 +89,15 @@
   color: var(--text-secondary);
   border: 1px solid rgba(255,255,255,.1);
 }
+
+.error-boundary-abandon {
+  flex: 0 0 auto;
+  margin-top: var(--sp-3);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}

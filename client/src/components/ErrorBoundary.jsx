@@ -41,6 +41,22 @@ export default class ErrorBoundary extends Component {
     return lines.filter(Boolean).join('\n');
   }
 
+  // Plain "刷新页面" alone doesn't help when the crash comes from the
+  // resumed session's own data (e.g. the 2026-08-02 masked-showdown-cards
+  // crash) — a reload just re-fetches the same broken hand and crashes
+  // again immediately (user feedback, 2026-08-02: "这个时候刷新页面好像
+  // 都没有用" / there's also no separate URL for PVE to escape to, "始终
+  // 用这个链接...依然还是回不到首页"). This button breaks that loop
+  // directly from the crash screen: clear every local-storage marker that
+  // would auto-resume a room or PVE session, then hard-navigate home.
+  handleAbandonAndGoHome = () => {
+    localStorage.removeItem('vr_roomCode');
+    localStorage.removeItem('vr_pveActive');
+    localStorage.removeItem('vr_pveLastActive');
+    localStorage.removeItem('vr_pveSeatCount');
+    window.location.href = '/';
+  };
+
   handleCopy = async () => {
     const text = this.errorText();
     try {
@@ -68,7 +84,7 @@ export default class ErrorBoundary extends Component {
       <div className="error-boundary">
         <div className="error-boundary-card">
           <div className="error-boundary-title">出错了</div>
-          <p className="error-boundary-desc">页面遇到了一个没处理好的问题。下面是具体报错——点"复制错误信息"发给开发者，然后刷新页面就能恢复。</p>
+          <p className="error-boundary-desc">页面遇到了一个没处理好的问题。下面是具体报错——点"复制错误信息"发给开发者。如果刷新恢复不了（同一局会一直卡在这），用"放弃这局，回首页"跳出去。</p>
           <pre className="error-boundary-detail" ref={el => { this.preRef = el; }}>{this.errorText()}</pre>
           <div className="error-boundary-btns">
             <button className="error-boundary-copy" onClick={this.handleCopy}>
@@ -76,6 +92,7 @@ export default class ErrorBoundary extends Component {
             </button>
             <button className="error-boundary-reload" onClick={() => window.location.reload()}>刷新页面</button>
           </div>
+          <button className="error-boundary-abandon" onClick={this.handleAbandonAndGoHome}>放弃这局，回首页</button>
         </div>
       </div>
     );
