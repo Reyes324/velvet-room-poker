@@ -357,6 +357,35 @@ describe('PveSession — aiAction', () => {
     expect(sawFacingRaise).toBe(true);
   });
 
+  it('翻牌后范围继续收窄（用户反馈的遗留项）：同一手牌里，AI 连续在不同街都面对加注（barrel），opponentRangePct 要比只在翻前面对过一次更窄；同一条街内重复面对加注（比如翻前的 3bet war）不重复收窄', () => {
+    const s = makeSession({ bigBlind: 20 });
+    // 直接把 opponentAggressionRate 钉在一个不贴边界的值（0.5），这样乘完
+    // 收窄系数之后不会又被 clamp 拉回原值，能看出真正的区别。
+    s._opponentReads = () => ({ opponentFoldToRaiseRate: null, opponentAggressionRate: 0.5 });
+
+    // 翻前：human（SB/dealer）先加注，AI（BB）面对加注，call 过关到翻牌。
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    s.humanAction('raise', 100);
+    expect(s.isAiTurn()).toBe(true);
+    s.aiAction();
+    const preflopOpts = fakeStrategy.computeEquity.mock.calls.at(-1)[2];
+    expect(preflopOpts.opponentRangePct).toBeCloseTo(0.5, 5); // streak=1 -> 不额外收窄
+
+    // 翻牌：AI（BB，非庄家）先行动——先 check 让权给 human，human 再下注，
+    // AI 第二次面对加注（这次是新的一条街）。
+    expect(s.game.phase).toBe('flop');
+    expect(s.isAiTurn()).toBe(true);
+    fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
+    s.aiAction();
+    s.humanAction('raise', 200);
+    expect(s.isAiTurn()).toBe(true);
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    s.aiAction();
+    const flopOpts = fakeStrategy.computeEquity.mock.calls.at(-1)[2];
+    expect(flopOpts.opponentRangePct).toBeCloseTo(0.5 * 0.75, 5); // streak=2 -> 再收窄一次
+    expect(flopOpts.opponentRangePct).toBeLessThan(preflopOpts.opponentRangePct);
+  });
+
   it('对手统计只在样本量够时才生效（不会被前几手过拟合）——用 opponentFoldToRaiseRate，因为 opponentAggressionRate 不再传给 pickAction', () => {
     const s = makeSession();
     // Play several hands where the human (dealer/SB, acts first heads-up)

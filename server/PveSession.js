@@ -116,6 +116,11 @@ class PveSession {
     // 2026-07-31, screenshot). set in index.js's pveHandleResult when a
     // hand ends, cleared in _dealNewHand below when the next one starts.
     this.lastShowdown = null;
+    // 翻牌后范围收窄（用户反馈的遗留项——之前 opponentRangePct 只按跨局累计
+    // 的 opponentAggressionRate 算一次，同一手牌里对手连续几条街都下注/加
+    // 注也不会让范围继续收窄）。按 AI 坐位记录"这手牌里、轮到它决策时，已
+    // 经在哪些街面对过加注"，每手开局清空（_dealNewHand 里重置）——见
+    // aiAction() 里的用法。
     this._dealNewHand();
   }
 
@@ -171,6 +176,7 @@ class PveSession {
     if (this.handNumber > 0) this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
     this.handNumber += 1;
     this.game = new GameEngine(this.players, this.dealerIndex, this.bigBlind);
+    this.handAggressionStreets = {};
   }
 
   get actionPlayerId() {
@@ -248,9 +254,20 @@ class PveSession {
     // （没数据时默认 35%），不面对加注时范围不收窄（=1，AI 没有理由假设对
     // 手手牌比随机更强）。clamp 到 [0.10, 0.90] 防止极端样本把范围收窄/放
     // 宽到不合理的程度。
-    const opponentRangePct = facingRaise
-      ? Math.min(0.90, Math.max(0.10, opponentAggressionRate ?? 0.35))
-      : 1;
+    const baseRangePct = Math.min(0.90, Math.max(0.10, opponentAggressionRate ?? 0.35));
+    // 翻牌后继续收窄（用户反馈的遗留项）：上面那个 baseRangePct 只反映"跨
+    // 局累计的整体激进程度"，同一手牌里如果对手连续几条街都在下注/加注
+    // （常说的"barrel"），这通常意味着牌更强，范围应该比单纯翻前那一次判
+    // 断更窄。这里按"这手牌里、轮到这个 AI 坐位时已经面对过加注的街数"做
+    // 指数收窄——第一次面对加注（streak=1）不额外收窄，跟以前行为一致；
+    // 之后每多一条街还在面对加注，再乘 0.75，同样 clamp 到 [0.10, 0.90]。
+    let opponentRangePct = 1;
+    if (facingRaise) {
+      const streets = this.handAggressionStreets[actingId] ?? (this.handAggressionStreets[actingId] = new Set());
+      streets.add(street);
+      const narrowingFactor = 0.75 ** Math.max(0, streets.size - 1);
+      opponentRangePct = Math.min(0.90, Math.max(0.10, baseRangePct * narrowingFactor));
+    }
     // 翻前现在也算真实胜率（board=[]），不再走单独的起手牌分档表——见
     // docs/superpowers/specs/2026-08-02-pve-ev-driven-ai-design.md。
     const equity = this.strategy.computeEquity(ai.holeCards, board, {
