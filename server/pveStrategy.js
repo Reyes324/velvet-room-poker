@@ -323,25 +323,38 @@ function pickAction(params) {
   if (raiseCandidate < currentBet) foldEquity = 0;
 
   const evFold = 0;
-  // 跟注的真实成本/真实能赢下的底池份额都要用"实际能付得起的跟注额"
-  // （被 myChips 封顶），不能直接用 toCall——当 toCall > myChips（筹码比
-  // 对手短，只能跟注跟到全下）时，toCall 是"名义上要跟到的差额"，不是自
-  // 己真能拿出来的钱，用它算 EV 会同时算错成本项和赢下底池的份额项
-  // （2026-08-02 全面审查修复：这是"AI 短筹码面对大注时该跟不跟错判成弃
-  // 牌"这个 bug 的根因之一）。
+  // 跟注的真实成本要用"实际能付得起的跟注额"（被 myChips 封顶），不能直接
+  // 用 toCall——当 toCall > myChips（筹码比对手短，只能跟注跟到全下）时，
+  // toCall 是"名义上要跟到的差额"，不是自己真能拿出来的钱。
+  //
+  // 赢下的底池份额也要跟着调整，不能直接假设"potSize + actualCallCost"整
+  // 个都能赢：toCall 里超出 actualCallCost 的部分（uncalled excess，记为
+  // u = toCall - actualCallCost）对手根本没机会真正投进池里跟自己打——
+  // GameEngine 的边池分层（_buildSidePots）只按每个人自己的 totalBet 分配
+  // 资格，自己全下这么点钱，能赢的层就只到自己的总投入为止，u 这部分本来
+  // 就会被退还给下注方，自己永远赢不到。正确的"若跟注后能赢的底池"是
+  // potSize + actualCallCost − u，不是 potSize + actualCallCost
+  // （2026-08-02 全面审查 + 复核修复：上一版只封了成本项，赢的份额项还是
+  // 按整个 potSize+actualCallCost 算，在多人桌 all-in-for-less 场景里把
+  // evCall 系统性算高，把接近 0% 胜率的烂牌也算成正 EV 跟注/全下）。
   const actualCallCost = Math.min(toCall, myChips);
-  const evCall = realEq * (potSize + actualCallCost) - actualCallCost;
+  const uncalledExcess = toCall - actualCallCost; // toCall<=myChips 时恒为 0，公式退化回原来的样子
+  const evCall = realEq * (potSize + actualCallCost - uncalledExcess) - actualCallCost;
 
   // potSize 约定为"此刻真实可见的底池"（含这条街所有已下注的筹码——见
-  // PveSession 的调用方，Task 2），所以：加注到 raiseCandidate 后，自己
-  // 这条街的追加投入是 cost；假设对手跟注到同一个总额，对手的追加投入是
-  // (raiseCandidate - currentBet)；两者都加进当前 potSize 就是"若被跟注"
-  // 的最终底池。all-in-for-less 时 raiseCandidate < currentBet，这一项会
-  // 变负——对手不是在"跟注一个加注"，他们本来的下注额就够了，用 max(0, …)
-  // 把它夹到 0，potIfCalled 最少也是 potSize + cost（2026-08-02 全面审查
-  // 修复）。
+  // PveSession 的调用方，Task 2）。GameEngine 每次下注都会立刻把筹码计入
+  // this.pot（_placeBet 里 this.pot += actual，不是等到这条街结束才汇总），
+  // 所以在任何可达的真实局面下 potSize >= currentBet 恒成立——当前最高
+  // 下注额本来就是已经被计入 potSize 的一部分。基于这个不变量：加注到
+  // raiseCandidate 后，自己这条街的追加投入是 cost；假设对手跟注到同一个
+  // 总额，对手的追加投入是 (raiseCandidate - currentBet)；两者都加进当前
+  // potSize 就是"若被跟注"的最终底池，这个值在可达局面下不会是负数，不需
+  // 要额外裁剪（2026-08-02 复核修复：上一版在这里加了 Math.max(0, …)，是
+  // 基于一个引擎实际造不出来的局面（potSize < currentBet）做的修复，反而
+  // 抹掉了这个表达式本来就在正确处理的"欠下注部分不该算进能赢的池子"这个
+  // 效果，导致 evRaise 在多人桌 all-in-for-less 场景里被算得偏高）。
   const cost = raiseCandidate - myBetThisStreet;
-  const potIfCalled = potSize + cost + Math.max(0, raiseCandidate - currentBet);
+  const potIfCalled = potSize + cost + (raiseCandidate - currentBet);
   let evRaise = foldEquity * potSize + (1 - foldEquity) * (realEq * potIfCalled - cost);
 
   const bias = STYLE_EV_BIAS[style];
