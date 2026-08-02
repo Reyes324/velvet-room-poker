@@ -373,10 +373,14 @@ describe('PveSession — aiAction', () => {
     // 按下注尺寸收窄范围（组件 B）之后，同一个 opponentRangePct 现在还会
     // 再乘一个 sizeFactor。100 相对翻前底池（30）太大，会落进"超池两极化"
     // 分支，把这条测试原本想单独验证的"streak 收窄"跟新的尺寸效应搅在一
-    // 起。50（翻牌前）和 80（翻牌）都落在同一个 betRatio 区间（都 <=0.8，
-    // sizeFactor 同为 1.3），这样两次的 sizeFactor 相互抵消，flopOpts /
-    // preflopOpts 依然精确等于 streak 收窄系数 0.75，测的还是这条测试标题
-    // 说的那件事。
+    // 起。50（翻牌前，betRatio=0.75）和 75（翻牌，betRatio=0.75）都落在同
+    // 一个 betRatio 区间（<=0.8 → sizeFactor 1.3），这样两次的 sizeFactor
+    // 相互抵消，flopOpts / preflopOpts 依然精确等于 streak 收窄系数 0.75，
+    // 测的还是这条测试标题说的那件事。翻牌那笔特意选 75 而不是 80——80 正
+    // 好卡在 maxRatio:0.8 这个分档边界上（betRatio 恰好等于 0.8），当前虽
+    // 然因为判断用 `<=` 能落在同一档，但这条测试的正确性不该悄悄依赖边界
+    // 是否取等；75 离边界有余量（0.75 < 0.8），"同档抵消"这个断言前提更
+    // 稳（2026-08-03 code review minor finding）。
     fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
     s.humanAction('raise', 50);
     expect(s.isAiTurn()).toBe(true);
@@ -395,7 +399,7 @@ describe('PveSession — aiAction', () => {
     expect(s.isAiTurn()).toBe(true);
     fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
     s.aiAction();
-    s.humanAction('raise', 80);
+    s.humanAction('raise', 75);
     expect(s.isAiTurn()).toBe(true);
     fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
     s.aiAction();
