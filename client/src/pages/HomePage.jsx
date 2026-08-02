@@ -202,6 +202,28 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
               <button className="btn-ghost" onClick={() => setMode(null)}>返回</button>
             </div>
           )}
+
+          {mode === 'pve' && (
+            // 用户反馈（2026-08-02）："人机对战之后选择桌型的页面...你要不
+            // 重新设计一下？因为现在都不用输入昵称了"——去掉昵称输入框之
+            // 后，选桌形原本单独贴在视口底部的一条，跟上面这张只剩 logo/
+            // 标语的空卡片中间隔出一大块空白。现在改成跟"加入房间"模式共
+            // 用同一张卡片容器，不再分成两块。风格随机分配、对玩家不可见
+            // （design.md 已确认），这里只需要选人数，不需要选风格/难度。
+            <>
+              <div className="home-pve-picker-title">选择桌形</div>
+              <div className="home-pve-picker-grid">
+                {/* 不再用 `name` 输入框的值——那个字段在 PVE 模式下已经不
+                    显示了，即使之前在其他 mode 下打过字也不该带进来（服务
+                    端 pve:start 收到空名字会自动回退到"玩家"）。 */}
+                <button className="home-pve-seat-btn" onClick={() => onPve('', 2)}>单挑</button>
+                <button className="home-pve-seat-btn" onClick={() => onPve('', 4)}>4 人</button>
+                <button className="home-pve-seat-btn" onClick={() => onPve('', 6)}>6 人</button>
+                <button className="home-pve-seat-btn" onClick={() => onPve('', 8)}>8 人</button>
+              </div>
+              <button className="btn-ghost" onClick={() => setMode(null)}>返回</button>
+            </>
+          )}
         </div>
       </div>
       {mode === null && (
@@ -211,23 +233,6 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
         // 点了不直接开局，先切到 mode==='pve' 选桌形（2026-08-02 新增：支持
         // 多电脑同桌，不再只有单挑）。
         <div className="home-pve-link" onClick={() => setMode('pve')}>人机对战</div>
-      )}
-      {mode === 'pve' && (
-        // 风格是随机分配、对玩家不可见的（design.md 已确认），所以这里只
-        // 需要选人数，不需要选风格/难度。四档固定卡片，不开放任意数字。
-        <div className="home-pve-picker">
-          <div className="home-pve-picker-title">选择桌形</div>
-          <div className="home-pve-picker-grid">
-            {/* 不再用 `name` 输入框的值——那个字段在 PVE 模式下已经不显示
-                了，即使之前在其他 mode 下打过字也不该带进来（服务端
-                pve:start 收到空名字会自动回退到"玩家"）。 */}
-            <button className="home-pve-seat-btn" onClick={() => onPve('', 2)}>单挑</button>
-            <button className="home-pve-seat-btn" onClick={() => onPve('', 4)}>4 人</button>
-            <button className="home-pve-seat-btn" onClick={() => onPve('', 6)}>6 人</button>
-            <button className="home-pve-seat-btn" onClick={() => onPve('', 8)}>8 人</button>
-          </div>
-          <div className="home-pve-picker-back" onClick={() => setMode(null)}>返回</div>
-        </div>
       )}
       {/* 用户反馈（2026-07-31）：加到 iOS 主屏幕的书签是"独立 App"模式打开的
           （见 index.html 的 apple-mobile-web-app-capable），没有 Safari 那套
