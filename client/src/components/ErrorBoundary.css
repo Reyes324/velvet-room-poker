@@ -1,0 +1,51 @@
+.error-boundary {
+  min-height: 100dvh;
+  min-height: calc(var(--vh, 1dvh) * 100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6);
+  background: radial-gradient(ellipse at 50% 40%, var(--felt-700) 0%, var(--felt-900) 60%, var(--surface-base) 100%);
+}
+
+.error-boundary-card {
+  width: 100%;
+  max-width: 360px;
+  background: linear-gradient(135deg, var(--surface-raised), var(--surface-base));
+  border: 1px solid rgba(212,175,55,.18);
+  border-radius: 20px;
+  padding: var(--sp-10) var(--sp-8);
+  text-align: center;
+  box-shadow: 0 24px 80px rgba(4,14,7,.55), 0 0 0 1px rgba(212,175,55,.08);
+}
+
+.error-boundary-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gold-200);
+  margin-bottom: var(--sp-3);
+}
+
+.error-boundary-desc {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: var(--sp-6);
+}
+
+.error-boundary-reload {
+  width: 100%;
+  height: var(--control-h);
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, var(--gold-800), var(--gold-600));
+  color: var(--gold-100);
+  border: 1px solid rgba(212,175,55,.4);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}

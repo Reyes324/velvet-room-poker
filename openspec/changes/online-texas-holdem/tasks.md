@@ -899,3 +899,12 @@
 - [x] 67.4 `client/src/pages/HomePage.jsx` 新增选人数步骤（单挑/4人/6人/8人四个卡片），选完调用 `onPve(name, seatCount)`；`App.jsx`/`PvePage.jsx` 透传到 `pve:start`
 - [x] 67.5 真机验证（Playwright，见 design.md 对应小节）：4/6/8 人各打完整一手到摊牌结算，三档账本盈亏总和均为精确 0，三个 page 全程零 JS/console error；8 人桌座位 `getBoundingClientRect()` 实测零裁切、零重叠。服务端全量单测 230/230 通过，客户端构建通过。未发现需要单独立项的 bug
 - [x] 67.6 全分支 final review 修复（2026-08-02）：详见 `.superpowers/sdd/2026-08-02-pve-multi-opponent/final-review-fix-report.md`。核心修复——`PveSession._dealNewHand()` 庄家轮转从单挑限定的 `1 - dealerIndex` 改为通用的 `(dealerIndex + 1) % players.length`（原写法在 4/6/8 人桌上按钮永远只在座位 0/1 之间摆动，多数坐位包括人类都可能永远轮不到发盲注）；`App.jsx` 冷启动恢复新增持久化 `vr_pveSeatCount`，避免服务端重启后误把已选的 4/6/8 人桌恢复成单挑；`pveRunAiLoop` 按 AI 坐位数缩放拟人延迟（÷√坐位数，下限 300ms）改善 8 人桌观战体验；其余为文档修正与小额代码加固，见修复报告逐条对照。全量单测确认为 233 个用例（含新增 3 个庄家轮转回归测试），其中 `integration.test.js` 的 `room:end-game` 用例是全量套件下的已知偶发 flake（单独跑 27/27 必过），不在本分支改动范围内，属于既有多人联机问题——「230/230 全绿」的措辞据此更正，见 design.md 对应小节
+
+## 69. Bug 排查：4 人机对战偶发白屏，根因未定位、先加防御层（用户反馈，2026-08-02）
+
+设计决策见 design.md「Bug 排查：4 人机对战偶发白屏」。
+
+- [x] 69.1 用 Playwright 驱动真实无头 Chromium 跑 11 分钟真实挂钟时间、1168 手连续对局尝试复现，全程零报错，**未能复现**；静态排查 `GameEngine`/`PveSession`/`GameTable` 未发现"假设单一 AI 对手"的遗留代码
+- [x] 69.2 确认结构性缺口：客户端全局没有任何 React error boundary，任何渲染期异常都会表现成"整棵树卸载、只剩背景色"——跟用户报的症状精确吻合
+- [x] 69.3 新增 `client/src/components/ErrorBoundary.jsx` + `.css`，挂载在 `main.jsx` 最外层包住 `<App />`；`componentDidCatch` 记录到 console 和 `window.__lastCrash`；出错时显示跟现有视觉语言一致的提示卡片 + 刷新按钮，不再是无提示白屏
+- [ ] 69.4 根因排查：留到下次真实复现、`window.__lastCrash` 拿到具体报错之后再继续（这是防御层，不是根因修复）
