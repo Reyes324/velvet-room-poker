@@ -172,7 +172,7 @@ describe('GameEngine — getStateForPlayer 隐藏底牌', () => {
     expect(winnerState.holeCards[0]).not.toBeNull();
   });
 
-  it('摊牌阶段，本手已经弃牌的玩家看不到其他人的揭示牌（回归：真机实测"弃牌后还能看到对方摊牌"）', () => {
+  it('fold-win（其余人全部弃牌，没有真正比牌）：本手已经弃牌的玩家看不到那个未战而胜的赢家的牌（回归：真机实测"弃牌后还能看到对方摊牌"）', () => {
     const game = new GameEngine(makePlayers(3), 0, 20);
     // 让第一个行动方弃牌，其余两人打到摊牌（简化：直接把剩下两人也弃到只剩一个，
     // 关键是先弃牌那位在摊牌阶段回看，不应该看到任何人的牌）。
@@ -180,13 +180,36 @@ describe('GameEngine — getStateForPlayer 隐藏底牌', () => {
     game.fold(folder.id);
     const second = game.players[game.actionIndex];
     game.fold(second.id);
-    // 此时只剩一人未弃牌 → 直接 _endHand，phase 变为 showdown。
+    // 此时只剩一人未弃牌 → 直接 _endHand，phase 变为 showdown，是 fold-win。
     expect(game.phase).toBe('showdown');
+    expect(game.lastHandFoldWin).toBe(true);
 
     const folderState = game.getStateForPlayer(folder.id);
     for (const p of folderState.players) {
       if (p.id === folder.id) continue; // 自己的牌永远可见，不受影响
       expect(p.holeCards.every(c => c === null || c === undefined)).toBe(true);
+    }
+  });
+
+  it('真正的多人摊牌（弃牌后桌上还剩 2+ 人打到河牌、真的比牌，不是全弃到剩一人）：已经弃牌的玩家应该能看到这个真实摊牌，跟真人牌桌上摊牌是公开信息一致（用户反馈 2026-08-02："我中间弃牌了，最后几个电脑走到摊牌结算...在结算的时候，我看不到这几个电脑的摊牌"——之前的修复把 fold-win 和真实摊牌这两种都归到"phase===showdown 就该藏"，没有区分开）', () => {
+    const game = new GameEngine(makePlayers(3), 0, 20);
+    const folder = game.players[game.actionIndex];
+    game.fold(folder.id);
+    expect(game.phase).not.toBe('showdown'); // 还剩 2 个活跃玩家，牌局继续
+
+    // 剩下两人一路过牌/跟注打到真正的河牌摊牌，不再有人弃牌。
+    while (game.phase !== 'showdown') {
+      const p = game.players[game.actionIndex];
+      const toCall = game.currentBet - p.bet;
+      if (toCall > 0) game.call(p.id); else game.check(p.id);
+    }
+    expect(game.lastHandFoldWin).toBe(false); // 是真实比牌，不是 fold-win
+
+    const folderState = game.getStateForPlayer(folder.id);
+    const others = folderState.players.filter(p => p.id !== folder.id);
+    expect(others.length).toBeGreaterThan(0);
+    for (const p of others) {
+      expect(p.holeCards[0]).not.toBeNull();
     }
   });
 

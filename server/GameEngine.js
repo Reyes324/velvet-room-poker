@@ -149,6 +149,9 @@ class GameEngine {
     this.lastActionBy = null;
     this.lastActionLabel = null;
     this.lastActionPhase = null;
+    // Set in _endHand — getStateForPlayer needs this to tell a genuine
+    // multi-way showdown apart from a fold-out, see that method's comment.
+    this.lastHandFoldWin = false;
   }
 
   // 在每个动作方法真正生效（校验通过之后）时调用，而不是在方法一开始——避
@@ -406,6 +409,7 @@ class GameEngine {
     // A property of the whole hand, not of any individual side-pot layer —
     // see _determineWinners for why that distinction matters.
     const isFoldWin = contenders.length === 1;
+    this.lastHandFoldWin = isFoldWin; // getStateForPlayer reads this below
 
     for (const layer of pots) {
       const eligible = this.players.filter(p => layer.eligibleIds.includes(p.id));
@@ -553,18 +557,29 @@ class GameEngine {
   }
 
   // Returns state safe to send to a specific player (hides others' cards).
-  // A viewer who already folded this hand does NOT get the showdown reveal
-  // for everyone else, even though the hand did reach a real showdown —
-  // confirmed as unwanted behavior from real-device feedback ("我弃牌之后
-  // 还能看到对方摊牌，这不合理"): once you're out of a hand, you shouldn't
-  // keep watching it resolve. This only affects OTHER players' cards; a
-  // viewer always sees their own regardless of status.
+  // A viewer who already folded this hand does NOT get the reveal when the
+  // hand ends as a fold-win (everyone else folded, no real comparison ever
+  // happened) — confirmed as unwanted behavior from real-device feedback
+  // ("我弃牌之后还能看到对方摊牌，这不合理"): once you're out of the hand,
+  // you shouldn't get to see a winner's cards they never had to show.
+  //
+  // But a GENUINE multi-way showdown (2+ live players actually comparing
+  // hands) is public table information — every real poker table shows
+  // those cards face-up to everyone, folded or not. Both land in
+  // `this.phase === 'showdown'`, so `lastHandFoldWin` (set in _endHand) is
+  // what actually distinguishes them; phase alone can't (user feedback,
+  // 2026-08-02: folded mid-hand in a multi-way PVE table, the other AI
+  // seats played out to a real showdown, and the reveal was wrongly hidden
+  // — this masking used to apply to every showdown regardless of which
+  // kind it was). This only affects OTHER players' cards; a viewer always
+  // sees their own regardless of status.
   getStateForPlayer(playerId) {
     const pub = this.getPublicState();
     const viewer = this.players.find(x => x.id === playerId);
     const viewerFolded = viewer?.status === 'folded';
+    const hideFromFoldedViewer = viewerFolded && this.lastHandFoldWin;
     pub.players = pub.players.map(p => {
-      if (p.id === playerId || (this.phase === 'showdown' && !viewerFolded)) {
+      if (p.id === playerId || (this.phase === 'showdown' && !hideFromFoldedViewer)) {
         return { ...p, holeCards: this.players.find(x => x.id === p.id).holeCards.map(parseCard) };
       }
       return { ...p, holeCards: p.status === 'folded' ? [] : [null, null] };
