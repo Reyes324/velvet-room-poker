@@ -93,6 +93,24 @@ function getRangeSet(pct) {
   return set;
 }
 
+// 两极化范围（2026-08-03）：前 topPct 的强牌 ∪ 后 bottomPct 的烂牌，中间
+// 牌力挖空。真实德扑里超池注就是这个形状——要么坚果要么纯诈唬，中等牌力
+// 不会选这个尺寸。跟 getRangeSet 复用同一份 HAND_CLASSES（已按分数降序 +
+// 带累计组合数），所以这里只是换一个 Set，computeEquity 的拒绝采样逻辑
+// 一行都不用改。
+//
+// 注意这里不能像 getRangeSet 那样提前 break——底部那一段要扫到列表末尾。
+// 169 个类别的全扫成本可忽略。
+function getPolarizedRangeSet(topPct, bottomPct) {
+  const topThreshold = topPct * TOTAL_COMBOS;
+  const bottomThreshold = (1 - bottomPct) * TOTAL_COMBOS;
+  const set = new Set();
+  for (const c of HAND_CLASSES) {
+    if (c.cumBefore < topThreshold || c.cumBefore >= bottomThreshold) set.add(c.key);
+  }
+  return set;
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // PVE (人机对战) 决策引擎 — 单人模式专用，不被多人房间引用。
 //
@@ -118,10 +136,17 @@ function getRangeSet(pct) {
 // N 人比大小；河牌圈穷举分支只在 numOpponents===1 时启用（多对手穷举组
 // 合数太大，不划算），numOpponents>1 一律走蒙特卡洛，即使是河牌圈。
 function computeEquity(holeCards, board, opts = {}) {
-  const { iterations = 300, random = Math.random, opponentRangePct = 1, numOpponents = 1 } = opts;
+  const {
+    iterations = 300, random = Math.random,
+    opponentRangePct = 1, opponentBottomPct = 0, numOpponents = 1,
+  } = opts;
   const known = new Set([...holeCards, ...board]);
   const remaining = makeDeck().filter(c => !known.has(c));
-  const rangeSet = opponentRangePct < 1 ? getRangeSet(opponentRangePct) : null;
+  // opponentBottomPct > 0 -> 两极化（前 X% ∪ 后 Y%）；否则维持原来的单调
+  // 前 X%。默认 0 保证所有不传这个 opt 的既有调用与测试逐位不变。
+  const rangeSet = opponentBottomPct > 0
+    ? getPolarizedRangeSet(opponentRangePct, opponentBottomPct)
+    : (opponentRangePct < 1 ? getRangeSet(opponentRangePct) : null);
 
   if (board.length === 5 && numOpponents === 1) {
     let win = 0, tie = 0, total = 0;

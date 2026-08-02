@@ -713,3 +713,38 @@ describe('pveStrategy — 尺寸感知的弃牌权益（MDF 锚定，2026-08-03�
     expect(SIZE_PRESSURE_CAP).toBe(1.6);
   });
 });
+
+describe('pveStrategy — 两极化对手范围（超池建模，2026-08-03）', () => {
+  it('opponentBottomPct 默认 0 时，行为与改动前的单调范围完全一致', () => {
+    const fixedRandom = () => 0.42;
+    const a = computeEquity(['As', 'Kd'], ['Th', '7c', '2d'], {
+      iterations: 200, random: fixedRandom, opponentRangePct: 0.3,
+    });
+    const b = computeEquity(['As', 'Kd'], ['Th', '7c', '2d'], {
+      iterations: 200, random: fixedRandom, opponentRangePct: 0.3, opponentBottomPct: 0,
+    });
+    expect(a).toBe(b);
+  });
+
+  it('面对两极化范围，中等牌力的胜率明显高于面对同等窄度的单调强牌范围', () => {
+    // 对手范围里掺进了一块纯诈唬 -> 中等牌力抓诈唬的价值上来了。
+    // 这正是"面对超池不该无脑弃牌"的量化依据。
+    const board = ['Th', '7c', '2d'];
+    const medium = ['Tc', '9c']; // 顶对弱踢
+    const mono = computeEquity(medium, board, { iterations: 3000, opponentRangePct: 0.20 });
+    const polar = computeEquity(medium, board, {
+      iterations: 3000, opponentRangePct: 0.12, opponentBottomPct: 0.15,
+    });
+    expect(polar).toBeGreaterThan(mono + 0.03);
+  });
+
+  it('坚果级强牌几乎不受范围形状影响（对照组，证明上一条不是全局偏移）', () => {
+    const board = ['Th', '7c', '2d'];
+    const nuts = ['Ts', 'Td']; // 中三条
+    const mono = computeEquity(nuts, board, { iterations: 3000, opponentRangePct: 0.20 });
+    const polar = computeEquity(nuts, board, {
+      iterations: 3000, opponentRangePct: 0.12, opponentBottomPct: 0.15,
+    });
+    expect(Math.abs(polar - mono)).toBeLessThan(0.03);
+  });
+});
