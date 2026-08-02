@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import FeedbackModal from '../components/FeedbackModal';
+import ChangelogModal from '../components/ChangelogModal';
 import './HomePage.css';
 
 function genId() {
@@ -20,6 +21,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   // 有会话时是 { type: 'room', code } 或 { type: 'pve', handNumber, seatCount }。
   const [resumeCard, setResumeCard] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
 
   useEffect(() => {
     if (initialCode) {
@@ -249,6 +251,9 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
           状态下都能点到。 */}
       <div className="home-feedback-link" onClick={() => setShowFeedback(true)}>问题反馈</div>
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {/* 最近更新入口——跟 home-feedback-link 同一左侧竖栈，在其下方。 */}
+      <div className="home-changelog-link" onClick={() => setShowChangelog(true)}>最近更新</div>
+      {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
     </div>
   );
 }

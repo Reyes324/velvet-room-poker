@@ -238,6 +238,19 @@
 }
 .home-feedback-link:active { opacity: .6; }
 
+/* 最近更新入口——跟 .home-feedback-link 同一左侧竖栈，在其下方。 */
+.home-changelog-link {
+  position: absolute;
+  top: calc(max(env(safe-area-inset-top, 0px), var(--sp-4)) + 22px);
+  left: var(--sp-4);
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.home-changelog-link:active { opacity: .6; }
+
 .btn-primary {
   flex: 1;
   height: var(--control-h);
@@ -309,6 +322,13 @@
   background: rgba(255,255,255,.07);
   color: var(--text-secondary);
 }
+
+.changelog-modal { text-align: left; max-width: 360px; }
+.changelog-list { max-height: 50vh; overflow-y: auto; margin: var(--sp-3) 0; }
+.changelog-entry { padding: var(--sp-2) 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.changelog-entry:last-child { border-bottom: none; }
+.changelog-date { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.changelog-text { font-family: var(--font-body); font-size: 14px; color: var(--text-primary); margin-top: 2px; }
 
 /* ── Mobile ── */
 @media (max-width: 480px) {
