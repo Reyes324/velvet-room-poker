@@ -314,13 +314,21 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
 
   // equity=0.10, toCall=150, potSize=200, currentBet=150 -> raiseCandidate=428,
   // cost=428, potIfCalled=906, "called" outcome eq*potIfCalled-cost=-337.4.
-  // opponentFoldToRaiseRate=0.55 -> neutral foldEquity=0.55 -> evRaise=-41.8
-  // (fold wins, evFold=0). bluffer -> foldEquity=min(1,0.55*1.2)=0.66 ->
-  // evRaise=+17.3 -> raise wins.
-  it('bluffer（诈唬型）比不传 style 更容易诈唬加注（高估自己的弃牌权益）', () => {
+  // opponentFoldToRaiseRate=0.61 -> neutral foldEquity=0.61 -> evRaise still
+  // net-negative (fold wins, evFold=0). bluffer -> foldEquity=
+  // min(1,0.61*1.05)=0.6405 -> just barely crosses over -> raise wins.
+  //
+  // foldEquityMultiplier 从 1.2 调到 1.05（用户反馈 2026-08-02 "太容易赢
+  // 了" 之后跑的真实多手模拟验证：1.2 时 bluffer 在 6 组独立 200 手试验里
+  // 全部、稳定巨额亏损（汇总 -122,856），远超其他风格的正常高方差输赢；
+  // 因为这个乘数直接放大的是已经是真实观测值的 opponentFoldToRaiseRate，
+  // 不只是没数据时的默认先验，系统性高估对手弃牌概率，导致频繁在不该加
+  // 注的地方诈唬送筹码。调到 1.05 之后同样跑 6x200 手，bluffer 有输有赢，
+  // 汇总量级也回到跟其他风格同一个数量级，不再是唯一的稳定送分风格）。
+  it('bluffer（诈唬型）比不传 style 更容易诈唬加注（高估自己的弃牌权益，但幅度克制，不是系统性送筹码）', () => {
     const base = {
       street: 'flop', equity: 0.10, toCall: 150, potSize: 200, myChips: 1000,
-      currentBet: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.55, random: () => 0.99,
+      currentBet: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.61, random: () => 0.99,
     };
     const neutral = pickAction(base);
     const bluffer = pickAction({ ...base, style: 'bluffer' });

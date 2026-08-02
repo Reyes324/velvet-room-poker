@@ -191,7 +191,7 @@ function computeEquity(holeCards, board, opts = {}) {
 const STYLE_EV_BIAS = {
   steady:         { varianceScale: 0.85 },  // 高方差（raise）动作的 EV 打折，模拟风险厌恶
   aggressive:     { varianceScale: 1.15 },  // 高方差（raise）动作的 EV 加成，更容易选 raise
-  bluffer:        { foldEquityMultiplier: 1.2 }, // 高估自己的弃牌权益
+  bluffer:        { foldEquityMultiplier: 1.05 }, // 高估自己的弃牌权益
   callingStation: { equityMultiplier: 1.1 },     // 高估自己的胜率（封顶 1.0）
 };
 const STYLES = Object.keys(STYLE_EV_BIAS);
