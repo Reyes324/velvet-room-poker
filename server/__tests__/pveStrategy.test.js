@@ -9,6 +9,8 @@ const {
   POT_CONTROL_MURKY_LOW,
   POT_CONTROL_MURKY_HIGH,
   POT_CONTROL_DISCOUNT,
+  SIZE_PRESSURE_CAP,
+  sizePressure,
 } = require('../pveStrategy');
 
 describe('pveStrategy — computeEquity', () => {
@@ -198,35 +200,54 @@ describe('pveStrategy — all-in-for-less（有效后手小于 currentBet）时�
   // for-less 专项修复范围内，确认没被连带改动：跟"弃牌权益随对手数量指数
   // 下降"那组测试用一样的参数，只是换一个不那么极端的对手数，加注 EV 不
   // 应该因为 potIfCalled 被放大而意外翻正。
+  //
+  // 2026-08-03 组件 A（尺寸感知弃牌权益）实现后手算校正：这个场景里
+  // raiseCandidate=518（cost=518），currentBet=100 -> opponentDelta=418,
+  // potAfterRaise=818 -> sizePressure=2*418/818≈1.022（比"满池注"基线 1.0
+  // 略高一点，因为这实际上是一次略超池的再加注，理论上确实该比基线更有
+  // 压迫力，不是 bug）。单对手 p=0.9*1.022≈0.920（比改动前的 0.9 略高）。
+  // liveOpponentCount=5 时 p^5≈0.658（比改动前的 0.9^5=0.590 高），
+  // evRaise≈+37.4，仍是正 EV，5 人时的翻转点因此往后移了一格——把对手数
+  // 从 5 改成 6：p^6≈0.606，evRaise≈-3.17，翻负，重新演示"对手越多，加注
+  // 从 +EV 变成 -EV"这个论点，跟实际输出（raise / fold）一致。
   it('正常加注场景（非 all-in-for-less）的 potIfCalled 不受 liveOpponentCount 影响', () => {
     const base = {
       street: 'flop', equity: 0.05, toCall: 100, potSize: 300, myChips: 1000,
       currentBet: 100, opponentFoldToRaiseRate: 0.9, bigBlind: 20, random: () => 0.99,
     };
     const oneOpp = pickAction({ ...base, liveOpponentCount: 1 });
-    const fiveOpp = pickAction({ ...base, liveOpponentCount: 5 });
+    const sixOpp = pickAction({ ...base, liveOpponentCount: 6 });
     expect(oneOpp.action).toBe('raise');
-    expect(fiveOpp.action).toBe('fold');
+    expect(sixOpp.action).toBe('fold');
   });
 });
 
 describe('pveStrategy — 弃牌权益（多人聚合 p^n）', () => {
-  // Hand-verified against the exact Step 3 formula (see plan's verification
+  // Hand-verified against the exact Step 3/5 formula (see plan's verification
   // script — do not loosen these numbers without re-deriving by hand):
   // equity=0.05, toCall=100, potSize=300, currentBet=100 -> myBetThisStreet=0,
   // raiseCandidate=518 (sizeFraction at random()=0.99, polarized branch),
-  // cost=518, potIfCalled=1236. opponentFoldToRaiseRate=0.9:
-  //   liveOpponentCount=1 -> foldEquity=0.9^1=0.9 -> evRaise≈224.4 (raise wins)
-  //   liveOpponentCount=5 -> foldEquity=0.9^5≈0.590 -> evRaise≈-9.7 (fold wins, evFold=0 > evRaise > evCall=-80)
+  // cost=518, opponentDelta=418, potAfterRaise=818, potIfCalled=1236.
+  // sizePressure(418,818) = 2*418/818 ≈ 1.022 (a mild overpot re-raise, so
+  // slightly above the pot-sized baseline of 1.0 — larger than a pot bet
+  // should exert a bit more pressure, that's the fix working as intended).
+  // opponentFoldToRaiseRate=0.9, per-opponent p = 0.9*1.022 ≈ 0.9198:
+  //   liveOpponentCount=1 -> foldEquity=0.9198^1≈0.920 -> evRaise≈+238.4 (raise wins)
+  //   liveOpponentCount=6 -> foldEquity=0.9198^6≈0.606 -> evRaise≈-3.2 (fold wins, evFold=0 > evRaise > evCall)
+  // 2026-08-03 组件 A 实现后手算校正：改动前 sizePressure 恒为 1，p 恒为
+  // 0.9，5 个对手时 p^5≈0.590 才刚好翻负；组件 A 让这次再加注的 sizePressure
+  // 略高于 1（≈1.022，因为它其实略超池），单对手/多对手的 p 都跟着上移了
+  // 一点，5 个对手时 p^5≈0.658 还是正 EV，要 6 个对手（p^6≈0.606）才翻负——
+  // 把断言里的对手数从 5 改成 6，其余不变，重新对齐实际输出。
   it('弃牌权益随对手数量指数下降：同一个纯诈唬局面，对手越多弃牌权益越低，加注从 +EV 变成 -EV', () => {
     const base = {
       street: 'flop', equity: 0.05, toCall: 100, potSize: 300, myChips: 1000,
       currentBet: 100, bigBlind: 20, opponentFoldToRaiseRate: 0.9, random: () => 0.99,
     };
     const oneOpp = pickAction({ ...base, liveOpponentCount: 1 });
-    const fiveOpp = pickAction({ ...base, liveOpponentCount: 5 });
+    const sixOpp = pickAction({ ...base, liveOpponentCount: 6 });
     expect(oneOpp.action).toBe('raise');
-    expect(fiveOpp.action).toBe('fold');
+    expect(sixOpp.action).toBe('fold');
   });
 });
 
@@ -316,10 +337,22 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
   });
 
   // equity=0.10, toCall=150, potSize=200, currentBet=150 -> raiseCandidate=428,
-  // cost=428, potIfCalled=906, "called" outcome eq*potIfCalled-cost=-337.4.
-  // opponentFoldToRaiseRate=0.61 -> neutral foldEquity=0.61 -> evRaise still
-  // net-negative (fold wins, evFold=0). bluffer -> foldEquity=
-  // min(1,0.61*1.05)=0.6405 -> just barely crosses over -> raise wins.
+  // cost=428, opponentDelta=278, potAfterRaise=628, potIfCalled=906.
+  //
+  // 2026-08-03 组件 A（尺寸感知弃牌权益）实现后手算校正：这次加注相对
+  // "满池注基线"其实偏小（428 只比 currentBet 150 高不到两个 potSize），
+  // sizePressure(278,628)=2*278/628≈0.885，小于 1，意味着这一注的压迫力比
+  // 改动前假设的"任何加注都等同满池注"要弱——foldEquity 因此比改动前的
+  // 原始值打了个折扣。opponentFoldToRaiseRate 原来定的 0.61 在这个折扣下，
+  // neutral 和 bluffer 都不够跨过盈亏平衡点（neutral foldEquity=
+  // 0.61*0.885≈0.540 -> evRaise≈-54.9；bluffer foldEquity=
+  // min(1,0.61*1.05)*0.885≈0.567 -> evRaise≈-40.0，两者都还是负，全部
+  // fold，没法演示"bluffer 比 neutral 更敢诈唬"这个论点）。把
+  // opponentFoldToRaiseRate 从 0.61 调到 0.70（同一个观测对手弃牌率维度，
+  // 没有换场景/换公式）：neutral foldEquity=0.70*0.885≈0.6195 ->
+  // evRaise≈-10.8（仍然 fold，evFold=0 更高）；bluffer foldEquity=
+  // min(1,0.70*1.05)*0.885≈0.6505 -> evRaise≈+6.3（跨过 0，raise 反超）。
+  // 实测 pickAction 输出（neutral=fold, bluffer=raise/428）跟这个手算一致。
   //
   // foldEquityMultiplier 从 1.2 调到 1.05（用户反馈 2026-08-02 "太容易赢
   // 了" 之后跑的真实多手模拟验证：1.2 时 bluffer 在 6 组独立 200 手试验里
@@ -331,7 +364,7 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
   it('bluffer（诈唬型）比不传 style 更容易诈唬加注（高估自己的弃牌权益，但幅度克制，不是系统性送筹码）', () => {
     const base = {
       street: 'flop', equity: 0.10, toCall: 150, potSize: 200, myChips: 1000,
-      currentBet: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.61, random: () => 0.99,
+      currentBet: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.70, random: () => 0.99,
     };
     const neutral = pickAction(base);
     const bluffer = pickAction({ ...base, style: 'bluffer' });
@@ -341,16 +374,26 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
 
   // equity=0.31（落在池控制模糊区间 (0.30,0.70) 内，见下面的池控制测试
   // 组），toCall=100, potSize=300, currentBet=100, minRaiseTo=150 ->
-  // raiseCandidate=205, evCall≈10.81, 原始 evRaise≈17.75；池控制折扣先把
-  // evRaise 打成 ≈10.65（0.6 倍），neutral 因此 evCall(10.81) > evRaise
-  // (10.65) 选 call。aggressive 再对这个已经打过池控折扣的 evRaise 乘
-  // 1.15 -> ≈12.25 > 10.81 -> raise 反超。equity 特意选在模糊区间里
-  // （不是 >=0.70 的清晰强牌区），因为池控制折扣只压缩这个区间的近似平手
-  // 决策，原本 equity=0.4 那组用例的平手点已经被折扣本身消掉了。
+  // raiseCandidate=205（被 minRaiseTo 封住的小尺度加注），cost=205,
+  // opponentDelta=105, potAfterRaise=505, potIfCalled=610。
+  //
+  // 2026-08-03 组件 A 实现后手算校正：raiseCandidate=205 相对满池注基线是
+  // 一次很小的加注（远不到 1 个 potSize），sizePressure(105,505)=
+  // 2*105/505≈0.416，明显小于 1——这次改动本身就是为了让"最小加注"不再
+  // 被当成跟满池注一样有压迫力，这里正是那个效果的体现。opponentFoldToRaiseRate
+  // 原来定的 0.16 在这个折算下 foldEquity 太低，neutral/aggressive 都只有
+  // evCall(≈10.81) > evRaise，两边都选 call，没法演示"aggressive 更敢
+  // 加注"。把 opponentFoldToRaiseRate 从 0.16 调到 0.38（同一个观测对手
+  // 弃牌率维度，不换场景/公式）：neutral foldEquity=0.38*0.416≈0.158 ->
+  // evRaise（含 0.6 倍池控制折扣，因为 equity 0.31 落在模糊区间且折扣前
+  // 为正）≈10.25 < evCall≈10.81，neutral 选 call；aggressive 对这个已经
+  // 打过池控折扣的 evRaise 再乘 1.15 -> ≈11.79 > evCall(10.81)，raise 反
+  // 超。实测 pickAction 输出（neutral=call, aggressive=raise/205）跟这个
+  // 手算一致。
   it('aggressive（激进型）比不传 style 更容易加注（EV 相近时偏好高方差选项）', () => {
     const base = {
       street: 'flop', equity: 0.31, toCall: 100, potSize: 300, myChips: 1000,
-      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.16,
+      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.38,
       random: () => 0,
     };
     const neutral = pickAction(base);
@@ -359,14 +402,22 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
     expect(aggressive.action).toBe('raise');
   });
 
-  // Same shape/equity as the aggressive case above but opponentFoldToRaiseRate
-  // =0.17 -> 原始 evRaise≈21.11，池控制折扣后≈12.67 > evCall≈10.81，
-  // neutral 选 raise。steady 再对这个折扣后的 evRaise 乘 0.85 -> ≈10.77 <
-  // 10.81 -> call 反超（差距很小，是真实的"打折打过界"边界情形，不是巧合）。
+  // Same shape/equity as the aggressive case above (raiseCandidate=205,
+  // sizePressure(105,505)≈0.416, evCall≈10.81，跟 aggressive 用例完全一样
+  // 不受 opponentFoldToRaiseRate 影响）。
+  //
+  // 2026-08-03 组件 A 实现后手算校正：同样因为 sizePressure≈0.416 拉低了
+  // foldEquity，原来的 opponentFoldToRaiseRate=0.17 不够让 neutral 本身先
+  // 选 raise（无法演示"steady 把已经选中的 raise 打回 call"）。把
+  // opponentFoldToRaiseRate 调到 0.40：neutral foldEquity=0.40*0.416≈
+  // 0.166 -> evRaise（含 0.6 倍池控制折扣）≈11.93 > evCall≈10.81，neutral
+  // 选 raise；steady 再对这个折扣后的 evRaise 乘 0.85 -> ≈10.14 <
+  // 10.81，call 反超。实测 pickAction 输出（neutral=raise/205,
+  // steady=call）跟这个手算一致。
   it('steady（稳健型）比不传 style 更少加注（给高方差选项的 EV 打折）', () => {
     const base = {
       street: 'flop', equity: 0.31, toCall: 100, potSize: 300, myChips: 1000,
-      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.17,
+      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.40,
       random: () => 0,
     };
     const neutral = pickAction(base);
@@ -589,5 +640,76 @@ describe('pveStrategy — raiseSizeFraction（下注尺度极化，签名简化�
     expect(Math.max(...polarizedFractions)).toBeGreaterThan(Math.max(...mergedFractions));
     const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
     expect(avg(polarizedFractions)).toBeGreaterThan(avg(mergedFractions));
+  });
+});
+
+describe('pveStrategy — 尺寸感知的弃牌权益（MDF 锚定，2026-08-03）', () => {
+  // sizePressure 归一化成"满池注 = 1.0"，所以理论弃牌上限 = sizePressure × 0.5。
+  // 下面每一行的期望值都是德扑教科书里的 MDF 标准值，不是拍脑袋的数字。
+  // 直接测导出的 sizePressure 本身——不要在测试里重新实现一遍这个公式，
+  // 那样只是在验证测试自己，碰不到生产代码。
+  it('MDF 教科书值：满池注 0.5、半池 1/3、2 倍超池 2/3', () => {
+    // 满池注：底池 30、下 30 -> opponentDelta=30, potAfterRaise=30+30=60
+    expect(sizePressure(30, 60) * 0.5).toBeCloseTo(0.5, 3);
+    // 半池注：底池 30、下 15 -> opponentDelta=15, potAfterRaise=45
+    expect(sizePressure(15, 45) * 0.5).toBeCloseTo(1 / 3, 3);
+    // 2 倍超池：底池 30、下 60 -> opponentDelta=60, potAfterRaise=90
+    expect(sizePressure(60, 90) * 0.5).toBeCloseTo(2 / 3, 3);
+    // 最小加注：底池 30、currentBet 20、加到 40 -> opponentDelta=20, potAfterRaise=70
+    // 改动前这个场景拿到的弃牌权益和满池注一模一样，正是"翻前什么牌都加注"的病根。
+    expect(sizePressure(20, 70) * 0.5).toBeCloseTo(0.286, 2);
+  });
+
+  it('尺寸压力单调递增：加注越大，压迫力越强', () => {
+    const quarter = sizePressure(15, 75);  // 底池 60、下 15
+    const half = sizePressure(30, 90);     // 底池 60、下 30
+    const full = sizePressure(60, 120);    // 底池 60、下 60
+    expect(quarter).toBeLessThan(half);
+    expect(half).toBeLessThan(full);
+  });
+
+  it('极端超池被 SIZE_PRESSURE_CAP 封顶，不会把弃牌权益推到不合理的高位', () => {
+    expect(sizePressure(10000, 10001)).toBe(SIZE_PRESSURE_CAP);
+  });
+
+  it('退化输入返回 1（不做尺寸调整），不产生 NaN/Infinity', () => {
+    expect(sizePressure(0, 100)).toBe(1);
+    expect(sizePressure(20, 0)).toBe(1);
+  });
+
+  it('翻前范围回归（本轮招牌行为）：20bb 未面对加注时，强牌加注、烂牌弃牌', () => {
+    // equity 用固定值代入（真实胜率由 computeEquity 提供，这里只测决策层）。
+    const base = {
+      street: 'preflop', toCall: 20, currentBet: 20, potSize: 30, myChips: 400,
+      minRaiseTo: 40, opponentCeiling: 400, liveOpponentCount: 1, bigBlind: 20,
+      opponentFoldToRaiseRate: null, style: null, facingRaise: false, random: () => 0.5,
+    };
+    // AA / KK / AKs 对随机手牌的真实胜率（computeEquity 实测值，见设计文档）
+    expect(pickAction({ ...base, equity: 0.859 }).action).toBe('raise'); // AA
+    expect(pickAction({ ...base, equity: 0.824 }).action).toBe('raise'); // KK
+    expect(pickAction({ ...base, equity: 0.662 }).action).toBe('raise'); // AKs
+    // 72o / 32o 应该弃牌（改动前全部是 raise）。
+    //
+    // 2026-08-03 实现后手算校正：这个 describe 块最初起草时第二个反例用的
+    // 是 92o（equity 0.384），但按 Step 3-6 给出的公式手算，这个具体几何
+    // 关系（currentBet=20、potSize=30、raiseCandidate 被 minRaiseTo=40 封
+    // 到 40，对应 opponentDelta=20、potAfterRaise=70）算出来的
+    // sizePressure=2*20/70≈0.571，foldEquity=0.45*0.571≈0.257；92o 在
+    // realizedEquity 折算后 realEq≈0.354，evRaise（含 0.6 倍池控制折扣，因
+    // 为 equity 0.384 落在 (0.30,0.70) 模糊区间）≈0.98，仍是正 EV——92o 在
+    // 这个具体尺寸下其实是一手合法的 SB 偷池加注（对手 25.7% 弃牌权益 +
+    // 35.4% 真实胜率，即使打折依然为正），不是"改动没生效"。实测
+    // pickAction 也确实返回 raise，跟手算吻合，说明是起草测试时估的示例牌
+    // 不够弱，不是代码回归。
+    //
+    // 换成 32o（equity 0.321，同样是 computeEquity 实测值）：realEq≈0.288，
+    // evRaise≈-2.73（跟 72o 一样是负数，murky 折扣不生效），fold 胜出，跟
+    // 实际输出一致，是一手清楚地不该加注的烂牌。
+    expect(pickAction({ ...base, equity: 0.346 }).action).toBe('fold'); // 72o
+    expect(pickAction({ ...base, equity: 0.321 }).action).toBe('fold'); // 32o
+  });
+
+  it('尺寸上限常量存在且为 1.6（约 4 倍池，再大的超池边际收益已很小）', () => {
+    expect(SIZE_PRESSURE_CAP).toBe(1.6);
   });
 });

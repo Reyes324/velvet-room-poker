@@ -199,6 +199,25 @@ const STYLES = Object.keys(STYLE_EV_BIAS);
 // 无 oppStats 数据时的中性先验——业余牌局的真实弃牌率明显低于对半开
 // （0.5 是纯拍脑袋的数字，2026-08-02 最终审查修复调到 0.45）。
 const DEFAULT_FOLD_PRIOR = 0.45;
+// 尺寸压力上限（2026-08-03）：sizePressure 在下注额约等于 4 倍底池时达到
+// 1.6，更大的超池边际收益已经很小，封顶避免极端尺寸把弃牌权益推到不合理
+// 的高位。
+const SIZE_PRESSURE_CAP = 1.6;
+
+// 弃牌权益的尺寸依赖（MDF，最小防守频率——德扑标准理论，不是拍脑袋的
+// 数字）：对手需要再拿出 opponentDelta 才能去争一个 potAfterRaise 大的
+// 底池，其理论弃牌上限即 opponentDelta / potAfterRaise。这里归一化成
+// "满池注 = 1.0"，好让既有的 DEFAULT_FOLD_PRIOR 语义平滑变成"打一个满池
+// 注时的弃牌率"，那个常量本身不用动。
+//
+// 自检（返回值 × 0.5 就是理论弃牌上限）：满池注 -> 0.5、半池 -> 1/3、
+// 2 倍超池 -> 2/3，全部与教科书一致。改动前这一层完全不存在，最小加注被
+// 当成和满池注一样有压迫力，是"翻前 100% 加注"的直接病根。
+function sizePressure(opponentDelta, potAfterRaise) {
+  if (!(potAfterRaise > 0) || !(opponentDelta > 0)) return 1;
+  return Math.min(SIZE_PRESSURE_CAP, (2 * opponentDelta) / potAfterRaise);
+}
+
 // 面对真实加注（不只是盲注差额）时的折算系数——已经主动下注过的对手，
 // 面对再加注比"面对第一次下注"更不容易被吓跑。同时作用于默认先验和真实
 // 观测到的 opponentFoldToRaiseRate。
@@ -287,12 +306,18 @@ function realizedEquity(equity, street, sprAfterCall) {
 function estimateFoldEquity({
   opponentFoldToRaiseRate, liveOpponentCount = 1, style = null,
   facingRaise = false, opponentCeiling = Infinity, currentBet = 0,
+  opponentDelta = null, potAfterRaise = null,
 }) {
   if (opponentCeiling <= currentBet) return 0;
   let p = opponentFoldToRaiseRate ?? DEFAULT_FOLD_PRIOR;
   if (facingRaise) p *= FACING_RAISE_FOLD_SCALE;
   const bias = STYLE_EV_BIAS[style];
   if (bias?.foldEquityMultiplier) p *= bias.foldEquityMultiplier;
+  // 尺寸依赖（组件 A）。两个参数都给了才生效——不给时保持改动前的行为，
+  // 这个函数虽然没导出，但保留这个默认分支让调用点的改动可以分步验证。
+  if (opponentDelta != null && potAfterRaise != null) {
+    p *= sizePressure(opponentDelta, potAfterRaise);
+  }
   p = Math.min(1, Math.max(0, p));
   const n = Math.max(1, liveOpponentCount);
   return Math.pow(p, n);
@@ -332,9 +357,6 @@ function pickAction(params) {
 
   const myBetThisStreet = currentBet - toCall;
   const maxTotal = Math.min(myChips + myBetThisStreet, opponentCeiling); // 有效后手能加到的最高总额
-  let foldEquity = estimateFoldEquity({
-    opponentFoldToRaiseRate, liveOpponentCount, style, facingRaise, opponentCeiling, currentBet,
-  });
   const eq = styledEquity(equity, style);
   // 跟注后的 SPR：跟注后自己身后还剩多少筹码，相对跟注后底池的比例——用
   // 来判断 realizedEquity 要不要打折（SPR 很低≈快摊牌了，不用折）。
@@ -356,6 +378,16 @@ function pickAction(params) {
     const floor = minRaiseTo ?? fallbackMinRaiseTo;
     raiseCandidate = Math.min(maxTotal, Math.max(floor, wantRaiseTo));
   }
+
+  // 尺寸相关量必须在算弃牌权益之前先算出来——组件 A（2026-08-03）让弃牌
+  // 权益依赖"这一注到底有多大"，所以这几行从原来的位置上移到了这里。
+  const cost = raiseCandidate - myBetThisStreet;
+  const opponentDelta = raiseCandidate - currentBet;
+
+  let foldEquity = estimateFoldEquity({
+    opponentFoldToRaiseRate, liveOpponentCount, style, facingRaise, opponentCeiling, currentBet,
+    opponentDelta, potAfterRaise: potSize + cost,
+  });
 
   // all-in-for-less（自己的加注/全下额度不到当前下注额，等价于筹码比对手
   // 短、只能全下一部分）：对手根本不用面对"要不要弃掉更多筹码"的抉择——
@@ -407,8 +439,6 @@ function pickAction(params) {
   // 投入算，不假设多人桌里所有对手都会跟注同一个加注（那个假设本身没有跟
   // estimateFoldEquity 的聚合弃牌权益模型对齐，会不会需要一起改是一个独立
   // 问题，这次不在 all-in-for-less 专项修复的范围内一起动）。
-  const cost = raiseCandidate - myBetThisStreet;
-  const opponentDelta = raiseCandidate - currentBet;
   const potIfCalled = raiseCandidate < currentBet
     ? Math.max(0, potSize + cost + liveOpponentCount * opponentDelta)
     : potSize + cost + opponentDelta;
@@ -491,4 +521,5 @@ function pickAction(params) {
 module.exports = {
   computeEquity, pickAction, raiseSizeFraction, STYLES, EV_NOISE_FRACTION,
   POT_CONTROL_MURKY_LOW, POT_CONTROL_MURKY_HIGH, POT_CONTROL_DISCOUNT,
+  SIZE_PRESSURE_CAP, sizePressure,
 };
