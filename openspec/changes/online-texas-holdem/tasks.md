@@ -899,3 +899,11 @@
 - [x] 67.4 `client/src/pages/HomePage.jsx` 新增选人数步骤（单挑/4人/6人/8人四个卡片），选完调用 `onPve(name, seatCount)`；`App.jsx`/`PvePage.jsx` 透传到 `pve:start`
 - [x] 67.5 真机验证（Playwright，见 design.md 对应小节）：4/6/8 人各打完整一手到摊牌结算，三档账本盈亏总和均为精确 0，三个 page 全程零 JS/console error；8 人桌座位 `getBoundingClientRect()` 实测零裁切、零重叠。服务端全量单测 230/230 通过，客户端构建通过。未发现需要单独立项的 bug
 - [x] 67.6 全分支 final review 修复（2026-08-02）：详见 `.superpowers/sdd/2026-08-02-pve-multi-opponent/final-review-fix-report.md`。核心修复——`PveSession._dealNewHand()` 庄家轮转从单挑限定的 `1 - dealerIndex` 改为通用的 `(dealerIndex + 1) % players.length`（原写法在 4/6/8 人桌上按钮永远只在座位 0/1 之间摆动，多数坐位包括人类都可能永远轮不到发盲注）；`App.jsx` 冷启动恢复新增持久化 `vr_pveSeatCount`，避免服务端重启后误把已选的 4/6/8 人桌恢复成单挑；`pveRunAiLoop` 按 AI 坐位数缩放拟人延迟（÷√坐位数，下限 300ms）改善 8 人桌观战体验；其余为文档修正与小额代码加固，见修复报告逐条对照。全量单测确认为 233 个用例（含新增 3 个庄家轮转回归测试），其中 `integration.test.js` 的 `room:end-game` 用例是全量套件下的已知偶发 flake（单独跑 27/27 必过），不在本分支改动范围内，属于既有多人联机问题——「230/230 全绿」的措辞据此更正，见 design.md 对应小节
+
+## 68. PVE AI 决策引擎重构：概率表抽样 → EV 最大化（用户需求，2026-08-02）
+
+设计决策见 design.md「PVE AI 决策引擎重构：概率表抽样 → EV 最大化」，完整方案见 `docs/superpowers/specs/2026-08-02-pve-ev-driven-ai-design.md`。
+
+- [x] 68.1 `pveStrategy.js` 决策核心重写：`pickAction()` 翻前翻后统一走 `computeEquity()` 算真实胜率 + 对 fold/call/raise 三候选算 EV 取最大值；`PREFLOP_TABLE`/`POSTFLOP_BANDS`/`bandFor`/`contextDeltas`/`adjustDistribution`/`STYLE_DELTAS`（旧版）/`preflopTier` 驱动决策部分整体删除，`server/__tests__/pveStrategy.test.js` 近乎重写；风格调整改为 EV 输入偏差乘数（`STYLE_EV_BIAS`），`STYLES` 导出的 4 个 key 不变
+- [x] 68.2 `PveSession.js` 更新 `aiAction()` 传给 `pickAction()` 的参数：新增 `liveOpponentCount`（本手未弃牌的对手数，用于弃牌权益多人聚合估计 `p^n`）、`bigBlind`（用于浅筹码 push/fold 阈值判断）；不再传 `holeCards`/`board`/`position`/`wasAggressor`/`facingRaise`/`opponentAggressionRate`（新引擎不消费，`position` 驱动的旧版位置感知 c-bet 倾向随旧机制一起废弃，见 design.md「明确接受的简化」）；`server/__tests__/PveSession.test.js` 同步更新
+- [x] 68.3 真机验证（Playwright，见 design.md 对应小节）：单挑正常筹码多条街打到摊牌（PASS）；浅筹码/低 SPR 下观察到真实 `ALL IN` 动作、筹码守恒、无报错（PASS，未覆盖"卡在 15×BB 线下方连续打多手"的更细粒度场景，记录为已知验证覆盖局限）；4 人桌多个 AI 依次行动到摊牌、含边池场景（PASS）；过牌后 AI 诈唬频率因样本不足未能定性（既非发现异常，也非确认 reviewer 推论，记录为已知验证覆盖局限）。三类场景全程零 JS/console error、无非法动作、无卡死。服务端全量单测 214/214 通过
