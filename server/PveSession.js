@@ -1,6 +1,6 @@
 const { GameEngine } = require('./GameEngine');
 const pveStrategy = require('./pveStrategy');
-const { STYLES, EV_NOISE_FRACTION } = pveStrategy;
+const { STYLES } = pveStrategy;
 const { defaultStore, MAX_HAND_HISTORY } = require('./pveStore');
 
 const AI_ID = '__ai__'; // legacy single-AI id — kept exact for seatCount=2 (heads-up, the default)
@@ -290,11 +290,12 @@ class PveSession {
       opponentFoldToRaiseRate,
       style: seat.style,
       facingRaise,
-      // 感知噪声（用户需求，2026-08-02："加一点随机色彩、加点情绪，让这个
-      // 比较像人类"）——pickAction 默认不开（noiseFraction=0，保持所有单
-      // 测的精确边界值不变），真实对局这里显式开启。EV 差距悬殊的决策几乎
-      // 不受影响，EV 接近的边界决策不再是"一刀切"。
-      noiseFraction: EV_NOISE_FRACTION,
+      // 感知噪声关闭（用户反馈 2026-08-03："能否还是理性一点不要加什么情
+      // 绪了"）——2026-08-02 曾按用户当时的要求（"加一点随机色彩、加点情
+      // 绪，让这个比较像人类"）开过，现在改回不传，pickAction 默认
+      // noiseFraction=0，回到纯 EV 精确比较。机制本身（EV_NOISE_FRACTION
+      // 常量、gaussianNoise 辅助函数）保留在 pveStrategy.js 里没有删——只是
+      // 不在真实对局里启用了，以后想再开随时能重新传回去。
     });
 
     const result = decision.action === 'raise'
