@@ -238,13 +238,26 @@ class PveSession {
     const toCall = this.game.currentBet - ai.bet;
     const street = this.game.phase;
     const board = this.game.communityCards;
-    // 翻前现在也算真实胜率（board=[]），不再走单独的起手牌分档表——见
-    // docs/superpowers/specs/2026-08-02-pve-ev-driven-ai-design.md。
-    const equity = this.strategy.computeEquity(ai.holeCards, board, { iterations: 300 });
+    const facingRaise = this._facingRaise(street, toCall);
     const liveOpponentCount = this.game.players.filter(
       p => p.id !== actingId && p.status !== 'folded',
     ).length;
-    const { opponentFoldToRaiseRate } = this._opponentReads();
+    const { opponentFoldToRaiseRate, opponentAggressionRate } = this._opponentReads();
+    // 对手范围建模（2026-08-02 最终审查修复）：只在真的面对加注时才收窄
+    // computeEquity 模拟的对手范围——用真实观测到的 opponentAggressionRate
+    // （没数据时默认 35%），不面对加注时范围不收窄（=1，AI 没有理由假设对
+    // 手手牌比随机更强）。clamp 到 [0.10, 0.90] 防止极端样本把范围收窄/放
+    // 宽到不合理的程度。
+    const opponentRangePct = facingRaise
+      ? Math.min(0.90, Math.max(0.10, opponentAggressionRate ?? 0.35))
+      : 1;
+    // 翻前现在也算真实胜率（board=[]），不再走单独的起手牌分档表——见
+    // docs/superpowers/specs/2026-08-02-pve-ev-driven-ai-design.md。
+    const equity = this.strategy.computeEquity(ai.holeCards, board, {
+      iterations: 300,
+      opponentRangePct,
+      numOpponents: Math.max(1, liveOpponentCount),
+    });
 
     const decision = this.strategy.pickAction({
       street,
@@ -259,6 +272,7 @@ class PveSession {
       bigBlind: this.bigBlind,
       opponentFoldToRaiseRate,
       style: seat.style,
+      facingRaise,
     });
 
     const result = decision.action === 'raise'

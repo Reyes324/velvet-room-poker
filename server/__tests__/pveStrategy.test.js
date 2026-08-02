@@ -149,6 +149,33 @@ describe('pveStrategy — 后手深度（SPR + 翻前浅筹码 push/fold）', ()
       expect(a.raiseTo).toBeLessThan(3000); // nowhere near a forced shove
     }
   });
+
+  // Finding 3 (2026-08-02 最终整体审查): push/fold 分支之前仍然把 'call'
+  // 摆在候选选项里跟 fold/raise 一起比 EV，跟 spec 描述的"只比较 fold 和
+  // all-in"矛盾——design.md 之前声称有单测覆盖这一点，但实际上并没有（只
+  // 测了"加注候选变成全下"，不是"call 被排除"，这两者是不同的事）。这里
+  // 补一个真的能抓住回归的测试：构造一个中性 EV 比较下本该选 call 的局面
+  // （用同样的 equity/toCall/potSize 在深筹码下验证一遍，先证明"不排除的
+  // 话确实会选 call"），再确认浅筹码（push/fold）下同一个局面绝不会选
+  // call，只能是 fold 或 allin。
+  it('浅筹码 push/fold 模式下，即使中性 EV 比较本该选 call，也绝不会返回 call——只比较 fold 和 all-in', () => {
+    const base = {
+      street: 'preflop', equity: 0.44, toCall: 40, potSize: 60, currentBet: 40,
+      bigBlind: 20, opponentFoldToRaiseRate: 0.02, minRaiseTo: 900, random: () => 0.5,
+    };
+    // Same spot, deep stack (effectiveStackBB = 3000/20 = 150, no push/fold
+    // special-case): call is genuinely the EV-best action — proves this
+    // spot isn't just "always folds regardless".
+    const deep = pickAction({ ...base, myChips: 3000 });
+    expect(deep.action).toBe('call');
+
+    // Same equity/toCall/potSize, but effectiveStackBB = 150/20 = 7.5,
+    // under SHORT_STACK_BB_THRESHOLD -> push/fold mode. Call must never be
+    // the returned action here.
+    const short = pickAction({ ...base, myChips: 150 });
+    expect(short.action).not.toBe('call');
+    expect(['fold', 'allin', 'raise']).toContain(short.action);
+  });
 });
 
 describe('pveStrategy — 风格对 EV 计算的偏差', () => {
@@ -163,12 +190,16 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
 
   // equity=0.40, toCall=150, potSize=200, currentBet=150 -> raiseCandidate=289,
   // cost=289, potIfCalled=628. opponentFoldToRaiseRate=0.05 -> foldEquity=0.05.
+  // street:'river' so realizedEquity is a no-op (STREETS_LEFT.river===0,
+  // R=1) — keeps this test's hand-verified numbers exactly as derived from
+  // the raw EV formula, not entangled with the separate realization-curve
+  // behavior (which is its own dedicated test below).
   // neutral: evCall=-10, evRaise=-25.9, evFold=0 -> fold wins.
   // callingStation: eq inflated to 0.44 -> evCall=+4 (crosses breakeven
   // 150/(200+150)=0.4286), evRaise=-2.05 -> call wins.
   it('callingStation（跟注型）比不传 style 更容易跟注（高估自己的胜率）', () => {
     const base = {
-      street: 'flop', equity: 0.40, toCall: 150, potSize: 200, myChips: 1000,
+      street: 'river', equity: 0.40, toCall: 150, potSize: 200, myChips: 1000,
       currentBet: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.05, random: () => 0.99,
     };
     const neutral = pickAction(base);
@@ -232,6 +263,66 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
     const neutral = pickAction(base);
     const unknown = pickAction({ ...base, style: 'not-a-real-style' });
     expect(unknown.action).toBe(neutral.action);
+  });
+});
+
+describe('pveStrategy — 具体牌局的动作断言（Finding 1 最终审查修复后新增，2026-08-02）', () => {
+  // design.md「修正：AI 几乎从不弃牌」一节点名的这类测试此前完全缺失——
+  // 三轮 review 都只验证"公式实现是否符合 spec"，从没断言过"这手牌最终该
+  // 做什么"，这正是 bug 连续三轮都没被抓到的原因。这里补几个最核心的
+  // canonical spot：固定底牌/公共牌/底池/toCall，seeded random，断言真实
+  // 落地的动作。
+
+  it('72o 面对 3 倍加注（翻前）应该弃牌', () => {
+    // 3bb open (bigBlind=20 -> raise to 60), toCall = 60-20(BB已下)=40.
+    // iterations 拉到 800（不是随手取的 300 默认值）压统计噪声——用真实
+    // Math.random，72o 在窄范围下的胜率稳定在 0.27-0.33 附近，跑几次都没
+    // 有落进"折算后 evCall/evRaise 反超 evFold"的区间，但样本太小时偶尔
+    // 会抖到边界附近，所以放大样本量而不是收窄断言容错。
+    const equity = computeEquity(['7c', '2d'], [], {
+      iterations: 800, opponentRangePct: 0.35, // facing a raise -> range-restricted
+    });
+    const a = pickAction({
+      street: 'preflop', equity, toCall: 40, potSize: 60, currentBet: 60, myChips: 1000,
+      bigBlind: 20, facingRaise: true, random: () => 0.99,
+    });
+    expect(a.action).toBe('fold');
+  });
+
+  it('AA 面对加注不应该弃牌（仍然保持激进）', () => {
+    const equity = computeEquity(['As', 'Ac'], [], {
+      iterations: 400, opponentRangePct: 0.35,
+    });
+    const a = pickAction({
+      street: 'preflop', equity, toCall: 40, potSize: 60, currentBet: 60, myChips: 1000,
+      bigBlind: 20, facingRaise: true, random: () => 0.99,
+    });
+    expect(a.action).not.toBe('fold');
+  });
+
+  it('明显很差的翻后局面（胜率很低，面对底池大小的下注）应该弃牌', () => {
+    const a = pickAction({
+      street: 'river', equity: 0.08, toCall: 200, potSize: 200, currentBet: 200,
+      myChips: 1000, bigBlind: 20, opponentFoldToRaiseRate: 0.3, facingRaise: true,
+      random: () => 0.99,
+    });
+    expect(a.action).toBe('fold');
+  });
+});
+
+describe('pveStrategy — computeEquity 的 opponentRangePct 行为（Finding 1 微测试）', () => {
+  // 用真实 Math.random（不是 seeded fakeRandom）——拒绝采样会消耗不定数量
+  // 的 random() 调用，用同一个 seeded 序列跑两次（一次不限制、一次限制）
+  // 会让后续抽样错位、产生虚假的相关性，反而算不出真实差异。样本量拉大
+  // （4000 次）压统计噪声，阈值留够余量。
+  it('72o 的胜率在收窄对手范围（opponentRangePct=0.15）后应明显低于不限制范围；AA 则几乎不受影响', () => {
+    const seven2Full = computeEquity(['7c', '2d'], [], { iterations: 4000 });
+    const seven2Narrow = computeEquity(['7c', '2d'], [], { iterations: 4000, opponentRangePct: 0.15 });
+    expect(seven2Full - seven2Narrow).toBeGreaterThanOrEqual(0.03);
+
+    const aaFull = computeEquity(['As', 'Ac'], [], { iterations: 4000 });
+    const aaNarrow = computeEquity(['As', 'Ac'], [], { iterations: 4000, opponentRangePct: 0.15 });
+    expect(Math.abs(aaFull - aaNarrow)).toBeLessThanOrEqual(0.05);
   });
 });
 
