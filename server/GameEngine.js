@@ -148,6 +148,7 @@ class GameEngine {
     this.lastActionSeq = 0;
     this.lastActionBy = null;
     this.lastActionLabel = null;
+    this.lastActionPhase = null;
   }
 
   // 在每个动作方法真正生效（校验通过之后）时调用，而不是在方法一开始——避
@@ -158,10 +159,21 @@ class GameEngine {
   // 但一条街最后一个动作往往紧接着就会触发 _nextStreet 把 bet 清零，猜出
   // 来的文案要么是错的（比如全都变成"过牌"）要么干脆没有，所以改成服务端
   // 直接算好、原样告诉客户端，不再让客户端反推。
+  // lastActionPhase 顺手记一下这个动作真正发生在哪条街——调用方（下面的
+  // fold/check/call/raise/allIn）总是先 _recordAction 再调 _advance()，而
+  // 一条街最后一个动作会在同一次 _advance() 里触发 _nextStreet()，把
+  // this.phase 直接改成下一条街；如果客户端拿广播里的 this.phase 给这个
+  // 气泡打标签，"结束这条街的最后一个动作"永远会被误标成下一条街（用户
+  // 反馈 2026-08-02："新的一轮的时候，上一轮的气泡不应该还存在吧"——根因
+  // 就是这个动作的气泡被误标成新的一轮，导致气泡清理的"标签不等于目标街"
+  // 判断把它当成新一轮自己的气泡，一直留到新一轮结束才清）。这里在
+  // this.phase 还没被 _nextStreet() 改动之前就把它存下来，让客户端不用
+  // 再猜。
   _recordAction(playerId, label) {
     this.lastActionSeq += 1;
     this.lastActionBy = playerId;
     this.lastActionLabel = label;
+    this.lastActionPhase = this.phase;
   }
 
   _seat(i) {
@@ -571,6 +583,7 @@ class GameEngine {
       lastActionSeq: this.lastActionSeq,
       lastActionBy: this.lastActionBy,
       lastActionLabel: this.lastActionLabel,
+      lastActionPhase: this.lastActionPhase,
       players: this.players.map(p => ({
         id: p.id,
         name: p.name,

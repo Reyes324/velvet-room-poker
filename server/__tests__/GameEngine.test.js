@@ -119,6 +119,35 @@ describe('GameEngine — 街道推进', () => {
   });
 });
 
+describe('GameEngine — lastActionPhase（用户反馈 2026-08-02："新的一轮的时候，上一轮的气泡不应该还存在吧"）', () => {
+  it('一条街最后一个动作（触发进入下一条街）的 lastActionPhase 是它实际发生的那条街，不是广播时已经变成的新street', () => {
+    const game = new GameEngine(makePlayers(2), 0, 100);
+    const p1 = game.players[game.actionIndex];
+    game.call(p1.id);
+    const p2 = game.players[game.actionIndex];
+    const state = game.check(p2.id); // 结束翻前，进入翻牌
+    expect(game.phase).toBe('flop'); // 广播时 phase 已经是新的一条街
+    expect(state.state.lastActionPhase).toBe('preflop'); // 但这个动作真的发生在翻前
+    expect(state.state.lastActionBy).toBe(p2.id);
+  });
+
+  it('一条街内非最后一个动作（不触发换街）的 lastActionPhase 跟当前 phase 一致', () => {
+    const game = new GameEngine(makePlayers(3), 0, 100);
+    const p1 = game.players[game.actionIndex];
+    const state = game.call(p1.id); // 3 人桌，第一个跟注不会立刻结束翻前
+    expect(game.phase).toBe('preflop');
+    expect(state.state.lastActionPhase).toBe('preflop');
+  });
+
+  it('弃牌到只剩一人直接摊牌：lastActionPhase 是弃牌发生的那条街，不是 showdown', () => {
+    const game = new GameEngine(makePlayers(2), 0, 100);
+    const actor = game.players[game.actionIndex];
+    const result = game.fold(actor.id);
+    expect(game.phase).toBe('showdown');
+    expect(result.state.lastActionPhase).toBe('preflop');
+  });
+});
+
 describe('GameEngine — getStateForPlayer 隐藏底牌', () => {
   it('玩家只能看到自己的底牌，对手底牌为 null', () => {
     const game = new GameEngine(makePlayers(2), 0, 200);

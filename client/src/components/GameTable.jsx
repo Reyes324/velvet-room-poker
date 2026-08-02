@@ -383,10 +383,19 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         // Persistent now — no self-clearing timeout. The bubble stays until
         // this same player's status/bet changes again (this effect re-fires
         // and overwrites their entry) or a new street/hand clears everyone
-        // (see the phase-watching effect below). Tagged with the phase it
-        // happened on — see that effect for why.
+        // (see the phase-watching effect below). Tagged with the phase the
+        // action actually happened on — gameState.lastActionPhase, NOT
+        // gameState.phase. The street's last action triggers _nextStreet()
+        // server-side in the same tick that records it, so by the time this
+        // broadcast arrives, gameState.phase is already the NEXT street —
+        // tagging with it mislabeled every street-ending bubble as
+        // belonging to the new street, so it survived a whole extra street
+        // before the sweep below ever cleared it (user feedback, 2026-08-02:
+        // "新的一轮的时候，上一轮的气泡不应该还存在吧，除了弃牌那个气泡").
+        // lastActionPhase is recorded server-side before that mutation —
+        // see GameEngine._recordAction.
         const key = Date.now();
-        const phase = gameState.phase;
+        const phase = gameState.lastActionPhase ?? gameState.phase;
         setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, phase } }));
       }
     }
