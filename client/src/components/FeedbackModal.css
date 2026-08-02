@@ -1,0 +1,40 @@
+/* client/src/components/FeedbackModal.css */
+.feedback-modal {
+  text-align: left;
+  max-width: 360px;
+}
+.feedback-textarea {
+  width: 100%;
+  min-height: 100px;
+  box-sizing: border-box;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: var(--r-md);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 12px;
+  margin: var(--sp-3) 0;
+  resize: vertical;
+}
+.feedback-textarea:focus {
+  outline: none;
+  border-color: rgba(212,175,55,.4);
+}
+.feedback-image-picker {
+  display: block;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+  border: 1px dashed rgba(255,255,255,.15);
+  border-radius: var(--r-md);
+  padding: 12px;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+}
+.feedback-image-preview {
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: var(--r-sm);
+}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
+import FeedbackModal from '../components/FeedbackModal';
 import './HomePage.css';
 
 function genId() {
@@ -18,6 +19,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   // 展示"继续上局"卡片，由用户自己点进去。null = 还没查/查完发现没有；
   // 有会话时是 { type: 'room', code } 或 { type: 'pve', handNumber, seatCount }。
   const [resumeCard, setResumeCard] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   useEffect(() => {
     if (initialCode) {
@@ -242,6 +244,11 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
           mode 影响，任何界面状态下都能点到。GameTable 里游戏进行中也有一个
           对应的菜单项，同一个诉求。 */}
       <div className="home-refresh-link" onClick={() => window.location.reload()}>刷新</div>
+      {/* 问题反馈入口——用户反馈（2026-08-02）"要不要在网页上提供反馈入
+          口"，跟 home-refresh-link 同一视觉层级，不受 mode 影响，任何界面
+          状态下都能点到。 */}
+      <div className="home-feedback-link" onClick={() => setShowFeedback(true)}>问题反馈</div>
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </div>
   );
 }

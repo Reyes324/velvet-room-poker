@@ -8,6 +8,7 @@ import BustWaitModal from '../components/BustWaitModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
 import TimerDecisionModal from '../components/TimerDecisionModal';
+import FeedbackModal from '../components/FeedbackModal';
 
 // Real showdowns give the table this long to actually show the revealed
 // hands before the settlement sheet appears — the sheet used to appear in
@@ -28,6 +29,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   const [settlementProgress, setSettlementProgress] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
   const [showHandHistory, setShowHandHistory] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
   const [revealedPlayers, setRevealedPlayers] = useState({});
@@ -277,6 +279,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         onRebuy={rebuy}
         onOpenLedger={() => setShowLedger(true)}
         onOpenHandHistory={() => { emit('room:get-hand-history', { playerId }); setShowHandHistory(true); }}
+        onOpenFeedback={() => setShowFeedback(true)}
         onPoke={poke}
         pokedSeat={pokedSeat}
         settlementOpen={!!settlement}
@@ -361,6 +364,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           )}
         </div>
       )}
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </>
   );

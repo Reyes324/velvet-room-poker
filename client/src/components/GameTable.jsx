@@ -181,7 +181,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -514,6 +514,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             {isHost && (
               <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
             )}
+            <div className="menu-row" onClick={() => { setShowMenu(false); onOpenFeedback?.(); }}>问题反馈</div>
             {/* 用户反馈（2026-07-31）：加到 iOS 主屏幕的书签是"独立 App"模式
                 打开的，没有 Safari 那套地址栏/下拉刷新——切到后台再切回来，
                 系统经常只是原样唤醒上次冷启动加载的那个页面，不会重新请

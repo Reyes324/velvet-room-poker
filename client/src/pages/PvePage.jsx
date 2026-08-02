@@ -6,6 +6,7 @@ import BustDecisionModal from '../components/BustDecisionModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
 import PveStatsModal from '../components/PveStatsModal';
+import FeedbackModal from '../components/FeedbackModal';
 
 // Same pacing as RoomPage's real-showdown reveal — see that file's own
 // comment. Duplicated rather than imported: it's one constant, and PVE is
@@ -33,6 +34,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   const [showLedger, setShowLedger] = useState(false);
   const [showHandHistory, setShowHandHistory] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
   const settlementTimerRef = useRef(null);
 
@@ -133,6 +135,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         onOpenLedger={() => setShowLedger(true)}
         onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
         onOpenStats={() => { emit('pve:get-hand-history'); setShowStats(true); }}
+        onOpenFeedback={() => setShowFeedback(true)}
       />
       {showLedger && (
         <LedgerModal
@@ -173,6 +176,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
           />
         )
       )}
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </>
   );
