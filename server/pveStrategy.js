@@ -233,6 +233,21 @@ const BLUFF_EQUITY_CEILING = 0.30;
 // 的调整，不是拍脑袋。
 const EV_NOISE_FRACTION = 0.15;
 
+// 池控制风险折扣（用户反馈 2026-08-02："有的电脑诈唬过度，不是nuts但是持
+// 续下注好像不会控池"）——实测证实：翻牌圈没人下注、轮到 AI 决定要不要主
+// 动下注时，只要还剩 1-2 个对手，胜率哪怕只有 45%（场均输面的烂牌，不是
+// "不错但不是坚果"）也会被 raise，因为聚合弃牌权益模型算出来的 evRaise
+// 只要数学上略微为正就赢了 argmax，没有任何"这个弃牌权益估计有多可靠"的
+// 余量——真实玩家的"池控制"本质就是对这种不确定性的风险规避，现在的公式
+// 完全没有这一层（跟 design.md「明确不做：真正的多街前瞻」是同一类局限
+// 的具体表现）。不引入真正的前瞻（那是求解器级别的复杂度），只给"不算坚
+// 果也不算明显该弃的烂牌"这个胜率区间的 raise 打一个折扣，让它要有更大的
+// EV 优势才会被选中，而不是略微为正就下注——跟 raiseSizeFraction 已经在
+// 用的 0.30/0.70 极化阈值是同一个"清晰 vs 模糊"的划分，不是另起一套数字。
+const POT_CONTROL_MURKY_LOW = 0.30;
+const POT_CONTROL_MURKY_HIGH = 0.70;
+const POT_CONTROL_DISCOUNT = 0.6;
+
 function gaussianNoise(random, stdDev) {
   if (stdDev <= 0) return 0;
   // Box-Muller 变换：两个独立均匀分布样本 -> 一个标准正态分布样本。
@@ -399,6 +414,25 @@ function pickAction(params) {
     : potSize + cost + opponentDelta;
   let evRaise = foldEquity * potSize + (1 - foldEquity) * (realEq * potIfCalled - cost);
 
+  // 池控制风险折扣（见上面 POT_CONTROL_* 常量的注释）：只在"不算坚果也不
+  // 算明显该弃"的模糊胜率区间、且这个 raise 本身算出来是正 EV 时才打折——
+  // 已经是负 EV 的加注不需要再折（折了反而会像 aggressive 那个符号 bug一
+  // 样把方向搞反），清晰的强牌/纯诈唬区间也不受影响，只收窄"数学上略微为
+  // 正就下注"这个中间地带。
+  //
+  // 用真实客观胜率 equity 判断是否落在模糊区间，不用风格调整过的 eq
+  // （用户反馈这个折扣加上之后又实测跑出新的失衡，2026-08-02 当天二次修
+  // 复）：callingStation 的 equityMultiplier 会把 eq 往上拉，如果拿 eq 来
+  // 判断"是不是清晰强牌"，一手真实只有 65% 胜率的模糊牌会被它自己的乐观
+  // 偏差拉到 71.5%、跨过 0.70 的上限，直接绕开了这层风险折扣——"越容易高
+  // 估自己牌力的风格，越不需要池控制"，这跟池控制本来要防的东西正好相
+  // 反。"是不是真的接近坚果"是客观事实，不该被风格滤镜改变；风格只影响
+  // "面对同样的不确定性，愿不愿意冒这个险"，也就是下面 varianceScale 这
+  // 一层，两者不能用同一个已经被扭曲过的数字来判断。
+  if (evRaise > 0 && equity > POT_CONTROL_MURKY_LOW && equity < POT_CONTROL_MURKY_HIGH) {
+    evRaise *= POT_CONTROL_DISCOUNT;
+  }
+
   const bias = STYLE_EV_BIAS[style];
   if (bias?.varianceScale) {
     // 符号 bug 修复（2026-08-02 最终审查）：这个乘数此前隐式假设 evRaise
@@ -456,4 +490,5 @@ function pickAction(params) {
 
 module.exports = {
   computeEquity, pickAction, raiseSizeFraction, STYLES, EV_NOISE_FRACTION,
+  POT_CONTROL_MURKY_LOW, POT_CONTROL_MURKY_HIGH, POT_CONTROL_DISCOUNT,
 };

@@ -6,6 +6,9 @@ const {
   pickAction,
   raiseSizeFraction,
   STYLES,
+  POT_CONTROL_MURKY_LOW,
+  POT_CONTROL_MURKY_HIGH,
+  POT_CONTROL_DISCOUNT,
 } = require('../pveStrategy');
 
 describe('pveStrategy — computeEquity', () => {
@@ -336,14 +339,18 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
     expect(bluffer.action).toBe('raise');
   });
 
-  // equity=0.4, toCall=100, potSize=300, currentBet=100, minRaiseTo=150 ->
-  // raiseCandidate=205, cost=205, potIfCalled=610. opponentFoldToRaiseRate=
-  // 0.08 -> foldEquity=0.08 -> neutral evCall=60, evRaise=59.88 (call wins
-  // by a hair). aggressive multiplies evRaise by 1.15 -> 68.86 -> raise wins.
+  // equity=0.31（落在池控制模糊区间 (0.30,0.70) 内，见下面的池控制测试
+  // 组），toCall=100, potSize=300, currentBet=100, minRaiseTo=150 ->
+  // raiseCandidate=205, evCall≈10.81, 原始 evRaise≈17.75；池控制折扣先把
+  // evRaise 打成 ≈10.65（0.6 倍），neutral 因此 evCall(10.81) > evRaise
+  // (10.65) 选 call。aggressive 再对这个已经打过池控折扣的 evRaise 乘
+  // 1.15 -> ≈12.25 > 10.81 -> raise 反超。equity 特意选在模糊区间里
+  // （不是 >=0.70 的清晰强牌区），因为池控制折扣只压缩这个区间的近似平手
+  // 决策，原本 equity=0.4 那组用例的平手点已经被折扣本身消掉了。
   it('aggressive（激进型）比不传 style 更容易加注（EV 相近时偏好高方差选项）', () => {
     const base = {
-      street: 'flop', equity: 0.4, toCall: 100, potSize: 300, myChips: 1000,
-      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.08,
+      street: 'flop', equity: 0.31, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.16,
       random: () => 0,
     };
     const neutral = pickAction(base);
@@ -352,13 +359,14 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
     expect(aggressive.action).toBe('raise');
   });
 
-  // Same shape as the aggressive case but opponentFoldToRaiseRate=0.12 ->
-  // neutral foldEquity=0.12 -> evRaise=70.32 > evCall=60 (raise wins by a
-  // hair). steady multiplies evRaise by 0.85 -> 59.77 < 60 -> call wins.
+  // Same shape/equity as the aggressive case above but opponentFoldToRaiseRate
+  // =0.17 -> 原始 evRaise≈21.11，池控制折扣后≈12.67 > evCall≈10.81，
+  // neutral 选 raise。steady 再对这个折扣后的 evRaise 乘 0.85 -> ≈10.77 <
+  // 10.81 -> call 反超（差距很小，是真实的"打折打过界"边界情形，不是巧合）。
   it('steady（稳健型）比不传 style 更少加注（给高方差选项的 EV 打折）', () => {
     const base = {
-      street: 'flop', equity: 0.4, toCall: 100, potSize: 300, myChips: 1000,
-      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.12,
+      street: 'flop', equity: 0.31, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, minRaiseTo: 150, bigBlind: 20, opponentFoldToRaiseRate: 0.17,
       random: () => 0,
     };
     const neutral = pickAction(base);
@@ -375,6 +383,77 @@ describe('pveStrategy — 风格对 EV 计算的偏差', () => {
     const neutral = pickAction(base);
     const unknown = pickAction({ ...base, style: 'not-a-real-style' });
     expect(unknown.action).toBe(neutral.action);
+  });
+});
+
+describe('pveStrategy — 池控制风险折扣（用户反馈 2026-08-02："有的电脑诈唬过度，不是nuts但是持续下注好像不会控池"）', () => {
+  // 根因：翻牌圈没人下注、轮到 AI 决定要不要主动下注时，只要还剩 1-2 个
+  // 对手，胜率哪怕只有 45%（场均输面的烂牌）也会被 raise——聚合弃牌权益
+  // 模型算出来的 evRaise 只要数学上略微为正就赢，没有任何"这个弃牌权益估
+  // 计有多可靠"的余量。修复：evRaise 为正、且胜率落在 (0.30,0.70) 这个
+  // "不算坚果也不算明显该弃"的模糊区间时，打 POT_CONTROL_DISCOUNT 折扣。
+  it('常量本身：模糊区间是 (0.30, 0.70)，折扣是 0.6', () => {
+    expect(POT_CONTROL_MURKY_LOW).toBe(0.30);
+    expect(POT_CONTROL_MURKY_HIGH).toBe(0.70);
+    expect(POT_CONTROL_DISCOUNT).toBe(0.6);
+  });
+
+  it('模糊区间内（45% 胜率，2 个对手在场）：白看时选择过牌，而不是不管三七二十一下注', () => {
+    const decision = pickAction({
+      street: 'flop', equity: 0.45, toCall: 0, currentBet: 0, potSize: 200, myChips: 1000,
+      minRaiseTo: 20, opponentCeiling: 1000, liveOpponentCount: 2, bigBlind: 20,
+      opponentFoldToRaiseRate: 0.35, style: null, facingRaise: false, random: () => 0.5,
+    });
+    expect(decision.action).toBe('check');
+  });
+
+  it('清晰强牌区间（85% 胜率）不受影响：照样主动下注，折扣只压缩模糊区间', () => {
+    const decision = pickAction({
+      street: 'flop', equity: 0.85, toCall: 0, currentBet: 0, potSize: 200, myChips: 1000,
+      minRaiseTo: 20, opponentCeiling: 1000, liveOpponentCount: 2, bigBlind: 20,
+      opponentFoldToRaiseRate: 0.35, style: null, facingRaise: false, random: () => 0.5,
+    });
+    expect(decision.action).toBe('raise');
+  });
+
+  it('清晰的纯诈唬区间（20% 胜率，对手很爱弃牌）不受影响：折扣不会误伤合理的诈唬', () => {
+    const decision = pickAction({
+      street: 'flop', equity: 0.20, toCall: 0, currentBet: 0, potSize: 200, myChips: 1000,
+      minRaiseTo: 20, opponentCeiling: 1000, liveOpponentCount: 1, bigBlind: 20,
+      opponentFoldToRaiseRate: 0.75, style: null, facingRaise: false, random: () => 0.5,
+    });
+    expect(decision.action).toBe('raise');
+  });
+
+  it('已经是负 EV 的加注不会被折扣"救活"——折扣只作用于正 EV，不改变方向', () => {
+    // 模糊区间内、但弃牌权益低到 evRaise 本来就是负数的场景：折扣（乘
+    // 0.6）如果被错误地也应用在负数上，会让它更接近 0、可能反而变成正数
+    // 选中 raise——这里断言它仍然选 evCall/evFold 那一边，没有被误伤。
+    const decision = pickAction({
+      street: 'flop', equity: 0.35, toCall: 0, currentBet: 0, potSize: 200, myChips: 1000,
+      minRaiseTo: 20, opponentCeiling: 1000, liveOpponentCount: 4, bigBlind: 20,
+      opponentFoldToRaiseRate: 0.05, style: null, facingRaise: false, random: () => 0.5,
+    });
+    expect(decision.action).not.toBe('raise');
+  });
+
+  // 二次修复回归测试（当天用 pveBalanceCheck.js 实测跑出新失衡才发现）：
+  // 折扣最初拿风格调整过的 eq（styledEquity）判断是否落在模糊区间，
+  // callingStation 的 equityMultiplier=1.1 会把真实 65% 胜率的模糊牌拉到
+  // 71.5%、跨过 0.70 上限，直接绕开这层折扣——越容易高估自己牌力的风格，
+  // 越不需要池控制，跟池控制本来要防的东西正好相反。改用真实客观胜率
+  // equity 做判断之后，callingStation 在这手真实仍然模糊的牌上也应该跟
+  // 别的风格一样被打折、选择过牌。
+  it('模糊区间判断用真实客观胜率，不用风格夸大过的主观胜率——callingStation 不能靠"高估自己"绕开池控制折扣', () => {
+    const base = {
+      street: 'flop', equity: 0.65, toCall: 0, currentBet: 0, potSize: 200, myChips: 1000,
+      minRaiseTo: 20, opponentCeiling: 1000, liveOpponentCount: 1, bigBlind: 20,
+      opponentFoldToRaiseRate: 0.5, facingRaise: false, random: () => 0.5,
+    };
+    const neutral = pickAction({ ...base, style: null });
+    const callingStation = pickAction({ ...base, style: 'callingStation' });
+    expect(neutral.action).toBe('check');
+    expect(callingStation.action).toBe('check');
   });
 });
 
