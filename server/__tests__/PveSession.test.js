@@ -175,6 +175,55 @@ describe('PveSession — 多电脑对战（2026-08-02 新增）', () => {
   });
 });
 
+describe('PveSession — EV 引擎接入（2026-08-02）', () => {
+  // 全部用 seatCount:4，不用默认的单挑（seatCount:2）——人数 >2 时第一个
+  // 行动的是 (dealerIndex+3)%N，新建 session 时 dealerIndex=0（人类坐 0
+  // 号），算出来永远是一个 AI 坐位；单挑的第一个行动者反而是庄家/小盲
+  // （人类自己，见 GameEngine 单挑特判），如果沿用默认单挑，这里
+  // `s.isAiTurn()` 在构造完成后立刻就是 false，会跟这几个测试真正要
+  // 验证的东西无关地失败。
+  it('aiAction() 传给 pickAction 的 potSize 等于 this.game.pot（GameEngine 的 pot 字段本来就是实时的，含这条街已下注的筹码，不需要额外计算）', () => {
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    expect(s.isAiTurn()).toBe(true);
+    const potAtCallTime = s.game.pot;
+    expect(potAtCallTime).toBeGreaterThan(0); // 盲注已经下了
+    s.aiAction();
+    const callArgs = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(callArgs.potSize).toBe(potAtCallTime);
+  });
+
+  it('aiAction() 传给 pickAction 的 liveOpponentCount 是场上未弃牌、除自己以外的玩家数', () => {
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    expect(s.isAiTurn()).toBe(true);
+    s.aiAction();
+    const callArgs = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(callArgs.liveOpponentCount).toBe(3); // 4 人桌，还没人弃牌，除自己外 3 个对手
+  });
+
+  it('aiAction() 传给 pickAction 的 bigBlind 跟 session 构造时的一致', () => {
+    const s = makeSession({ seatCount: 4, bigBlind: 40 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    expect(s.isAiTurn()).toBe(true);
+    s.aiAction();
+    const callArgs = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(callArgs.bigBlind).toBe(40);
+  });
+
+  it('aiAction() 翻前也真实计算胜率（equity 不再是 null）', () => {
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    expect(s.isAiTurn()).toBe(true);
+    expect(s.game.phase).toBe('preflop');
+    s.aiAction();
+    expect(fakeStrategy.computeEquity).toHaveBeenCalled();
+    const callArgs = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(callArgs.equity).not.toBeNull();
+    expect(typeof callArgs.equity).toBe('number');
+  });
+});
+
 describe('PveSession — humanAction', () => {
   it('轮到人类时可以正常行动', () => {
     const s = makeSession();
@@ -220,34 +269,38 @@ describe('PveSession — aiAction', () => {
     expect(s.game.currentBet).toBe(60);
   });
 
-  it('把上下文正确传给策略引擎：wasAggressor/facingRaise/对手读数', () => {
+  it('把上下文正确传给策略引擎：对手读数（opponentFoldToRaiseRate）——wasAggressor/facingRaise/opponentAggressionRate 不再是新引擎的入参，2026-08-02 EV 引擎接入改动移除', () => {
     const s = makeSession({ bigBlind: 20 });
     s.humanAction('call'); // human (SB/dealer) just calls the blind — not a real raise
     fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
     s.aiAction(); // AI is BB, gets a free check option
     let call = fakeStrategy.pickAction.mock.calls[0][0];
-    expect(call.wasAggressor).toBe(false); // nobody raised yet
-    expect(call.facingRaise).toBe(false); // just a blind call, not a real raise
-    expect(call.opponentAggressionRate).toBeNull(); // not enough sample yet
-    expect(call.opponentFoldToRaiseRate).toBeNull();
+    expect(call.opponentFoldToRaiseRate).toBeNull(); // not enough sample yet
+    expect(call.wasAggressor).toBeUndefined();
+    expect(call.facingRaise).toBeUndefined();
+    expect(call.opponentAggressionRate).toBeUndefined();
   });
 
-  it('对手统计只在样本量够时才生效（不会被前几手过拟合）', () => {
+  it('对手统计只在样本量够时才生效（不会被前几手过拟合）——用 opponentFoldToRaiseRate，因为 opponentAggressionRate 不再传给 pickAction', () => {
     const s = makeSession();
-    // Play several hands where the human always raises when it's their
-    // turn, to build up sample size in oppStats.
-    for (let i = 0; i < 3; i++) {
-      fakeStrategy.pickAction.mockReturnValue({ action: 'fold' }); // AI folds → hand ends fast
-      s.humanAction('raise', 100);
-      if (!s.isOver()) s.aiAction();
-      if (s.isOver() && i < 2) s.readyNext();
+    // Play several hands where the human (dealer/SB, acts first heads-up)
+    // calls to pass the turn to the AI, the AI raises, and the human faces
+    // that raise and folds — building up raiseFacedCount in oppStats, but
+    // staying under the >=3 threshold _opponentReads() requires for
+    // opponentFoldToRaiseRate.
+    for (let i = 0; i < 2; i++) {
+      fakeStrategy.pickAction.mockReturnValue({ action: 'raise', raiseTo: 100 }); // AI raises
+      s.humanAction('call');
+      s.aiAction();
+      if (!s.isOver()) s.humanAction('fold'); // human faces the AI's raise, folds
+      if (s.isOver() && i < 1) s.readyNext();
     }
-    fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'raise', raiseTo: 100 });
     if (s.isAiTurn()) s.aiAction();
     const lastCall = fakeStrategy.pickAction.mock.calls.at(-1)[0];
-    // 3 human actions total (raise/raise/raise) is still short of the >=8
-    // totalActions threshold _opponentReads() requires for aggression rate.
-    expect(lastCall.opponentAggressionRate).toBeNull();
+    // 2 raises faced is still short of the >=3 raiseFacedCount threshold
+    // _opponentReads() requires for opponentFoldToRaiseRate.
+    expect(lastCall.opponentFoldToRaiseRate).toBeNull();
   });
 
   it('AI 的 allin 决策会被换算成真正的 allIn() 调用', () => {

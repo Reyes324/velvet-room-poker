@@ -238,29 +238,25 @@ class PveSession {
     const toCall = this.game.currentBet - ai.bet;
     const street = this.game.phase;
     const board = this.game.communityCards;
-    const equity = street === 'preflop'
-      ? null // pickAction ignores equity preflop and uses preflopTier instead
-      : this.strategy.computeEquity(ai.holeCards, board, { iterations: 300 });
-    const position = aiIdx === this.game.dealerIndex ? 'ip' : 'oop';
-    const wasAggressor = this.game.lastAggressorIndex === aiIdx;
-    const facingRaise = this._facingRaise(street, toCall);
-    const { opponentAggressionRate, opponentFoldToRaiseRate } = this._opponentReads();
+    // 翻前现在也算真实胜率（board=[]），不再走单独的起手牌分档表——见
+    // docs/superpowers/specs/2026-08-02-pve-ev-driven-ai-design.md。
+    const equity = this.strategy.computeEquity(ai.holeCards, board, { iterations: 300 });
+    const liveOpponentCount = this.game.players.filter(
+      p => p.id !== actingId && p.status !== 'folded',
+    ).length;
+    const { opponentFoldToRaiseRate } = this._opponentReads();
 
     const decision = this.strategy.pickAction({
       street,
-      holeCards: ai.holeCards,
-      board,
       equity,
       toCall,
-      potSize: this.game.pot,
+      potSize: this.game.pot, // GameEngine adds every bet to .pot as it's placed (verified: it's already the true current pot, not just prior streets), no correction needed
       myChips: ai.chips,
-      position,
       currentBet: this.game.currentBet,
       minRaiseTo: this.game.currentBet + this.game.lastRaiseAmount,
       opponentCeiling: this.game.maxTotalFor(actingId),
-      wasAggressor,
-      facingRaise,
-      opponentAggressionRate,
+      liveOpponentCount,
+      bigBlind: this.bigBlind,
       opponentFoldToRaiseRate,
       style: seat.style,
     });
