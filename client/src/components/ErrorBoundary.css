@@ -10,7 +10,11 @@
 
 .error-boundary-card {
   width: 100%;
-  max-width: 360px;
+  max-width: 480px;
+  max-height: 90dvh;
+  max-height: calc(var(--vh, 1dvh) * 90);
+  display: flex;
+  flex-direction: column;
   background: linear-gradient(135deg, var(--surface-raised), var(--surface-base));
   border: 1px solid rgba(212,175,55,.18);
   border-radius: 20px;
@@ -35,17 +39,53 @@
   margin-bottom: var(--sp-6);
 }
 
+.error-boundary-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: rgba(0,0,0,.25);
+  border: 1px solid rgba(212,175,55,.12);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.error-boundary-btns {
+  display: flex;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+
+.error-boundary-copy,
 .error-boundary-reload {
-  width: 100%;
+  flex: 1;
   height: var(--control-h);
   border-radius: var(--r-md);
-  background: linear-gradient(135deg, var(--gold-800), var(--gold-600));
-  color: var(--gold-100);
-  border: 1px solid rgba(212,175,55,.4);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: .12em;
+  letter-spacing: .1em;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.error-boundary-reload {
+  background: linear-gradient(135deg, var(--gold-800), var(--gold-600));
+  color: var(--gold-100);
+  border: 1px solid rgba(212,175,55,.4);
+}
+
+.error-boundary-copy {
+  background: rgba(255,255,255,.04);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255,255,255,.1);
 }
