@@ -158,15 +158,21 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
         )}
 
         <div className="home-form">
-          <input
-            className="home-input"
-            placeholder="你的昵称"
-            value={name}
-            maxLength={16}
-            onChange={e => { setName(e.target.value); setError(''); }}
-            onKeyDown={e => e.key === 'Enter' && mode === 'join' && handleJoin()}
-            onFocus={scrollFieldIntoView}
-          />
+          {mode !== 'pve' && (
+            // 人机对战不需要昵称——服务端 pve:start 本来就在没收到名字时
+            // 回退到"玩家"（server/index.js），只是之前这个输入框对 PVE
+            // 场景也一直显示，让人以为要填。用户反馈（2026-08-02）："人机
+            // 对战，不用写昵称，选择人数就可以了"。
+            <input
+              className="home-input"
+              placeholder="你的昵称"
+              value={name}
+              maxLength={16}
+              onChange={e => { setName(e.target.value); setError(''); }}
+              onKeyDown={e => e.key === 'Enter' && mode === 'join' && handleJoin()}
+              onFocus={scrollFieldIntoView}
+            />
+          )}
 
           {mode === 'join' && (
             <input
@@ -212,10 +218,13 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
         <div className="home-pve-picker">
           <div className="home-pve-picker-title">选择桌形</div>
           <div className="home-pve-picker-grid">
-            <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 2)}>单挑</button>
-            <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 4)}>4 人</button>
-            <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 6)}>6 人</button>
-            <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 8)}>8 人</button>
+            {/* 不再用 `name` 输入框的值——那个字段在 PVE 模式下已经不显示
+                了，即使之前在其他 mode 下打过字也不该带进来（服务端
+                pve:start 收到空名字会自动回退到"玩家"）。 */}
+            <button className="home-pve-seat-btn" onClick={() => onPve('', 2)}>单挑</button>
+            <button className="home-pve-seat-btn" onClick={() => onPve('', 4)}>4 人</button>
+            <button className="home-pve-seat-btn" onClick={() => onPve('', 6)}>6 人</button>
+            <button className="home-pve-seat-btn" onClick={() => onPve('', 8)}>8 人</button>
           </div>
           <div className="home-pve-picker-back" onClick={() => setMode(null)}>返回</div>
         </div>

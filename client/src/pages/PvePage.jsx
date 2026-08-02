@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import GameTable from '../components/GameTable';
 import SettlementModal from '../components/SettlementModal';
+import BustDecisionModal from '../components/BustDecisionModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
 import PveStatsModal from '../components/PveStatsModal';
@@ -106,6 +107,15 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   // depending on name matching (which could collide with a blank/default
   // name landing on both seats).
   const me = gameState.players.find(p => p.holeCards?.[0]);
+  // 用户反馈（2026-08-02）："人机对战，为什么没有借一手的那个弹窗呢"——
+  // PveSession._dealNewHand() 一直是破产自动补满、不打断（PVE 是单人对
+  // 局，没有"别人在等你"这个理由），但用户希望即使是单人对局也保留跟多
+  // 人房间一致的"要不要继续"确认，不要在没问过的情况下悄悄重新买入。
+  // 只在结算阶段（settlement 已经渲染出来、这手真正打完了）判断——这时
+  // gameState.players 里的筹码还是"这手打完后"的真实值，_dealNewHand 的
+  // 自动补满要等 pve:ready-next 才会触发，所以 0 筹码就是真的破产、不是
+  // 已经被悄悄补过了。
+  const myBust = me?.chips === 0;
 
   return (
     <>
@@ -149,15 +159,19 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         />
       )}
       {settlement && settlement.winners?.length > 0 && (
-        <SettlementModal
-          winners={settlement.winners}
-          myId={me?.id}
-          iAmReady={false}
-          readyCount={0}
-          totalCount={1}
-          onReady={handleReady}
-          isFoldWin={false}
-        />
+        myBust ? (
+          <BustDecisionModal onRebuy={handleReady} onLeave={handleExit} />
+        ) : (
+          <SettlementModal
+            winners={settlement.winners}
+            myId={me?.id}
+            iAmReady={false}
+            readyCount={0}
+            totalCount={1}
+            onReady={handleReady}
+            isFoldWin={false}
+          />
+        )
       )}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </>
