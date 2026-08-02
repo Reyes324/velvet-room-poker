@@ -332,29 +332,44 @@ function pickAction(params) {
   // u = toCall - actualCallCost）对手根本没机会真正投进池里跟自己打——
   // GameEngine 的边池分层（_buildSidePots）只按每个人自己的 totalBet 分配
   // 资格，自己全下这么点钱，能赢的层就只到自己的总投入为止，u 这部分本来
-  // 就会被退还给下注方，自己永远赢不到。正确的"若跟注后能赢的底池"是
-  // potSize + actualCallCost − u，不是 potSize + actualCallCost
-  // （2026-08-02 全面审查 + 复核修复：上一版只封了成本项，赢的份额项还是
-  // 按整个 potSize+actualCallCost 算，在多人桌 all-in-for-less 场景里把
-  // evCall 系统性算高，把接近 0% 胜率的烂牌也算成正 EV 跟注/全下）。
+  // 就会被退还给下注方，自己永远赢不到。多人桌时这个退款不是只发生一次——
+  // liveOpponentCount 个还没弃牌的对手，只要都下到了 currentBet 这个层级
+  // （聚合弃牌权益模型本来就是按"要么全弃、要么全跟"这个简化在算，参见
+  // estimateFoldEquity 的 p^n 聚合——这里延用同一个简化，不单独对每个对手
+  // 建模具体下注额），每一个人超出我方全下量的部分都会各自被退，退款总额
+  // 是 u × liveOpponentCount，不是 u（2026-08-02 复核修复：上一版只按"一
+  // 个对手"退款建模，独立复核构造出一个真实可达的 3 人全下场景验证——两人
+  // 各下 1500、潜池 3000、自己只剩 10 筹码，正确的能赢底池是 30，只退一次
+  // 算出来的是 1520，差了两个数量级，会把接近 0% 胜率的烂牌也在多人桌全下
+  // 场景里错判成 +EV）。Math.max(0, …) 只是兜底"底池不能是负数"这个物理上
+  // 恒成立的下限，不是在假设某个不可达的局面（不重犯上一轮的错）。
   const actualCallCost = Math.min(toCall, myChips);
   const uncalledExcess = toCall - actualCallCost; // toCall<=myChips 时恒为 0，公式退化回原来的样子
-  const evCall = realEq * (potSize + actualCallCost - uncalledExcess) - actualCallCost;
+  const totalUncalledExcess = uncalledExcess * liveOpponentCount;
+  const evCall = realEq * Math.max(0, potSize + actualCallCost - totalUncalledExcess) - actualCallCost;
 
   // potSize 约定为"此刻真实可见的底池"（含这条街所有已下注的筹码——见
-  // PveSession 的调用方，Task 2）。GameEngine 每次下注都会立刻把筹码计入
-  // this.pot（_placeBet 里 this.pot += actual，不是等到这条街结束才汇总），
-  // 所以在任何可达的真实局面下 potSize >= currentBet 恒成立——当前最高
-  // 下注额本来就是已经被计入 potSize 的一部分。基于这个不变量：加注到
-  // raiseCandidate 后，自己这条街的追加投入是 cost；假设对手跟注到同一个
-  // 总额，对手的追加投入是 (raiseCandidate - currentBet)；两者都加进当前
-  // potSize 就是"若被跟注"的最终底池，这个值在可达局面下不会是负数，不需
-  // 要额外裁剪（2026-08-02 复核修复：上一版在这里加了 Math.max(0, …)，是
-  // 基于一个引擎实际造不出来的局面（potSize < currentBet）做的修复，反而
-  // 抹掉了这个表达式本来就在正确处理的"欠下注部分不该算进能赢的池子"这个
-  // 效果，导致 evRaise 在多人桌 all-in-for-less 场景里被算得偏高）。
+  // PveSession 的调用方，Task 2）。加注到 raiseCandidate 后，自己这条街的
+  // 追加投入是 cost；对手的追加投入是 (raiseCandidate - currentBet)。
+  //
+  // all-in-for-less（raiseCandidate < currentBet）时要跟上面 evCall 的退款
+  // 建模保持一致：这个负数代表"对手超出我方全下量的部分会被退还"，
+  // liveOpponentCount 个还没弃牌的对手每人各退一份，要乘 liveOpponentCount
+  // （2026-08-02 复核修复：单人版本的公式已经验证过在可达局面下不需要裁
+  // 剪，但那是 liveOpponentCount=1 的特例；乘上人数之后在 all-in-for-less+
+  // 多对手场景下确实可能把这一项算成很负，用 Math.max(0, …) 兜底"底池不能
+  // 是负数"这个恒成立的物理下限，不是针对某个不可达局面的特判）。
+  //
+  // 正常加注（raiseCandidate >= currentBet）时不乘 liveOpponentCount，维持
+  // 这次全面审查里已经独立验证过的口径不变——"若被跟注"只按一个对手的追加
+  // 投入算，不假设多人桌里所有对手都会跟注同一个加注（那个假设本身没有跟
+  // estimateFoldEquity 的聚合弃牌权益模型对齐，会不会需要一起改是一个独立
+  // 问题，这次不在 all-in-for-less 专项修复的范围内一起动）。
   const cost = raiseCandidate - myBetThisStreet;
-  const potIfCalled = potSize + cost + (raiseCandidate - currentBet);
+  const opponentDelta = raiseCandidate - currentBet;
+  const potIfCalled = raiseCandidate < currentBet
+    ? Math.max(0, potSize + cost + liveOpponentCount * opponentDelta)
+    : potSize + cost + opponentDelta;
   let evRaise = foldEquity * potSize + (1 - foldEquity) * (realEq * potIfCalled - cost);
 
   const bias = STYLE_EV_BIAS[style];

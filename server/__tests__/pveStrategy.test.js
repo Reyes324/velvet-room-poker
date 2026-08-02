@@ -170,6 +170,41 @@ describe('pveStrategy — all-in-for-less（有效后手小于 currentBet）时�
     });
     expect(a.action).toBe('fold');
   });
+
+  // 3 人桌 all-in-for-less：两个还没弃牌的对手都下到 1500，潜池 3000，自己
+  // 只剩 10 筹码。真实能赢的底池 = potSize + actualCallCost - uncalledExcess
+  // × liveOpponentCount = 3000+10-1490×2 = 30，真实盈亏平衡点 10/30=33.3%。
+  // 若只按一个对手退款算（这轮要修的多人桌回归）：能赢的底池会算成
+  // 3000+10-1490=1520，盈亏平衡点只有 10/1520≈0.66%，2%/30%胜率都会被误判
+  // 成 +EV 全下。
+  it('多人桌（3 人）all-in-for-less：退款要按还没弃牌的对手数各退一份，不能只退一次', () => {
+    const base = {
+      street: 'flop', toCall: 1500, potSize: 3000, myChips: 10,
+      currentBet: 1500, opponentCeiling: 10, liveOpponentCount: 2, bigBlind: 20,
+    };
+    const veryLow = pickAction({ ...base, equity: 0.02, random: () => 0.99 });
+    const belowBreakeven = pickAction({ ...base, equity: 0.30, random: () => 0.5 });
+    const aboveBreakeven = pickAction({ ...base, equity: 0.35, random: () => 0.5 });
+    expect(veryLow.action).toBe('fold');
+    expect(belowBreakeven.action).toBe('fold');
+    expect(aboveBreakeven.action).not.toBe('fold');
+  });
+
+  // 正常加注（raiseCandidate 能超过 currentBet，不是 all-in-for-less）时，
+  // potIfCalled 不该跟着 liveOpponentCount 放大——这个口径这次不在 all-in-
+  // for-less 专项修复范围内，确认没被连带改动：跟"弃牌权益随对手数量指数
+  // 下降"那组测试用一样的参数，只是换一个不那么极端的对手数，加注 EV 不
+  // 应该因为 potIfCalled 被放大而意外翻正。
+  it('正常加注场景（非 all-in-for-less）的 potIfCalled 不受 liveOpponentCount 影响', () => {
+    const base = {
+      street: 'flop', equity: 0.05, toCall: 100, potSize: 300, myChips: 1000,
+      currentBet: 100, opponentFoldToRaiseRate: 0.9, bigBlind: 20, random: () => 0.99,
+    };
+    const oneOpp = pickAction({ ...base, liveOpponentCount: 1 });
+    const fiveOpp = pickAction({ ...base, liveOpponentCount: 5 });
+    expect(oneOpp.action).toBe('raise');
+    expect(fiveOpp.action).toBe('fold');
+  });
 });
 
 describe('pveStrategy — 弃牌权益（多人聚合 p^n）', () => {
