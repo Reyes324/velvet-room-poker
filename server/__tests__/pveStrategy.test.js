@@ -103,6 +103,43 @@ describe('pveStrategy — pickAction 基础 EV 比较（无风格、无对手数
   });
 });
 
+// 2026-08-02 全面审查修复：AI 有效后手（maxTotal）小于 currentBet 时——即
+// 只能全下一部分、凑不齐对手已经下的注——之前的 evCall/evRaise 公式会算
+// 错（evCall 按名义 toCall 而非实际能付的钱算成本/赢的份额；potIfCalled 里
+// (raiseCandidate - currentBet) 会变负，把整个 potIfCalled 拉低甚至拉成负
+// 数），导致像"10 筹码面对 500 的下注、进 100 的底池，80% 胜率"这种明显该
+// 跟/该全下的局面被误判成 fold——纯送筹码，且是"AI 是不是真的在尝试赢"这
+// 个引擎存在前提本身被破坏的程度。
+describe('pveStrategy — all-in-for-less（有效后手小于 currentBet）时的 EV 定价（2026-08-02 全面审查修复）', () => {
+  it('复现案例：10 筹码面对 500 的下注、100 的底池、80% 胜率，不应该弃牌', () => {
+    const a = pickAction({
+      street: 'flop', equity: 0.80, toCall: 500, potSize: 100, myChips: 10,
+      currentBet: 500, bigBlind: 20, random: () => 0.5,
+    });
+    expect(a.action).not.toBe('fold');
+    expect(['call', 'allin']).toContain(a.action);
+  });
+
+  it('同样是短筹码大幅落后对手下注，但换成翻前浅筹码 push/fold 分支（isShortStackPreflop）时，也不应该弃一手 80% 胜率的牌', () => {
+    const a = pickAction({
+      street: 'preflop', equity: 0.80, toCall: 500, potSize: 100, myChips: 10,
+      currentBet: 500, bigBlind: 20, random: () => 0.5,
+    });
+    expect(a.action).not.toBe('fold');
+  });
+
+  it('all-in-for-less 时 foldEquity 必须强制为 0——自己全下的量都不到对手已经下的注，不存在"逼对手弃牌"这回事，诈唬层也不应该把这种局面的 fold 翻成 raise（用极低胜率 + random 恒命中诈唬阈值来验证，若 foldEquity 没被清零，诈唬层会误触发把 fold 变成 raise）', () => {
+    const a = pickAction({
+      street: 'flop', equity: 0.05, toCall: 500, potSize: 100, myChips: 10,
+      currentBet: 500, bigBlind: 20, random: () => 0, // random()=0 恒命中诈唬判定（若诈唬层没被 foldEquity>0 拦住）
+    });
+    // 客观胜率只有 5%、且没有任何弃牌权益（对手已经投入远超我方全下量，
+    // 逼不走），EV 最优就应该是 fold——诈唬层必须被 foldEquity===0 拦住，
+    // 不能把它翻成 raise。
+    expect(a.action).toBe('fold');
+  });
+});
+
 describe('pveStrategy — 弃牌权益（多人聚合 p^n）', () => {
   // Hand-verified against the exact Step 3 formula (see plan's verification
   // script — do not loosen these numbers without re-deriving by hand):

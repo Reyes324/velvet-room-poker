@@ -281,18 +281,29 @@ describe('PveSession — aiAction', () => {
     expect(call.opponentAggressionRate).toBeUndefined();
   });
 
-  it('facingRaise 在真正面对加注时是 true，并被传给 pickAction', () => {
-    const s = makeSession({ bigBlind: 20 });
-    fakeStrategy.pickAction.mockReturnValue({ action: 'raise', raiseTo: 100 });
-    s.humanAction('call');
-    s.aiAction(); // AI (BB) checks/raises — make it raise so the human then faces one
-    if (!s.isOver()) {
-      fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
-      s.humanAction('call');
-    }
+  it('facingRaise 在真正面对加注时是 true，并被传给 pickAction（对照：只是跟盲注差额时是 false，2026-08-02 全面审查修复：原测试没有任何 expect，改成真实断言两边的取值）', () => {
+    // Baseline: human just calls the blind differential — AI's resulting
+    // action isn't facing a real raise, only the blind gap.
+    const s1 = makeSession({ bigBlind: 20 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    s1.humanAction('call'); // human (SB/dealer) calls the blind
+    expect(s1.isAiTurn()).toBe(true);
+    s1.aiAction();
+    const notFacingRaiseArgs = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(notFacingRaiseArgs.facingRaise).toBe(false);
+
+    // Contrast: human actually raises — the AI now genuinely faces a raise.
+    fakeStrategy.pickAction.mockClear();
+    const s2 = makeSession({ bigBlind: 20 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    s2.humanAction('raise', 100);
+    expect(s2.isAiTurn()).toBe(true);
+    s2.aiAction();
+    const facingRaiseArgs = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(facingRaiseArgs.facingRaise).toBe(true);
   });
 
-  it('面对加注时，computeEquity 收到收窄后的 opponentRangePct（由 opponentAggressionRate 换算而来，未面对加注时是 1）', () => {
+  it('面对加注时，computeEquity 收到收窄后的 opponentRangePct（< 1，由 opponentAggressionRate 换算而来）；未面对加注时固定是 1，不收窄（2026-08-02 全面审查修复：原测试只断言"是 (0,1] 之间的数"，太弱，验证不出真正的合同——改成按 facingRaise 逐条对应校验）', () => {
     const s = makeSession({ bigBlind: 20 });
     // Build up enough sample for opponentAggressionRate to kick in: 8+ total
     // actions, mostly raises from the human, so opponentAggressionRate is
@@ -308,17 +319,33 @@ describe('PveSession — aiAction', () => {
         s.aiAction();
       }
     }
-    // Not facing a raise (or at least, get one call to inspect regardless of
-    // outcome) — the key structural assertion is simply that
-    // computeEquity's opts object always carries an opponentRangePct field.
+    // Each aiAction() call does exactly one computeEquity() then one
+    // pickAction() call, in that order, on the same decision — so the two
+    // mock-call arrays line up index-for-index, letting us cross-check
+    // opponentRangePct (passed to computeEquity) against facingRaise
+    // (passed to pickAction) for the *same* decision.
     const equityCalls = fakeStrategy.computeEquity.mock.calls;
+    const pickActionCalls = fakeStrategy.pickAction.mock.calls;
     expect(equityCalls.length).toBeGreaterThan(0);
-    for (const [, , opts] of equityCalls) {
+    expect(equityCalls.length).toBe(pickActionCalls.length);
+    let sawFacingRaise = false;
+    for (let i = 0; i < equityCalls.length; i++) {
+      const opts = equityCalls[i][2];
+      const facingRaise = pickActionCalls[i][0].facingRaise;
       expect(typeof opts.opponentRangePct).toBe('number');
-      expect(opts.opponentRangePct).toBeGreaterThan(0);
-      expect(opts.opponentRangePct).toBeLessThanOrEqual(1);
       expect(typeof opts.numOpponents).toBe('number');
+      if (facingRaise) {
+        sawFacingRaise = true;
+        expect(opts.opponentRangePct).toBeLessThan(1);
+        expect(opts.opponentRangePct).toBeGreaterThanOrEqual(0.10);
+      } else {
+        expect(opts.opponentRangePct).toBe(1);
+      }
     }
+    // Sanity: the loop above must actually have produced at least one
+    // AI decision that faced a raise — otherwise the facingRaise branch
+    // above never ran and this test would pass vacuously.
+    expect(sawFacingRaise).toBe(true);
   });
 
   it('对手统计只在样本量够时才生效（不会被前几手过拟合）——用 opponentFoldToRaiseRate，因为 opponentAggressionRate 不再传给 pickAction', () => {

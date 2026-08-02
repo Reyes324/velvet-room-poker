@@ -290,7 +290,7 @@ function pickAction(params) {
 
   const myBetThisStreet = currentBet - toCall;
   const maxTotal = Math.min(myChips + myBetThisStreet, opponentCeiling); // 有效后手能加到的最高总额
-  const foldEquity = estimateFoldEquity({
+  let foldEquity = estimateFoldEquity({
     opponentFoldToRaiseRate, liveOpponentCount, style, facingRaise, opponentCeiling, currentBet,
   });
   const eq = styledEquity(equity, style);
@@ -315,16 +315,33 @@ function pickAction(params) {
     raiseCandidate = Math.min(maxTotal, Math.max(floor, wantRaiseTo));
   }
 
+  // all-in-for-less（自己的加注/全下额度不到当前下注额，等价于筹码比对手
+  // 短、只能全下一部分）：对手根本不用面对"要不要弃掉更多筹码"的抉择——
+  // 他们已经投入的比我方全下的还多，没有任何"逼他们弃牌"的空间，弃牌权益
+  // 强制为 0（2026-08-02 全面审查修复：修之前这里会按正常弃牌权益公式算出
+  // 一个 >0 的数，误导 evRaise 高估）。
+  if (raiseCandidate < currentBet) foldEquity = 0;
+
   const evFold = 0;
-  const evCall = realEq * (potSize + toCall) - toCall;
+  // 跟注的真实成本/真实能赢下的底池份额都要用"实际能付得起的跟注额"
+  // （被 myChips 封顶），不能直接用 toCall——当 toCall > myChips（筹码比
+  // 对手短，只能跟注跟到全下）时，toCall 是"名义上要跟到的差额"，不是自
+  // 己真能拿出来的钱，用它算 EV 会同时算错成本项和赢下底池的份额项
+  // （2026-08-02 全面审查修复：这是"AI 短筹码面对大注时该跟不跟错判成弃
+  // 牌"这个 bug 的根因之一）。
+  const actualCallCost = Math.min(toCall, myChips);
+  const evCall = realEq * (potSize + actualCallCost) - actualCallCost;
 
   // potSize 约定为"此刻真实可见的底池"（含这条街所有已下注的筹码——见
   // PveSession 的调用方，Task 2），所以：加注到 raiseCandidate 后，自己
   // 这条街的追加投入是 cost；假设对手跟注到同一个总额，对手的追加投入是
   // (raiseCandidate - currentBet)；两者都加进当前 potSize 就是"若被跟注"
-  // 的最终底池。
+  // 的最终底池。all-in-for-less 时 raiseCandidate < currentBet，这一项会
+  // 变负——对手不是在"跟注一个加注"，他们本来的下注额就够了，用 max(0, …)
+  // 把它夹到 0，potIfCalled 最少也是 potSize + cost（2026-08-02 全面审查
+  // 修复）。
   const cost = raiseCandidate - myBetThisStreet;
-  const potIfCalled = potSize + cost + (raiseCandidate - currentBet);
+  const potIfCalled = potSize + cost + Math.max(0, raiseCandidate - currentBet);
   let evRaise = foldEquity * potSize + (1 - foldEquity) * (realEq * potIfCalled - cost);
 
   const bias = STYLE_EV_BIAS[style];
@@ -356,7 +373,11 @@ function pickAction(params) {
   }
 
   // 诈唬层：EV 最优是弃牌、且自己客观胜率确实很低时，小概率不按最优走。
-  if (bestAction === 'fold' && eq <= BLUFF_EQUITY_CEILING && random() < BLUFF_DEVIATION_RATE) {
+  // foldEquity > 0 这个条件是 2026-08-02 全面审查修复新增的：诈唬的前提是
+  // "有可能吓跑对手"，foldEquity===0（对手已全下/资金不够被吓跑，或者自
+  // 己是 all-in-for-less 逼不走任何人）时诈唬没有任何意义，还白白把一手
+  // 该弃的牌变成加注，纯粹送筹码。
+  if (bestAction === 'fold' && foldEquity > 0 && eq <= BLUFF_EQUITY_CEILING && random() < BLUFF_DEVIATION_RATE) {
     bestAction = 'raise';
   }
 
