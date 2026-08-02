@@ -68,7 +68,11 @@ describe('feedbackReporter — createFeedbackIssue', () => {
     const [contentsUrl, contentsOpts] = fetchImpl.mock.calls[0];
     expect(contentsUrl).toMatch(new RegExp(`^https://api.github.com/repos/${repo}/contents/feedback-attachments/.+\\.png$`));
     expect(contentsOpts.method).toBe('PUT');
-    expect(JSON.parse(contentsOpts.body).content).toBe('ZmFrZQ==');
+    const contentsBody = JSON.parse(contentsOpts.body);
+    expect(contentsBody.content).toBe('ZmFrZQ==');
+    // 必须落在 feedback-attachments 分支，不能进 main——否则触发 Render
+    // 自动重新部署，清空所有正在进行的牌局内存状态。
+    expect(contentsBody.branch).toBe('feedback-attachments');
 
     const [, issueOpts] = fetchImpl.mock.calls[1];
     const issueBody = JSON.parse(issueOpts.body);

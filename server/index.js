@@ -423,6 +423,7 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
         const { issueUrl } = await feedbackReporter.createFeedbackIssue({ text: trimmed, image: image || null });
         callback?.({ ok: true, issueUrl });
       } catch (e) {
+        console.error('[feedback] createFeedbackIssue failed:', e.message);
         callback?.({ error: '提交失败，请稍后再试' });
       }
     });

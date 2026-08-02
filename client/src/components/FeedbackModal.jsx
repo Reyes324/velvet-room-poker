@@ -30,7 +30,12 @@ export default function FeedbackModal({ onClose }) {
     if (!text.trim()) return setError('请输入反馈内容');
     setStatus('submitting');
     setError('');
-    socket.emit('feedback:submit', { text: text.trim(), image: imagePayload }, (res) => {
+    socket.timeout(15000).emit('feedback:submit', { text: text.trim(), image: imagePayload }, (err, res) => {
+      if (err) {
+        setStatus('error');
+        setError('提交超时，请重试');
+        return;
+      }
       if (res?.error) {
         setStatus('error');
         setError(res.error);
@@ -62,6 +67,7 @@ export default function FeedbackModal({ onClose }) {
               {imagePreview ? <img src={imagePreview} alt="预览" className="feedback-image-preview" /> : '+ 上传图片（可选）'}
               <input type="file" accept="image/*" onChange={handleImageChange} hidden />
             </label>
+            <p className="feedback-image-notice">图片会公开发布在 GitHub 上，注意不要包含隐私信息</p>
             {error && <p className="home-error">{error}</p>}
             <div className="modal-btns">
               <div className="modal-btn modal-btn--secondary" onClick={onClose}>取消</div>

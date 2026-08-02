@@ -31,7 +31,15 @@ async function uploadImage({ base64, mimeType }, { fetchImpl, token, repo }) {
   const res = await fetchImpl(`${API_BASE}/repos/${repo}/contents/${filename}`, {
     method: 'PUT',
     headers: authHeaders(token),
-    body: JSON.stringify({ message: `feedback: add attachment ${filename}`, content: base64 }),
+    body: JSON.stringify({
+      message: `feedback: add attachment ${filename}`,
+      content: base64,
+      // 落在独立的 feedback-attachments 分支，不进 main——push 到 main 会触发
+      // Render 自动重新部署，重部署会清空所有正在进行的牌局内存状态（69.15
+      // 那个"打着打着牌局重置了"的根因）。raw.githubusercontent.com 按分支
+      // 提供文件访问，所以 download_url 不受影响，图片 markdown 逻辑不用变。
+      branch: 'feedback-attachments',
+    }),
   });
   if (!res.ok) throw new Error(`图片上传失败（GitHub ${res.status}）`);
   const data = await res.json();

@@ -38,3 +38,9 @@
   max-height: 160px;
   border-radius: var(--r-sm);
 }
+.feedback-image-notice {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: -4px 0 var(--sp-3);
+}
