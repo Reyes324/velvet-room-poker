@@ -600,7 +600,16 @@ function betSizeRangeFactor(ratio) {
       const narrowingFactor = 0.75 ** Math.max(0, streets.size - 1);
       // 组件 B（2026-08-03）：把"对手下了多重"这个信号叠进来。改动前只看
       // 加没加注、不看多大，导致玩家超池和下 1/4 池在 AI 眼里是同一件事。
-      const betRatio = this.game.pot > 0 ? toCall / this.game.pot : 0;
+      //
+      // 【实施期修正，2026-08-03】下面这行原计划写的是
+      // `toCall / this.game.pot`，那是错的：GameEngine._placeBet 每次下注
+      // 都立刻累加进 this.pot，所以 this.game.pot 已经含了这笔待跟的注，
+      // toCall/pot = B/(P+B) 恒 < 1，OVERBET_RATIO=1.5 的超池分支数学上
+      // 永不可达。正确的"下注/底池比"要用下注前的底池：B/P。已用真实
+      // GameEngine 脚本验证——一个满池注在修正后恰好得到 1.0，与下面
+      // BET_SIZE_RANGE_FACTORS 那张标定表的口径一致。
+      const potBeforeBet = this.game.pot - toCall;
+      const betRatio = potBeforeBet > 0 ? toCall / potBeforeBet : 0;
       if (betRatio > OVERBET_RATIO) {
         // 超池：两极化，不再是"前 X%"这种单调形状。
         opponentRangePct = OVERBET_TOP_PCT;
