@@ -120,7 +120,7 @@ describe('pveStrategy — pickAction 基础 EV 比较（无风格、无对手数
 describe('pveStrategy — all-in-for-less（有效后手小于 currentBet）时的 EV 定价（2026-08-02 全面审查修复 + 复核修正）', () => {
   // myBetThisStreet=0, actualCallCost=min(500,10)=10, uncalledExcess=490,
   // evCall = 0.80*(600+10-490) - 10 = 0.80*120-10 = 86 -> +EV，该跟/该全下。
-  // 真实盈亏平衡点是 10/(120+10)=7.7% 胜率，80% 远高于此。
+  // 真实盈亏平衡点是 10/120=8.33% 胜率（120 已经含自己这 10 筹码），80% 远高于此。
   it('复现案例：10 筹码面对 500 的下注、有效底池 120（潜池 600、当前注 500）、80% 胜率，不应该弃牌', () => {
     const a = pickAction({
       street: 'flop', equity: 0.80, toCall: 500, potSize: 600, myChips: 10,
