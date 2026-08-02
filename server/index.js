@@ -12,11 +12,20 @@ const { PveSession } = require('./PveSession');
 // silently fall back to heads-up just because `"4" !== 4`.
 const VALID_SEAT_COUNTS = [2, 4, 6, 8];
 
-function createServer() {
+// 反馈提交的服务端校验上限——见下方 feedback:submit 处理逻辑。
+const FEEDBACK_MAX_TEXT_LENGTH = 2000;
+const FEEDBACK_MAX_IMAGE_BASE64_LENGTH = 3_000_000; // ~2.25MB decoded; client compresses to ~2MB target
+
+function createServer({ feedbackReporter = require('./feedbackReporter') } = {}) {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: { origin: '*' },
+    // socket.io defaults to 1MB, which is below FEEDBACK_MAX_IMAGE_BASE64_LENGTH
+    // (3MB) — without raising this, an over-limit feedback image payload is
+    // silently dropped at the transport before our own size check ever runs,
+    // hanging the client's ack instead of returning a clean error.
+    maxHttpBufferSize: FEEDBACK_MAX_IMAGE_BASE64_LENGTH + 1_000_000,
   });
 
   const rooms = new RoomManager();
@@ -393,6 +402,29 @@ function createServer() {
       if (!room) return callback?.({ error: '房间不存在' });
       const host = room.players.find(p => p.id === room.hostId);
       callback?.({ hostName: host?.name ?? null, playerCount: room.players.length });
+    });
+
+    // 反馈入口——用户反馈（2026-08-02）："能不能直接在网页上提供一个类似
+    // 问题反馈的入口"。存储层是 GitHub Issue，不是本地文件，见
+    // server/feedbackReporter.js 顶部注释里的持久化约束说明。
+    socket.on('feedback:submit', async ({ text, image } = {}, callback) => {
+      if (!feedbackReporter.isConfigured()) {
+        return callback?.({ error: '反馈服务暂时不可用，请稍后再试' });
+      }
+      const trimmed = (text || '').trim();
+      if (!trimmed) return callback?.({ error: '请输入反馈内容' });
+      if (trimmed.length > FEEDBACK_MAX_TEXT_LENGTH) {
+        return callback?.({ error: `反馈内容太长（最多 ${FEEDBACK_MAX_TEXT_LENGTH} 字）` });
+      }
+      if (image && (typeof image.base64 !== 'string' || image.base64.length > FEEDBACK_MAX_IMAGE_BASE64_LENGTH)) {
+        return callback?.({ error: '图片太大，请压缩后再试' });
+      }
+      try {
+        const { issueUrl } = await feedbackReporter.createFeedbackIssue({ text: trimmed, image: image || null });
+        callback?.({ ok: true, issueUrl });
+      } catch (e) {
+        callback?.({ error: '提交失败，请稍后再试' });
+      }
     });
 
     socket.on('room:create', ({ playerId, playerName }) => {
