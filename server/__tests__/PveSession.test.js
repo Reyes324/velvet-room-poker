@@ -328,18 +328,22 @@ describe('PveSession — aiAction', () => {
         s.aiAction();
       }
     }
-    // Each aiAction() call does exactly one computeEquity() then one
-    // pickAction() call, in that order, on the same decision — so the two
-    // mock-call arrays line up index-for-index, letting us cross-check
-    // opponentRangePct (passed to computeEquity) against facingRaise
-    // (passed to pickAction) for the *same* decision.
+    // Each aiAction() call now does TWO computeEquity() calls (组件 B/C,
+    // 2026-08-03: one for the opponent's range, one recomputed with the
+    // caller's narrower range for equityIfCalled — see PveSession.js
+    // aiAction()) followed by exactly one pickAction() call, on the same
+    // decision. So computeEquity.mock.calls and pickAction.mock.calls no
+    // longer line up index-for-index; computeEquity has 2x as many entries.
+    // We want the FIRST of each pair — the opponent-range call — to
+    // cross-check opponentRangePct against facingRaise for the same
+    // decision, so we index it as `i * 2`.
     const equityCalls = fakeStrategy.computeEquity.mock.calls;
     const pickActionCalls = fakeStrategy.pickAction.mock.calls;
     expect(equityCalls.length).toBeGreaterThan(0);
-    expect(equityCalls.length).toBe(pickActionCalls.length);
+    expect(equityCalls.length).toBe(pickActionCalls.length * 2);
     let sawFacingRaise = false;
-    for (let i = 0; i < equityCalls.length; i++) {
-      const opts = equityCalls[i][2];
+    for (let i = 0; i < pickActionCalls.length; i++) {
+      const opts = equityCalls[i * 2][2];
       const facingRaise = pickActionCalls[i][0].facingRaise;
       expect(typeof opts.opponentRangePct).toBe('number');
       expect(typeof opts.numOpponents).toBe('number');
@@ -364,12 +368,26 @@ describe('PveSession — aiAction', () => {
     s._opponentReads = () => ({ opponentFoldToRaiseRate: null, opponentAggressionRate: 0.5 });
 
     // 翻前：human（SB/dealer）先加注，AI（BB）面对加注，call 过关到翻牌。
+    //
+    // 加注到 50（而不是这条测试改动前用的 100）是刻意选的：2026-08-03 加入
+    // 按下注尺寸收窄范围（组件 B）之后，同一个 opponentRangePct 现在还会
+    // 再乘一个 sizeFactor。100 相对翻前底池（30）太大，会落进"超池两极化"
+    // 分支，把这条测试原本想单独验证的"streak 收窄"跟新的尺寸效应搅在一
+    // 起。50（翻牌前）和 80（翻牌）都落在同一个 betRatio 区间（都 <=0.8，
+    // sizeFactor 同为 1.3），这样两次的 sizeFactor 相互抵消，flopOpts /
+    // preflopOpts 依然精确等于 streak 收窄系数 0.75，测的还是这条测试标题
+    // 说的那件事。
     fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
-    s.humanAction('raise', 100);
+    s.humanAction('raise', 50);
     expect(s.isAiTurn()).toBe(true);
     s.aiAction();
-    const preflopOpts = fakeStrategy.computeEquity.mock.calls.at(-1)[2];
-    expect(preflopOpts.opponentRangePct).toBeCloseTo(0.5, 5); // streak=1 -> 不额外收窄
+    // computeEquity 现在每次决策调两次（组件 C：先算对手范围，再算跟注者
+    // 范围算 equityIfCalled）——取 mock.calls 里每次决策的第一次调用（对手
+    // 范围那一次），也就是倒数第二个（.at(-2)），而不是 .at(-1)（那是这次
+    // 决策的 equityIfCalled 调用，用的是 CALLER_RANGE_PCT，不是这里要测的
+    // opponentRangePct）。
+    const preflopOpts = fakeStrategy.computeEquity.mock.calls.at(-2)[2];
+    expect(preflopOpts.opponentRangePct).toBeCloseTo(0.5 * 1.3, 5); // streak=1（不额外收窄）× sizeFactor(1.3)
 
     // 翻牌：AI（BB，非庄家）先行动——先 check 让权给 human，human 再下注，
     // AI 第二次面对加注（这次是新的一条街）。
@@ -377,12 +395,12 @@ describe('PveSession — aiAction', () => {
     expect(s.isAiTurn()).toBe(true);
     fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
     s.aiAction();
-    s.humanAction('raise', 200);
+    s.humanAction('raise', 80);
     expect(s.isAiTurn()).toBe(true);
     fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
     s.aiAction();
-    const flopOpts = fakeStrategy.computeEquity.mock.calls.at(-1)[2];
-    expect(flopOpts.opponentRangePct).toBeCloseTo(0.5 * 0.75, 5); // streak=2 -> 再收窄一次
+    const flopOpts = fakeStrategy.computeEquity.mock.calls.at(-2)[2]; // 同上，取对手范围那一次
+    expect(flopOpts.opponentRangePct).toBeCloseTo(0.5 * 0.75 * 1.3, 5); // streak=2 再收窄一次，sizeFactor 与翻前相同（同一 betRatio 区间）
     expect(flopOpts.opponentRangePct).toBeLessThan(preflopOpts.opponentRangePct);
   });
 
@@ -630,4 +648,55 @@ describe('PveSession — 弃牌率的聚合行为不变量（面对激进对手 
     const foldRatePassive = runFoldRateSession(passiveDriver, 50);
     expect(foldRateAggressive).toBeGreaterThan(foldRatePassive + 0.10);
   }, 15000);
+});
+
+describe('PveSession — 按对手下注尺寸推断范围 + 两次胜率（2026-08-03）', () => {
+  it('对手下得越重，传给 computeEquity 的 opponentRangePct 越窄', () => {
+    function rangeForBet(raiseTo) {
+      fakeStrategy.computeEquity.mockClear();
+      const s = makeSession({ bigBlind: 20 });
+      s._opponentReads = () => ({ opponentFoldToRaiseRate: null, opponentAggressionRate: 0.35 });
+      fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+      s.humanAction('raise', raiseTo);
+      s.aiAction();
+      return fakeStrategy.computeEquity.mock.calls[0][2].opponentRangePct;
+    }
+    const small = rangeForBet(40);   // 小加注
+    const large = rangeForBet(200);  // 大加注
+    expect(large).toBeLessThan(small);
+  });
+
+  it('对手超池下注时，范围变成两极化（opponentBottomPct > 0）', () => {
+    const s = makeSession({ bigBlind: 20 });
+    s._opponentReads = () => ({ opponentFoldToRaiseRate: null, opponentAggressionRate: 0.35 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    fakeStrategy.computeEquity.mockClear();
+    s.humanAction('raise', 400); // 远超当时底池
+    s.aiAction();
+    const opts = fakeStrategy.computeEquity.mock.calls[0][2];
+    expect(opts.opponentBottomPct).toBeGreaterThan(0);
+  });
+
+  it('aiAction 算两次胜率，并把第二个作为 equityIfCalled 传给 pickAction', () => {
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.computeEquity.mockClear();
+    fakeStrategy.pickAction.mockClear();
+    expect(s.isAiTurn()).toBe(true);
+    s.aiAction();
+    expect(fakeStrategy.computeEquity).toHaveBeenCalledTimes(2);
+    const callArgs = fakeStrategy.pickAction.mock.calls[0][0];
+    expect(typeof callArgs.equityIfCalled).toBe('number');
+  });
+
+  it('跟注者范围不会比"对手下注推断出的范围"更宽（超池时跟我加注的人只会更强）', () => {
+    const s = makeSession({ bigBlind: 20 });
+    s._opponentReads = () => ({ opponentFoldToRaiseRate: null, opponentAggressionRate: 0.35 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    fakeStrategy.computeEquity.mockClear();
+    s.humanAction('raise', 400);
+    s.aiAction();
+    const first = fakeStrategy.computeEquity.mock.calls[0][2];  // 对手范围
+    const second = fakeStrategy.computeEquity.mock.calls[1][2]; // 跟注者范围
+    expect(second.opponentRangePct).toBeLessThanOrEqual(first.opponentRangePct);
+  });
 });

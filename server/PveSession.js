@@ -9,6 +9,35 @@ const AI_NAME = '电脑';
 // 也刻意不带风格暗示（比如不叫"保守老K"），避免间接泄露。
 const AI_NAME_POOL = ['老K', '赌神', '扑克脸', '幸运星', '黑桃A', '河神', '影子玩家', '常胜将军'];
 
+// 对手下注尺寸 -> 对手范围形状（组件 B，2026-08-03）。系数是相对既有
+// "按加注频率算出来的基础宽度"的乘数：疯子的满池注和岩石的满池注含义不
+// 同，那一层保留，这里只叠加"这一注有多重"这个信号。
+//
+// 系数按 baseRangePct 取默认值 0.35 时落到设计文档那张表来标定：
+// ≤1/3 池 -> 前 60%（0.35×1.7）、~半池 -> 前 45%（0.35×1.3）、
+// ~满池 -> 前 30%（0.35×0.85）。
+const BET_SIZE_RANGE_FACTORS = [
+  { maxRatio: 0.4, factor: 1.7 },
+  { maxRatio: 0.8, factor: 1.3 },
+  { maxRatio: 1.5, factor: 0.85 },
+];
+// 超过这个下注/底池比就按"两极化"建模，而不是继续单调收窄——真实德扑里
+// 超池是"要么坚果要么纯诈唬"。只做单调收窄会让 AI 对超池过度弃牌，那是
+// 另一种不真实（设计文档有实测数据）。
+const OVERBET_RATIO = 1.5;
+const OVERBET_TOP_PCT = 0.12;
+const OVERBET_BOTTOM_PCT = 0.15;
+// 会来跟我加注的人，牌力必然强于随机（组件 C）。取 min 是因为对手已经超
+// 池施压时，还敢跟我再加的只会更强，不该反过来被放宽。
+const CALLER_RANGE_PCT = 0.35;
+
+function betSizeRangeFactor(ratio) {
+  for (const { maxRatio, factor } of BET_SIZE_RANGE_FACTORS) {
+    if (ratio <= maxRatio) return factor;
+  }
+  return 0.85;
+}
+
 // 从名字池里不放回地随机抽 count 个（count 是 AI 坐位数，最多 7，池子有
 // 8 个，够用不重复）。
 function pickAiNames(count, random) {
@@ -262,23 +291,58 @@ class PveSession {
     // 指数收窄——第一次面对加注（streak=1）不额外收窄，跟以前行为一致；
     // 之后每多一条街还在面对加注，再乘 0.75，同样 clamp 到 [0.10, 0.90]。
     let opponentRangePct = 1;
+    let opponentBottomPct = 0;
     if (facingRaise) {
       const streets = this.handAggressionStreets[actingId] ?? (this.handAggressionStreets[actingId] = new Set());
       streets.add(street);
       const narrowingFactor = 0.75 ** Math.max(0, streets.size - 1);
-      opponentRangePct = Math.min(0.90, Math.max(0.10, baseRangePct * narrowingFactor));
+      // 组件 B（2026-08-03）：把"对手下了多重"这个信号叠进来。改动前只看
+      // 加没加注、不看多大，导致玩家超池和下 1/4 池在 AI 眼里是同一件事。
+      //
+      // 分母用 this.game.pot - toCall（下注前的底池），不是 this.game.pot 本
+      // 身：this.game.pot 在这里读到的时候已经含了对手刚下的那注（GameEngine
+      // 下注即入池，见上面 potSize 那行的注释），所以 toCall / this.game.pot
+      // 数学上恒小于 1（toCall 是分子也是分母的一部分），OVERBET_RATIO=1.5
+      // 这个阈值永远不可能触发——这是设计稿那版公式实测下来会踩的一个真实
+      // 除零/量纲问题，这里改成"下注前的池子"作分母才是超池的真实定义
+      // （下注额 / 下注前的池子 > 1 才叫超池）。
+      const potBeforeBet = this.game.pot - toCall;
+      const betRatio = potBeforeBet > 0 ? toCall / potBeforeBet : (toCall > 0 ? Infinity : 0);
+      if (betRatio > OVERBET_RATIO) {
+        // 超池：两极化，不再是"前 X%"这种单调形状。
+        opponentRangePct = OVERBET_TOP_PCT;
+        opponentBottomPct = OVERBET_BOTTOM_PCT;
+      } else {
+        const sizeFactor = betSizeRangeFactor(betRatio);
+        opponentRangePct = Math.min(0.90, Math.max(0.10, baseRangePct * narrowingFactor * sizeFactor));
+      }
     }
     // 翻前现在也算真实胜率（board=[]），不再走单独的起手牌分档表——见
     // docs/superpowers/specs/2026-08-02-pve-ev-driven-ai-design.md。
+    const numOpponents = Math.max(1, liveOpponentCount);
     const equity = this.strategy.computeEquity(ai.holeCards, board, {
       iterations: 300,
       opponentRangePct,
-      numOpponents: Math.max(1, liveOpponentCount),
+      opponentBottomPct,
+      numOpponents,
+    });
+    // 组件 C（2026-08-03）：加注分支要用"会来跟我的人"的范围重算一次胜率。
+    // 实测多算一次约 +15ms，而 AI 每步本来就有 300ms 起的拟人思考延迟，占
+    // 比约 5%，可忽略（见设计文档）。取 min 而不是固定 0.35：对手已经超池
+    // 施压时，还敢跟我再加注的人只会更强，不该被放宽回 35%。这里刻意用单
+    // 调形状而非两极化——愿意跟注的是对手范围里的强牌那一半，不是诈唬那
+    // 一半。
+    const callerRangePct = Math.min(CALLER_RANGE_PCT, opponentRangePct);
+    const equityIfCalled = this.strategy.computeEquity(ai.holeCards, board, {
+      iterations: 300,
+      opponentRangePct: callerRangePct,
+      numOpponents,
     });
 
     const decision = this.strategy.pickAction({
       street,
       equity,
+      equityIfCalled,
       toCall,
       potSize: this.game.pot, // GameEngine adds every bet to .pot as it's placed (verified: it's already the true current pot, not just prior streets), no correction needed
       myChips: ai.chips,
