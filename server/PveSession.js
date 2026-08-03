@@ -91,6 +91,14 @@ class PveSession {
   } = {}) {
     this.humanId = humanId;
     this.seatCount = seatCount;
+    // 2026-08-04（Finding 6）：以前只在构造 aiSeats（名字/风格）时用了这个
+    // 参数，之后每手牌的洗牌（GameEngine）、每次 AI 决策（computeEquity/
+    // pickAction 内部的采样与感知噪声）都各自默认 Math.random，测试没法把
+    // 一整手牌钉死成确定性的——这正是弃牌率不变量测试偶发失败的根因（被动
+    // 对手弃牌率在 0.00~0.32 间摆动，样本量小，门槛留白被压缩）。存成
+    // this.random，后面洗牌和策略调用都传同一个实例，测试注入一个 seeded
+    // random 就能让整手牌（含发牌顺序和 AI 决策）逐位可复现。
+    this.random = random;
     this.aiSeats = buildAiSeats(seatCount, random);
     this.aiSeatIds = new Set(this.aiSeats.map(seat => seat.id));
     this.startingChips = startingChips;
@@ -204,7 +212,7 @@ class PveSession {
     // just this algebra.
     if (this.handNumber > 0) this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
     this.handNumber += 1;
-    this.game = new GameEngine(this.players, this.dealerIndex, this.bigBlind);
+    this.game = new GameEngine(this.players, this.dealerIndex, this.bigBlind, this.random);
     this.handAggressionStreets = {};
   }
 
@@ -347,6 +355,7 @@ class PveSession {
       opponentRangePct,
       opponentBottomPct,
       numOpponents,
+      random: this.random,
     });
     // 组件 C（2026-08-03）：加注分支要用"会来跟我的人"的范围重算一次胜率。
     // 实测多算一次约 +15ms，而 AI 每步本来就有 300ms 起的拟人思考延迟，占
@@ -354,11 +363,32 @@ class PveSession {
     // 施压时，还敢跟我再加注的人只会更强，不该被放宽回 35%。这里刻意用单
     // 调形状而非两极化——愿意跟注的是对手范围里的强牌那一半，不是诈唬那
     // 一半。
+    //
+    // 2026-08-04 全面审查修复（Finding 2+3）：这次 computeEquity 调用刻意
+    // 传 numOpponents:1，跟上面那次（对手范围）不一样，不是漏改。
+    // computeEquity 内部对 numOpponents 个对手都从同一个收窄范围里抽牌
+    // （见 pveStrategy.js 里的实现），上面那次调用的语义是"N 个对手各自
+    // 可能有一手强于随机的牌"，N 份同源采样各自独立、互不冲突，没问题；
+    // 但这次调用的语义是"其中有人跟注了我这个加注"——不是"全部 N 个人都
+    // 跟注了"，只是至少一个。如果照旧传 numOpponents=liveOpponentCount，
+    // 相当于建模成"N 个对手全都跟、且全都从同一个收窄到 callerRangePct 的
+    // 强牌范围里抽牌"，人数越多，这些高牌范围之间互相"抢牌"（同一副牌里
+    // 大牌本来就少）的效应越明显，实测在 seatCount=8（numOpponents=7）时
+    // 会整个反过来：72o/32o 这类烂牌面对"7 人都是强范围"algorithm算出来
+    // 的胜率反而比面对随机范围更高（.063→.079，.065→.089，8000 次迭代实
+    // 测）——因为强范围彼此挤占大牌之后，对手实际持有的牌反而更容易跟这
+    // 手烂牌的牌面重叠/形成较弱组合，这正好推翻了"跟注的人更强"这个前提要
+    // 压制的东西。加上 potIfCalled 那边的口径（pveStrategy.js 里 evRaise
+    // 的注释，Task/组件 A 起）本来就是"只有一个对手跟注了并把钱放进池
+    // 子"，equityIfCalled 面对的对手数就该跟着变成 1，两边口径统一，"被跟
+    // 注时池子和胜率算的是不是同一个跟注人数"不再对不上。上面那次
+    // opponentRangePct 的计算保持不变，两次调用的差异只在这一个参数。
     const callerRangePct = Math.min(CALLER_RANGE_PCT, opponentRangePct);
     const equityIfCalled = this.strategy.computeEquity(ai.holeCards, board, {
       iterations: 300,
       opponentRangePct: callerRangePct,
-      numOpponents,
+      numOpponents: 1,
+      random: this.random,
     });
 
     const decision = this.strategy.pickAction({
@@ -376,6 +406,7 @@ class PveSession {
       opponentFoldToRaiseRate,
       style: seat.style,
       facingRaise,
+      random: this.random,
       // 感知噪声关闭（用户反馈 2026-08-03："能否还是理性一点不要加什么情
       // 绪了"）——2026-08-02 曾按用户当时的要求（"加一点随机色彩、加点情
       // 绪，让这个比较像人类"）开过，现在改回不传，pickAction 默认

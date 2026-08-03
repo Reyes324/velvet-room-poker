@@ -73,10 +73,10 @@ function makeDeck() {
   return deck;
 }
 
-function shuffle(deck) {
+function shuffle(deck, random = Math.random) {
   const d = [...deck];
   for (let i = d.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [d[i], d[j]] = [d[j], d[i]];
   }
   return d;
@@ -99,10 +99,15 @@ function parseCard(card) {
 const PHASES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 
 class GameEngine {
-  constructor(players, dealerIndex = 0, bigBlind = 200) {
+  // random: injectable RNG (defaults to Math.random) — only used for the
+  // deck shuffle. 2026-08-04: added so callers (e.g. PveSession, and its
+  // tests) can seed a whole hand deterministically instead of only being
+  // able to seed the strategy's own random. Backward compatible: existing
+  // callers that don't pass it get the exact same behavior as before.
+  constructor(players, dealerIndex = 0, bigBlind = 200, random = Math.random) {
     this.bigBlind = bigBlind;
     this.smallBlind = bigBlind / 2;
-    this.deck = shuffle(makeDeck());
+    this.deck = shuffle(makeDeck(), random);
     this.communityCards = [];
     this.pot = 0;
     this.sidePots = []; // [{ amount, eligibleIds }]

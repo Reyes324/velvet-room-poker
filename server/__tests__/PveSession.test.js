@@ -602,8 +602,26 @@ describe('PveSession — 真实策略引擎跑完整局（烟雾测试，不注�
 // 手明显更容易弃牌"——这是一个哪怕以后调参数、数字漂移了也该继续成立的
 // 不变量，专门用来抓"AI 又几乎不弃牌了"这类回归。
 describe('PveSession — 弃牌率的聚合行为不变量（面对激进对手 vs 被动对手，真实策略引擎，2026-08-02）', () => {
-  function runFoldRateSession(humanDriver, hands) {
-    const s = new PveSession('me', 'Alice', { startingChips: 3000, bigBlind: 20 });
+  // 2026-08-04 全面审查修复（Finding 6，第二处 flaky 测试，跟 integration.
+  // test.js 那个已知 flake 不是同一个机制）：这条不变量此前跑的是完全未
+  // seed 的真随机（发牌顺序 + AI 每一步的蒙特卡洛采样都各自默认
+  // Math.random），被动对手弃牌率本身在 0.00~0.32 间摆动——组件 C 这轮工
+  // 作把它从地板上抬了起来，压缩了跟 0.10 阈值之间的安全边际，全量跑一次
+  // 出现过 0.373 vs 0.42（差 0.053 < 0.10）的失败。用同一个种子随机生成
+  // 器（跟 pveStrategy.test.js 用的同一套简单 LCG）注入 PveSession 的
+  // `random` 选项——2026-08-04 这次修复顺手把它一路串到了 GameEngine 的洗
+  // 牌和 pveStrategy 的 computeEquity/pickAction，让一整手牌（发牌顺序 +
+  // AI 决策）都可复现，不再是"部分确定性"。
+  const createSeededRandom = (seed) => {
+    let state = seed;
+    return () => {
+      state = (state * 9301 + 49297) % 233280;
+      return state / 233280;
+    };
+  };
+
+  function runFoldRateSession(humanDriver, hands, seed) {
+    const s = new PveSession('me', 'Alice', { startingChips: 3000, bigBlind: 20, random: createSeededRandom(seed) });
     let aiFolds = 0;
     let aiFacedDecisions = 0;
     for (let hand = 0; hand < hands; hand++) {
@@ -648,8 +666,9 @@ describe('PveSession — 弃牌率的聚合行为不变量（面对激进对手 
   }
 
   it('面对每手都梭哈的激进对手，AI 的弃牌率应明显高于面对永远跟注/过牌的被动对手', () => {
-    const foldRateAggressive = runFoldRateSession(aggressiveDriver, 50);
-    const foldRatePassive = runFoldRateSession(passiveDriver, 50);
+    // 固定种子，逐次运行结果完全确定——见上面 Finding 6 的说明。
+    const foldRateAggressive = runFoldRateSession(aggressiveDriver, 50, 12345);
+    const foldRatePassive = runFoldRateSession(passiveDriver, 50, 67890);
     expect(foldRateAggressive).toBeGreaterThan(foldRatePassive + 0.10);
   }, 15000);
 });
@@ -682,14 +701,22 @@ describe('PveSession — 按对手下注尺寸推断范围 + 两次胜率（2026
   });
 
   it('aiAction 算两次胜率，并把第二个作为 equityIfCalled 传给 pickAction', () => {
+    // 2026-08-04 全面审查修复（Finding 5）：原本这里两次 computeEquity 都
+    // 返回同一个常数 0.5，"wiring 正确"和"equity/equityIfCalled 接反了"两
+    // 种情况下断言都会通过——退化成只验证了"是个 number"，抓不住真正的
+    // bug。改成两次返回不同的值，并断言 equity 拿到的是第一次调用的返回
+    // 值、equityIfCalled 拿到的是第二次的，顺序接反时这个测试现在会真的
+    // 失败。
     const s = makeSession({ seatCount: 4 });
     fakeStrategy.computeEquity.mockClear();
     fakeStrategy.pickAction.mockClear();
+    fakeStrategy.computeEquity.mockReturnValueOnce(0.6).mockReturnValueOnce(0.3);
     expect(s.isAiTurn()).toBe(true);
     s.aiAction();
     expect(fakeStrategy.computeEquity).toHaveBeenCalledTimes(2);
     const callArgs = fakeStrategy.pickAction.mock.calls[0][0];
-    expect(typeof callArgs.equityIfCalled).toBe('number');
+    expect(callArgs.equity).toBe(0.6);
+    expect(callArgs.equityIfCalled).toBe(0.3);
   });
 
   it('跟注者范围不会比"对手下注推断出的范围"更宽（超池时跟我加注的人只会更强）', () => {

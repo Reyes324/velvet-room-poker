@@ -164,7 +164,16 @@ function computeEquity(holeCards, board, opts = {}) {
     if (total === 0) {
       // rangeSet filtered out every remaining combo (extreme pct edge case) —
       // fall back to unrestricted so we still return a real number, not NaN.
-      if (rangeSet) return computeEquity(holeCards, board, { ...opts, opponentRangePct: 1 });
+      //
+      // 2026-08-04（Minor 3，显式化，不改行为）：这个重新递归调用刻意保留
+      // opts 里原样的 opponentBottomPct（如果调用方传了两极化参数），不是
+      // 疏漏——但 opponentRangePct:1（不限制范围）时，两极化没有意义（前
+      // 100% ∪ 后 Y% 恒等于全集，opponentBottomPct 在这个分支里实际上是
+      // 死代码，不会改变结果），只是靠"不生效"这件事恰好不出错，不是靠显
+      // 式声明。这里改成显式传 opponentBottomPct: 0，把"不限制范围时两极
+      // 化参数不该再起作用"这件事写清楚，避免以后有人往 rangeSet 分支加
+      // 逻辑时误以为这里的两极化参数还生效。
+      if (rangeSet) return computeEquity(holeCards, board, { ...opts, opponentRangePct: 1, opponentBottomPct: 0 });
       return 1; // exact old behavior: no remaining cards at all -> treat as certain win
     }
     return (win + tie / 2) / total;
@@ -486,7 +495,7 @@ function pickAction(params) {
   // 样把方向搞反），清晰的强牌/纯诈唬区间也不受影响，只收窄"数学上略微为
   // 正就下注"这个中间地带。
   //
-  // 用真实客观胜率 equity 判断是否落在模糊区间，不用风格调整过的 eq
+  // 用真实客观胜率判断是否落在模糊区间，不用风格调整过的 eq
   // （用户反馈这个折扣加上之后又实测跑出新的失衡，2026-08-02 当天二次修
   // 复）：callingStation 的 equityMultiplier 会把 eq 往上拉，如果拿 eq 来
   // 判断"是不是清晰强牌"，一手真实只有 65% 胜率的模糊牌会被它自己的乐观
@@ -495,7 +504,19 @@ function pickAction(params) {
   // 反。"是不是真的接近坚果"是客观事实，不该被风格滤镜改变；风格只影响
   // "面对同样的不确定性，愿不愿意冒这个险"，也就是下面 varianceScale 这
   // 一层，两者不能用同一个已经被扭曲过的数字来判断。
-  if (evRaise > 0 && equity > POT_CONTROL_MURKY_LOW && equity < POT_CONTROL_MURKY_HIGH) {
+  //
+  // 2026-08-04 全面审查修复（Finding 4）：门槛判断的量要跟 evRaise 实际用
+  // 的量一致——组件 C 之后 evRaise 是拿 realEqIfCalled（由 equityIfCalled
+  // 派生）算的，不再是 equity/realEq。继续拿 equity 判门槛会导致门槛值跟
+  // 真正驱动这条分支的数字脱钩：reviewer 扫了 60 组参数组合，equity 只挪
+  // 动 0.01（0.695→0.705）、equityIfCalled 不变，就有 27 组的 raise/call
+  // 结果被这个不相关的门槛判断翻转。equityIfCalled 缺省时退回 equity，跟
+  // 单人/未传参场景逐位一致；等号两边都还是客观胜率（styledEquity 已经对
+  // 两条分支一视同仁地施加过，风格偏差不改变"是否接近坚果"这个事实判
+  // 断），没有引入风格滤镜，仍满足"门槛用客观胜率、不用风格调整过的胜
+  // 率"这个既有约束。
+  const potControlGateEquity = equityIfCalled ?? equity;
+  if (evRaise > 0 && potControlGateEquity > POT_CONTROL_MURKY_LOW && potControlGateEquity < POT_CONTROL_MURKY_HIGH) {
     evRaise *= POT_CONTROL_DISCOUNT;
   }
 
@@ -517,11 +538,27 @@ function pickAction(params) {
   const perceivedCall = evCall + gaussianNoise(random, noiseStdDev);
   const perceivedRaise = evRaise + gaussianNoise(random, noiseStdDev);
 
+  // 2026-08-04 全面审查修复（Finding 1，阻断性 bug）：toCall===0 时，"加注"
+  // 必须真的能加上筹码，否则不是一个真实动作。触发场景是人类以小于当前下
+  // 注额全下、AI 已经跟上了这个数额——此时 opponentCeiling===currentBet，
+  // raiseCandidate 被 maxTotal 夹到 currentBet，"加注"到的还是 currentBet，
+  // 净增量为 0。加 equityIfCalled 之前 evRaise 和 evCall 用的是同一个数字，
+  // 严格 > 恒为假，天然落回 check；现在两者来自独立的蒙特卡洛采样，
+  // equityIfCalled > equity 经常出现，pickAction 会返回一个净增量为 0 的
+  // "raise"/"allin"。PveSession 照单全收、不推进回合，桌子永久卡死（reviewer
+  // 复现过 5000 次连续同一个 allin raiseTo:19 的决策）。加一个"这真的是笔
+  // 加注"的门槛：raiseCandidate 必须严格大于 currentBet 才允许选 raise。
+  //
+  // 只收紧 toCall===0 这一支：toCall>0 时 raiseCandidate < currentBet 是有
+  // 意为之的 all-in-for-less（筹码比对手浅只能跟一部分），引擎确实会推进
+  // 回合，且已有测试断言这个行为，不能动。
+  const canRaise = raiseCandidate > currentBet;
+
   let bestAction;
   if (toCall === 0) {
     // 白看：弃牌不是真实选项（等价于白白放弃一次免费看牌的机会），只在
-    // "加注"和"过牌"之间选。
-    bestAction = perceivedRaise > perceivedCall ? 'raise' : 'check';
+    // "加注"和"过牌"之间选——但"加注"必须是真的能加上筹码的加注。
+    bestAction = (canRaise && perceivedRaise > perceivedCall) ? 'raise' : 'check';
   } else {
     const options = [
       { action: 'fold', ev: perceivedFold },

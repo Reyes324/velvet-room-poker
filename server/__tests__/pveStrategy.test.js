@@ -13,6 +13,17 @@ const {
   sizePressure,
 } = require('../pveStrategy');
 
+// 2026-08-04（Minor 2）：以前在两个 it() 里各自重复定义了一份逐位相同的
+// 简单 LCG 种子随机生成器，容易两边改漂了都没发现——提到模块作用域，两处
+// 共用同一份实现。
+function createSeededRandom(seed) {
+  let state = seed;
+  return () => {
+    state = (state * 9301 + 49297) % 233280;
+    return state / 233280;
+  };
+}
+
 describe('pveStrategy — computeEquity', () => {
   it('河牌（5 张公共牌都已确定）用穷举而非采样，结果必须是确定值：口袋 A 在无平局可能的墙上胜率应为 1', () => {
     const equity = computeEquity(['As', 'Ac'], ['Ah', 'Ad', '2c', '5d', '9h']);
@@ -657,6 +668,19 @@ describe('pveStrategy — 尺寸感知的弃牌权益（MDF 锚定，2026-08-03�
     expect(sizePressure(60, 90) * 0.5).toBeCloseTo(2 / 3, 3);
     // 最小加注：底池 30、currentBet 20、加到 40 -> opponentDelta=20, potAfterRaise=70
     // 改动前这个场景拿到的弃牌权益和满池注一模一样，正是"翻前什么牌都加注"的病根。
+    //
+    // 2026-08-04 全面审查修复（Minor 1，注释纠偏，不改值）：这个 0.286 本
+    // 身不是教科书 MDF 值——它只在上面三个头部锚点（满池/半池/2倍超池）
+    // 里精确等于教科书 B/(P+B)，因为那三个场景 cost===delta（这条街之前
+    // 没有别人先下过注，B=cost=delta）。这里是一次再加注（currentBet=20
+    // 已经有人先下注过），potAfterRaise 用的是 potSize+cost=70（我方总投
+    // 入后的池子），不是教科书公式要求的"对手跟注后的池子"
+    // potAfterRaise+opponentDelta=90；真正的教科书值是
+    // opponentDelta/(potAfterRaise+opponentDelta)=20/90≈0.222，不是
+    // 0.286。sizePressure 这里用 70 做分母是刻意的尺寸压力启发式（不是在
+    // 冒充精确 MDF），0.286 是这个启发式在这个场景下的实际输出，断言的是
+    // "生产代码现在算出来的数"，不是在断言它等于教科书值——数值本身不用改，
+    // 只是不该被这条注释误导成"这也是个精确锚点"。
     expect(sizePressure(20, 70) * 0.5).toBeCloseTo(0.286, 2);
   });
 
@@ -731,13 +755,6 @@ describe('pveStrategy — 两极化对手范围（超池建模，2026-08-03）',
     // 这正是"面对超池不该无脑弃牌"的量化依据。
     // 使用种子随机生成器确保确定性：两次计算都从同一个随机序列开始，
     // 差异纯粹来自范围形状（2026-08-04 防止 CI 随机失败）。
-    const createSeededRandom = (seed) => {
-      let state = seed;
-      return () => {
-        state = (state * 9301 + 49297) % 233280;
-        return state / 233280;
-      };
-    };
     const board = ['Th', '7c', '2d'];
     const medium = ['Tc', '9c']; // 顶对弱踢
     const mono = computeEquity(medium, board, {
@@ -752,13 +769,6 @@ describe('pveStrategy — 两极化对手范围（超池建模，2026-08-03）',
   it('坚果级强牌几乎不受范围形状影响（对照组，证明上一条不是全局偏移）', () => {
     // 种子随机生成器确保确定性对照组：同一个随机序列下，坚果牌对范围
     // 形状的敏感度应远低于中等牌力（2026-08-04 防止 CI 随机失败）。
-    const createSeededRandom = (seed) => {
-      let state = seed;
-      return () => {
-        state = (state * 9301 + 49297) % 233280;
-        return state / 233280;
-      };
-    };
     const board = ['Th', '7c', '2d'];
     const nuts = ['Ts', 'Td']; // 中三条
     const mono = computeEquity(nuts, board, {
@@ -795,5 +805,50 @@ describe('pveStrategy — 加注的选择效应（equityIfCalled，2026-08-03）
   it('强牌不受影响：AA 对随机 0.859、对前 30% 0.836，两种算法都加注', () => {
     const aware = pickAction({ ...base, equity: 0.859, equityIfCalled: 0.836 });
     expect(aware.action).toBe('raise');
+  });
+});
+
+describe('pveStrategy — Finding 1（2026-08-04 全面审查阻断性 bug）："raise" 必须是真的能加上筹码的加注', () => {
+  // 触发几何：人类以小于当前下注额全下，AI 已经跟上了这个数额——现在轮到
+  // AI，toCall===0（已经跟平），opponentCeiling===currentBet（对手全下的
+  // 那点筹码就是这条街能加到的上限），所以 maxTotal===currentBet，
+  // raiseCandidate 被夹到 currentBet，"加注"净增量为 0。
+  //
+  // 引入 equityIfCalled 之前，evRaise 和 evCall 用的是同一个数字（都来自
+  // 同一次 equity 采样），严格 > 恒为假，天然落回 check，这个 bug 不会被
+  // 触发。现在两者来自两次独立的蒙特卡洛采样，equityIfCalled > equity 经
+  // 常出现，旧代码会选中一个净增量为 0 的 "raise"/"allin"——PveSession 照
+  // 单全收、不推进回合，桌子永久卡死。
+  const geometry = {
+    street: 'flop', toCall: 0, currentBet: 19, opponentCeiling: 19, myChips: 5000,
+    potSize: 200, minRaiseTo: 40, liveOpponentCount: 1, bigBlind: 20,
+    opponentFoldToRaiseRate: 0.35, style: null, facingRaise: false, random: () => 0.5,
+  };
+
+  it('toCall===0 且 raiseCandidate 被夹到 currentBet（净增量为 0）时，永远不应该选 raise/allin', () => {
+    // 扫一批 (equity, equityIfCalled) 组合，包括 equityIfCalled > equity
+    // 的那些——这正是触发旧 bug 的条件。
+    const pairs = [
+      [0.30, 0.20], [0.30, 0.40], [0.30, 0.90],
+      [0.50, 0.50], [0.50, 0.10], [0.50, 0.95],
+      [0.65, 0.60], [0.65, 0.80], [0.65, 0.99],
+      [0.80, 0.10], [0.80, 0.79], [0.80, 0.81],
+      [0.10, 0.05], [0.10, 0.50], [0.10, 0.99],
+      [0.99, 0.01], [0.99, 0.98], [0.99, 1.00],
+    ];
+    for (const [equity, equityIfCalled] of pairs) {
+      const a = pickAction({ ...geometry, equity, equityIfCalled });
+      expect(a.action).toBe('check');
+      if (a.action === 'raise' || a.action === 'allin') {
+        expect(a.raiseTo).toBeGreaterThan(geometry.currentBet);
+      }
+    }
+  });
+
+  it('对照组：正常几何（raiseCandidate 真的能超过 currentBet）不受这次修复影响，equityIfCalled 更高时依然能加注', () => {
+    const a = pickAction({
+      ...geometry, opponentCeiling: 5000, equity: 0.30, equityIfCalled: 0.90,
+    });
+    expect(['raise', 'allin']).toContain(a.action);
   });
 });
