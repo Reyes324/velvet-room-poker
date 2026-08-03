@@ -590,7 +590,7 @@ describe('PveSession — 真实策略引擎跑完整局（烟雾测试，不注�
       }
       if (hand < 19) s.readyNext();
     }
-  }, 20000); // seatCount=8 means up to 7 live opponents per equity calc (Monte Carlo, not the cheap exhaustive-river path) across many decisions/hand — needs more than vitest's 5s default.
+  }, 40000); // seatCount=8 means up to 7 live opponents per equity calc (Monte Carlo, not the cheap exhaustive-river path) across many decisions/hand — needs more than vitest's 5s default. Bumped from 20000 (2026-08-03, PVE bet-sizing/range-inference effort, component C): raise decisions now compute equity twice (equityIfCalled), observed ~2x cost on this diagnostic-heavy path, and the 20s budget started flaking/timing out in isolation on this machine.
 });
 
 // 2026-08-02 最终整体审查修复（Finding 1 附带的聚合行为测试）：单条断言的
