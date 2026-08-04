@@ -4,33 +4,57 @@ import { compressImage } from '../utils/compressImage';
 import './FeedbackModal.css';
 
 const MAX_TEXT_LENGTH = 2000;
+// 跟服务端 FEEDBACK_MAX_IMAGES 保持一致（用户反馈 #3：只能传一张不够用）。
+// 这里再挡一道不是重复劳动——本地就能给出即时提示，不用等一次失败的往返。
+const MAX_IMAGES = 4;
 
 export default function FeedbackModal({ onClose }) {
   const { socket } = useSocket({});
   const [text, setText] = useState('');
-  const [imagePreview, setImagePreview] = useState(null); // object URL, for on-screen preview only
-  const [imagePayload, setImagePayload] = useState(null); // { base64, mimeType }, actually sent
+  // 一张图 = { url: 预览用的 object URL, payload: { base64, mimeType } 真正发出去的 }
+  // 两者放在同一个对象里而不是两个平行数组：删除某一张时只要按下标删一次，
+  // 不会出现两个数组错位、预览和实际发送的图对不上的经典 bug。
+  const [images, setImages] = useState([]);
   const [status, setStatus] = useState('idle'); // idle | submitting | done | error
   const [error, setError] = useState('');
 
   async function handleImageChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    // 同一个 input 连续选同一批文件时 onChange 不会再触发，选完就清空 value
+    e.target.value = '';
+    if (!files.length) return;
     setError('');
+    const room = MAX_IMAGES - images.length;
+    if (room <= 0) return setError(`最多上传 ${MAX_IMAGES} 张图片`);
+    const accepted = files.slice(0, room);
     try {
-      const compressed = await compressImage(file);
-      setImagePayload(compressed);
-      setImagePreview(URL.createObjectURL(file));
+      const compressed = await Promise.all(accepted.map(async (file) => ({
+        url: URL.createObjectURL(file),
+        payload: await compressImage(file),
+      })));
+      setImages(prev => [...prev, ...compressed]);
+      if (files.length > room) setError(`最多上传 ${MAX_IMAGES} 张，多选的已忽略`);
     } catch {
-      setError('这张图片没法上传，换一张试试');
+      setError('有图片没法上传，换一张试试');
     }
+  }
+
+  function removeImage(idx) {
+    setImages((prev) => {
+      // 撤销 object URL，否则每选一张就漏一份内存，反复增删会越积越多
+      URL.revokeObjectURL(prev[idx]?.url);
+      return prev.filter((_, i) => i !== idx);
+    });
   }
 
   function handleSubmit() {
     if (!text.trim()) return setError('请输入反馈内容');
     setStatus('submitting');
     setError('');
-    socket.timeout(15000).emit('feedback:submit', { text: text.trim(), image: imagePayload }, (err, res) => {
+        // 15s 是单张图时定的；多图要串行上传到 GitHub，按张数放宽超时，
+    // 否则传满 4 张几乎必然在服务端还没传完时就被判超时。
+    const timeoutMs = 15000 + images.length * 10000;
+    socket.timeout(timeoutMs).emit('feedback:submit', { text: text.trim(), images: images.map(i => i.payload) }, (err, res) => {
       if (err) {
         setStatus('error');
         setError('提交超时，请重试');
@@ -63,10 +87,26 @@ export default function FeedbackModal({ onClose }) {
               maxLength={MAX_TEXT_LENGTH}
               onChange={(e) => setText(e.target.value)}
             />
-            <label className="feedback-image-picker">
-              {imagePreview ? <img src={imagePreview} alt="预览" className="feedback-image-preview" /> : '+ 上传图片（可选）'}
-              <input type="file" accept="image/*" onChange={handleImageChange} hidden />
-            </label>
+            <div className="feedback-image-list">
+              {images.map((img, i) => (
+                <div key={img.url} className="feedback-image-thumb">
+                  <img src={img.url} alt={`预览 ${i + 1}`} />
+                  <div
+                    className="feedback-image-remove"
+                    onClick={() => removeImage(i)}
+                    role="button"
+                    aria-label={`删除第 ${i + 1} 张图片`}
+                  >×</div>
+                </div>
+              ))}
+              {images.length < MAX_IMAGES && (
+                <label className="feedback-image-picker">
+                  <span>+ 图片</span>
+                  <span className="feedback-image-count">{images.length}/{MAX_IMAGES}</span>
+                  <input type="file" accept="image/*" multiple onChange={handleImageChange} hidden />
+                </label>
+              )}
+            </div>
             <p className="feedback-image-notice">图片会公开发布在 GitHub 上，注意不要包含隐私信息</p>
             {error && <p className="home-error">{error}</p>}
             <div className="modal-btns">

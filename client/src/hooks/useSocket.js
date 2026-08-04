@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 
 let _socket = null;
 
-function getSocket() {
+export function getSocket() {
   if (!_socket) {
     _socket = io({ autoConnect: false });
     // Debug hook only — lets tests (and manual devtools debugging) force a

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
+import { useActionLock } from '../hooks/useActionLock';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
@@ -24,7 +25,6 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   const [settlement, setSettlement] = useState(null);
   const [toast, setToast] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [actionDisabled, setActionDisabled] = useState(false);
   const [iAmReady, setIAmReady] = useState(false);
   const [settlementProgress, setSettlementProgress] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
@@ -41,6 +41,10 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     setTimeout(() => setToast(null), 3500);
   }, []);
 
+  // 出牌乐观锁（见 hooks/useActionLock.js）。必须声明在 useSocket 之前——
+  // 下面的 game:state / game:error 两个 handler 都要调用 unlock。
+  const { locked: actionDisabled, lock: lockAction, unlock: unlockAction } = useActionLock();
+
   const { emit, socket } = useSocket({
     'room:state':  (state) => setRoomState(state),
     'game:state': (state) => {
@@ -49,7 +53,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       setSettlement(null);
       setIAmReady(false);
       setSettlementProgress(null);
-      setActionDisabled(false);
+      unlockAction();
       setRevealedPlayers({});
       // A previous hand's delayed settlement sheet (see game:showdown below)
       // may still be pending when the next hand's state already arrived —
@@ -96,7 +100,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       showToast('重新连接超时，房间已失效，请重新创建或加入', 'danger');
       setTimeout(onLeave, 2500);
     },
-    'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
+    'game:error': (msg) => { showToast(msg, 'danger'); unlockAction(); },
     'room:hand-history': (hands) => setHandHistory(hands),
     // No separate transient toast for game:timer-expired — it's redundant
     // with (and visually overlapped, confirmed on a real render) the
@@ -171,7 +175,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   }
 
   function handleAction(action, amount) {
-    setActionDisabled(true);
+    lockAction();
     emit('game:action', { playerId, action, amount });
   }
 
@@ -301,7 +305,18 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           onClose={() => setShowHandHistory(false)}
         />
       )}
-      {myBust && (
+      {/* 用户反馈 #5（2026-08-04）：破产那一手看不到结算，不知道自己怎么输
+          的。这个弹窗是全屏 overlay，会直接盖住底部的结算表——而输光筹码的
+          那一手恰恰是最想看清楚的一手。
+          真人局这里不能像 PVE 那样把它挂到结算的"我知道了"上：房间在等这个
+          玩家做决定（服务端 awaitingBustResolution），别人都被卡着，不能让
+          他停在结算页上无限拖延。
+          闸门用的是 iAmReady（玩家已点"我知道了"）而**不是** !settlement。
+          这个区别是致命的：settlement 只在 game:state / game:ended 时清除，
+          而破产玩家点完确认后，房间正卡着等他做破产决策、根本不会发新状态
+          ——用 !settlement 当条件的话，结算表永远不消失、借一底弹窗永远不
+          出现，直接死锁，比原来的 bug 还严重。 */}
+      {myBust && (!settlement || iAmReady) && (
         <BustDecisionModal onRebuy={rebuy} onLeave={leaveRoom} />
       )}
       {!myBust && othersBust.length > 0 && (

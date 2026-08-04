@@ -21,22 +21,58 @@
   outline: none;
   border-color: rgba(212,175,55,.4);
 }
-.feedback-image-picker {
-  display: block;
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--text-muted);
-  border: 1px dashed rgba(255,255,255,.15);
-  border-radius: var(--r-md);
-  padding: 12px;
+/* 多图上传（用户反馈 #3）：缩略图网格 + 末尾的添加按钮。用 grid 的
+   auto-fill 而不是固定列数，窄屏手机上会自己变成 2 列。 */
+.feedback-image-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: var(--sp-2);
   margin-bottom: var(--sp-3);
+}
+.feedback-image-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.feedback-image-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.feedback-image-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(0,0,0,.6);
+  color: #fff;
+  font-size: 14px;
   cursor: pointer;
 }
-.feedback-image-preview {
-  max-width: 100%;
-  max-height: 160px;
+.feedback-image-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  aspect-ratio: 1;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px dashed rgba(255,255,255,.15);
   border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.feedback-image-count {
+  font-size: 11px;
+  opacity: .6;
 }
 .feedback-image-notice {
   font-family: var(--font-mono);

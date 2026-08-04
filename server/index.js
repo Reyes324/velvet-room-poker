@@ -15,17 +15,31 @@ const VALID_SEAT_COUNTS = [2, 4, 6, 8];
 // 反馈提交的服务端校验上限——见下方 feedback:submit 处理逻辑。
 const FEEDBACK_MAX_TEXT_LENGTH = 2000;
 const FEEDBACK_MAX_IMAGE_BASE64_LENGTH = 3_000_000; // ~2.25MB decoded; client compresses to ~2MB target
+// 多图上传（用户反馈 #3，2026-08-03 已标 accepted）。张数上限取 4：一个问题
+// 通常"操作前/操作后"或"几个不同界面"就够说清楚，再多会让 Issue 正文变得难
+// 读，也会把 payload 推得很大。总量上限单独设，不是简单的 4×单张上限——单张
+// 3MB 是给"偶尔一张没压好的大图"留的余量，四张同时顶满并不是要支持的场景。
+const FEEDBACK_MAX_IMAGES = 4;
+const FEEDBACK_MAX_IMAGES_TOTAL_BASE64_LENGTH = 6_000_000;
 
 function createServer({ feedbackReporter = require('./feedbackReporter') } = {}) {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: { origin: '*' },
-    // socket.io defaults to 1MB, which is below FEEDBACK_MAX_IMAGE_BASE64_LENGTH
-    // (3MB) — without raising this, an over-limit feedback image payload is
-    // silently dropped at the transport before our own size check ever runs,
-    // hanging the client's ack instead of returning a clean error.
-    maxHttpBufferSize: FEEDBACK_MAX_IMAGE_BASE64_LENGTH + 1_000_000,
+    // socket.io defaults to 1MB, which is below our own feedback size limits —
+    // without raising this, an over-limit feedback image payload is silently
+    // dropped at the transport before our own size check ever runs, hanging
+    // the client's ack instead of returning a clean error.
+    //
+    // 多图之后这条不变式只在总量上限之内成立：buffer（7MB）> 总量上限（6MB），
+    // 所以任何**会被我们接受**的 payload 都能完整到达，超限的也能走到我们自
+    // 己的校验、拿到明确错误。但张数上限 4 × 单张上限 3MB = 12MB 理论上可以
+    // 超过 buffer——那种 payload 仍会在传输层被丢掉、客户端看到的是超时而不
+    // 是明确错误。没有把 buffer 提到 12MB 是刻意的：那是纯理论上界（客户端
+    // 压缩后每张约 0.3-0.6MB，四张不到 3MB），为一个构造不出来的场景常驻
+    // 12MB 缓冲，在免费档实例上不划算。
+    maxHttpBufferSize: FEEDBACK_MAX_IMAGES_TOTAL_BASE64_LENGTH + 1_000_000,
   });
 
   const rooms = new RoomManager();
@@ -420,7 +434,7 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
     // 反馈入口——用户反馈（2026-08-02）："能不能直接在网页上提供一个类似
     // 问题反馈的入口"。存储层是 GitHub Issue，不是本地文件，见
     // server/feedbackReporter.js 顶部注释里的持久化约束说明。
-    socket.on('feedback:submit', async ({ text, image } = {}, callback) => {
+    socket.on('feedback:submit', async ({ text, image, images } = {}, callback) => {
       if (!feedbackReporter.isConfigured()) {
         return callback?.({ error: '反馈服务暂时不可用，请稍后再试' });
       }
@@ -429,11 +443,26 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
       if (trimmed.length > FEEDBACK_MAX_TEXT_LENGTH) {
         return callback?.({ error: `反馈内容太长（最多 ${FEEDBACK_MAX_TEXT_LENGTH} 字）` });
       }
-      if (image && (typeof image.base64 !== 'string' || image.base64.length > FEEDBACK_MAX_IMAGE_BASE64_LENGTH)) {
-        return callback?.({ error: '图片太大，请压缩后再试' });
+      // 同时接受新的 images 数组和旧的单个 image 字段：客户端是静态资源，
+      // 用户浏览器里可能还缓存着改版前的包，那种版本发的仍是 image。丢掉这
+      // 个兼容等于让旧标签页的反馈静默失败，而反馈系统本身就是用来收集问题
+      // 的，它自己不能有沉默的失败模式。
+      const imageList = Array.isArray(images) ? images : (image ? [image] : []);
+      if (imageList.length > FEEDBACK_MAX_IMAGES) {
+        return callback?.({ error: `最多上传 ${FEEDBACK_MAX_IMAGES} 张图片` });
+      }
+      let totalBase64 = 0;
+      for (const img of imageList) {
+        if (!img || typeof img.base64 !== 'string' || img.base64.length > FEEDBACK_MAX_IMAGE_BASE64_LENGTH) {
+          return callback?.({ error: '图片太大，请压缩后再试' });
+        }
+        totalBase64 += img.base64.length;
+      }
+      if (totalBase64 > FEEDBACK_MAX_IMAGES_TOTAL_BASE64_LENGTH) {
+        return callback?.({ error: '图片总大小超出限制，请减少张数或压缩后再试' });
       }
       try {
-        const { issueUrl } = await feedbackReporter.createFeedbackIssue({ text: trimmed, image: image || null });
+        const { issueUrl } = await feedbackReporter.createFeedbackIssue({ text: trimmed, images: imageList });
         callback?.({ ok: true, issueUrl });
       } catch (e) {
         console.error('[feedback] createFeedbackIssue failed:', e.message);

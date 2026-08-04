@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
+import { useActionLock } from '../hooks/useActionLock';
 import GameTable from '../components/GameTable';
 import SettlementModal from '../components/SettlementModal';
 import BustDecisionModal from '../components/BustDecisionModal';
@@ -29,8 +30,9 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   const [gameState, setGameState] = useState(null);
   const [showdown, setShowdown] = useState(null);
   const [settlement, setSettlement] = useState(null);
+  // 破产决策弹窗：只在结算看完（点了"我知道了"）之后才出，见下方渲染处的注释
+  const [bustPrompt, setBustPrompt] = useState(false);
   const [toast, setToast] = useState(null);
-  const [actionDisabled, setActionDisabled] = useState(false);
   const [showLedger, setShowLedger] = useState(false);
   const [showHandHistory, setShowHandHistory] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -43,12 +45,17 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
+  // 出牌乐观锁（见 hooks/useActionLock.js）。必须声明在 useSocket 之前——
+  // 下面的 game:state / game:error 两个 handler 都要调用 unlock。
+  const { locked: actionDisabled, lock: lockAction, unlock: unlockAction } = useActionLock();
+
   const { emit, socket } = useSocket({
     'game:state': (state) => {
       setGameState(state);
       setShowdown(null);
       setSettlement(null);
-      setActionDisabled(false);
+      setBustPrompt(false);
+      unlockAction();
       clearTimeout(settlementTimerRef.current);
       // Keeps App.jsx's cold-start resume window (PVE_RESUME_WINDOW_MS)
       // anchored to real activity, not just whenever pve:start last ran —
@@ -65,7 +72,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
       // same pause as a real showdown, not just the card reveal.
       settlementTimerRef.current = setTimeout(showSettlement, SHOWDOWN_REVEAL_DELAY_MS);
     },
-    'game:error': (msg) => { showToast(msg, 'danger'); setActionDisabled(false); },
+    'game:error': (msg) => { showToast(msg, 'danger'); unlockAction(); },
     'pve:hand-history': (hands) => setHandHistory(hands),
   });
 
@@ -85,7 +92,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   }, []);
 
   function handleAction(action, amount) {
-    setActionDisabled(true);
+    lockAction();
     emit('pve:action', { action, amount });
   }
 
@@ -161,20 +168,28 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
           onClose={() => setShowStats(false)}
         />
       )}
-      {settlement && settlement.winners?.length > 0 && (
-        myBust ? (
-          <BustDecisionModal onRebuy={handleReady} onLeave={handleExit} />
-        ) : (
-          <SettlementModal
-            winners={settlement.winners}
-            myId={me?.id}
-            iAmReady={false}
-            readyCount={0}
-            totalCount={1}
-            onReady={handleReady}
-            isFoldWin={false}
-          />
-        )
+      {/* 用户反馈 #5（2026-08-04）："结算弹窗没出来，就先出来这个了，我都
+          没看清楚怎么输的"。原来这里是个三元表达式——破产时用借一底弹窗
+          **替代**结算弹窗，于是输光的那一手永远看不到自己是怎么输的，而那
+          恰恰是最想看清楚的一手。
+          这两个弹窗本来就是先后两步（先看结果、再决定要不要继续），不是二
+          选一。改成：结算永远先显示，破产时它的"我知道了"引出借一底弹窗。 */}
+      {settlement && settlement.winners?.length > 0 && !bustPrompt && (
+        <SettlementModal
+          winners={settlement.winners}
+          myId={me?.id}
+          iAmReady={false}
+          readyCount={0}
+          totalCount={1}
+          onReady={myBust ? () => setBustPrompt(true) : handleReady}
+          isFoldWin={false}
+        />
+      )}
+      {bustPrompt && (
+        <BustDecisionModal
+          onRebuy={() => { setBustPrompt(false); handleReady(); }}
+          onLeave={handleExit}
+        />
       )}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}

@@ -47,17 +47,23 @@ async function uploadImage({ base64, mimeType }, { fetchImpl, token, repo }) {
 }
 
 async function createFeedbackIssue(
-  { text, image = null },
+  // image（单张）保留为兼容入口——见 index.js 里同一处的说明：线上可能有缓
+  // 存着旧前端的浏览器，而这个模块本身也已经有一批只传 image 的测试。
+  { text, image = null, images = null },
   { fetchImpl = fetch, token = process.env.FEEDBACK_GITHUB_TOKEN, repo = process.env.FEEDBACK_GITHUB_REPO || DEFAULT_REPO } = {},
 ) {
   if (!token) throw new Error('FEEDBACK_GITHUB_TOKEN 未配置');
   const trimmed = (text || '').trim();
   if (!trimmed) throw new Error('缺少反馈内容');
 
+  const imageList = Array.isArray(images) ? images.filter(Boolean) : (image ? [image] : []);
   let imageMarkdown = '';
-  if (image) {
-    const downloadUrl = await uploadImage(image, { fetchImpl, token, repo });
-    imageMarkdown = `\n\n![反馈图片](${downloadUrl})`;
+  for (const img of imageList) {
+    // 串行上传而不是 Promise.all：GitHub Contents API 对同一分支的连续写入
+    // 有并发限制（同时提交多个文件到同一分支会撞上 409 冲突），而张数上限
+    // 只有 4，串行的额外耗时可以忽略。
+    const downloadUrl = await uploadImage(img, { fetchImpl, token, repo });
+    imageMarkdown += `\n\n![反馈图片](${downloadUrl})`;
   }
 
   const title = trimmed.slice(0, 60).replace(/\n/g, ' ');

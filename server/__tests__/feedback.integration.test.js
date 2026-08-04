@@ -43,15 +43,57 @@ describe('feedback:submit', () => {
   it('正常提交（无图片）：调用 createFeedbackIssue，回调 { ok: true, issueUrl }', async () => {
     const c = await connect();
     const res = await emitWithAck(c, 'feedback:submit', { text: '结算算错了' });
-    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '结算算错了', image: null });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '结算算错了', images: [] });
     expect(res).toEqual({ ok: true, issueUrl: 'https://github.com/x/y/issues/7' });
   });
 
-  it('带图片提交：image 原样透传给 createFeedbackIssue', async () => {
+  it('带图片提交：images 原样透传给 createFeedbackIssue', async () => {
     const c = await connect();
     const image = { base64: 'ZmFrZQ==', mimeType: 'image/png' };
-    await emitWithAck(c, 'feedback:submit', { text: '截图见附件', image });
-    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '截图见附件', image });
+    await emitWithAck(c, 'feedback:submit', { text: '截图见附件', images: [image] });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '截图见附件', images: [image] });
+  });
+
+  // 用户反馈 #3（2026-08-03）：只能上传一张图不够用
+  it('多图提交：多张图按顺序透传', async () => {
+    const c = await connect();
+    const imgs = [
+      { base64: 'YQ==', mimeType: 'image/png' },
+      { base64: 'Yg==', mimeType: 'image/jpeg' },
+      { base64: 'Yw==', mimeType: 'image/webp' },
+    ];
+    await emitWithAck(c, 'feedback:submit', { text: '三张图', images: imgs });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '三张图', images: imgs });
+  });
+
+  it('旧客户端兼容：只发单个 image 字段时归一化成 images 数组', async () => {
+    // 前端是静态资源，用户浏览器里可能还缓存着改版前的包。丢掉这个兼容等于
+    // 让旧标签页的反馈静默失败，而反馈系统本身不能有沉默的失败模式。
+    const c = await connect();
+    const image = { base64: 'ZmFrZQ==', mimeType: 'image/png' };
+    await emitWithAck(c, 'feedback:submit', { text: '旧版客户端', image });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '旧版客户端', images: [image] });
+  });
+
+  it('超过张数上限：直接回错误，不调用 createFeedbackIssue', async () => {
+    const c = await connect();
+    const many = Array.from({ length: 5 }, () => ({ base64: 'YQ==', mimeType: 'image/png' }));
+    const res = await emitWithAck(c, 'feedback:submit', { text: '五张图', images: many });
+    expect(res.error).toBeTruthy();
+    expect(fakeReporter.createFeedbackIssue).not.toHaveBeenCalled();
+  });
+
+  it('多图总大小超限：直接回错误（单张都合法也要拦）', async () => {
+    const c = await connect();
+    // 每张 2.2MB（低于单张 3MB 上限），三张合计 6.6MB 超过 6MB 总量上限。
+    // 张数刻意取 3 而不是 4：总量必须落在 (总量上限, maxHttpBufferSize) 这个
+    // 区间里，超出 buffer 的 payload 会被 socket.io 在传输层直接丢掉，我们
+    // 自己的校验根本不会执行，测的就不是这条规则了（第一版写 4×2.5MB=10MB
+    // 就是这样超时的）。
+    const big = Array.from({ length: 3 }, () => ({ base64: 'x'.repeat(2_200_000), mimeType: 'image/png' }));
+    const res = await emitWithAck(c, 'feedback:submit', { text: '三张大图', images: big });
+    expect(res.error).toBeTruthy();
+    expect(fakeReporter.createFeedbackIssue).not.toHaveBeenCalled();
   });
 
   it('文字为空/只有空白：直接回错误，不调用 createFeedbackIssue', async () => {

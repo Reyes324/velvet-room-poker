@@ -80,6 +80,44 @@ describe('feedbackReporter — createFeedbackIssue', () => {
     expect(result.issueNumber).toBe(43);
   });
 
+  // 用户反馈 #3（2026-08-03）：只能上传一张图不够用
+  it('多图：逐张上传后按顺序全部出现在 Issue 正文里', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(fakeResponse(true, 201, { content: { download_url: 'https://cdn/1.png' } }))
+      .mockResolvedValueOnce(fakeResponse(true, 201, { content: { download_url: 'https://cdn/2.jpg' } }))
+      .mockResolvedValueOnce(fakeResponse(true, 201, { content: { download_url: 'https://cdn/3.webp' } }))
+      .mockResolvedValueOnce(fakeResponse(true, 201, { number: 44, html_url: 'https://github.com/x/y/issues/44' }));
+
+    await createFeedbackIssue(
+      {
+        text: '三张图',
+        images: [
+          { base64: 'YQ==', mimeType: 'image/png' },
+          { base64: 'Yg==', mimeType: 'image/jpeg' },
+          { base64: 'Yw==', mimeType: 'image/webp' },
+        ],
+      },
+      { fetchImpl, token, repo },
+    );
+
+    // 3 次上传 + 1 次建 Issue
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    const issueBody = JSON.parse(fetchImpl.mock.calls[3][1].body).body;
+    for (const url of ['https://cdn/1.png', 'https://cdn/2.jpg', 'https://cdn/3.webp']) {
+      expect(issueBody).toContain(url);
+    }
+    // 顺序要跟用户选图的顺序一致
+    expect(issueBody.indexOf('1.png')).toBeLessThan(issueBody.indexOf('2.jpg'));
+    expect(issueBody.indexOf('2.jpg')).toBeLessThan(issueBody.indexOf('3.webp'));
+  });
+
+  it('images 为空数组时不上传任何图片（等价于无图）', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(fakeResponse(true, 201, { number: 45, html_url: 'https://github.com/x/y/issues/45' }));
+    await createFeedbackIssue({ text: '没图', images: [] }, { fetchImpl, token, repo });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('不支持的图片格式直接抛错，不发任何请求', async () => {
     const fetchImpl = vi.fn();
     await expect(createFeedbackIssue(
