@@ -852,3 +852,51 @@ describe('pveStrategy — Finding 1（2026-08-04 全面审查阻断性 bug）：
     expect(['raise', 'allin']).toContain(a.action);
   });
 });
+
+describe('pveStrategy — toCall>0 时的零增量加注（2026-08-04 真实跑量捕获）', () => {
+  // 2026-08-03 修了 toCall===0 那支的零增量"加注"，但当时判断"toCall>0 时
+  // raiseCandidate < currentBet 是合法的 all-in-for-less、引擎会推进回合"，
+  // 所以没加门槛。**那个判断是错的**：实测 GameEngine.raise(actor, 低于
+  // currentBet 的额度) 返回 ok、把 phase 推到 showdown，但 actionIndex 完
+  // 全不动，回合没换人 → pveRunAiLoop 拿同一个行动者无限重问。
+  //
+  // 下面的参数是 2026-08-04 那次 15×200 跑量里，不推进守卫抓到的真实现场：
+  //   phase=preflop currentBet=20 toCall=10 maxTotal=10
+  //   __ai_1__(chips=1980,bet=10,active) __ai_2__(chips=0,bet=10,allin)
+  // 唯一活着的对手已全下且只剩 10 筹码，把 maxTotal 压到了 currentBet 之下。
+  const scene = {
+    street: 'preflop', toCall: 10, currentBet: 20, potSize: 20, myChips: 1980,
+    opponentCeiling: 10, liveOpponentCount: 1, bigBlind: 20, minRaiseTo: 40,
+    opponentFoldToRaiseRate: 0.45, style: null, facingRaise: true,
+  };
+
+  it('永不返回净增量为 0 的加注——扫遍胜率与随机数组合，含诈唬必中的 random=0', () => {
+    for (const equity of [0.05, 0.2, 0.5, 0.8, 0.95]) {
+      for (const equityIfCalled of [0.1, 0.3, 0.6, 0.9]) {
+        for (const rnd of [0, 0.01, 0.5, 0.99]) {
+          const d = pickAction({ ...scene, equity, equityIfCalled, random: () => rnd });
+          if (d.action === 'raise' || d.action === 'allin') {
+            expect(d.raiseTo).toBeGreaterThan(scene.currentBet);
+          }
+        }
+      }
+    }
+  });
+
+  it('这种局面下只会选 call 或 fold（两者引擎都会正常推进回合）', () => {
+    const seen = new Set();
+    for (const equity of [0.05, 0.5, 0.95]) {
+      for (const rnd of [0, 0.5, 0.99]) {
+        seen.add(pickAction({ ...scene, equity, equityIfCalled: equity, random: () => rnd }).action);
+      }
+    }
+    for (const a of seen) expect(['call', 'fold']).toContain(a);
+  });
+
+  it('对照组：对手筹码充足、加注真的能加上钱时，raise 仍然是可选项（门槛没有误伤正常加注）', () => {
+    const healthy = { ...scene, opponentCeiling: 5000, toCall: 10, currentBet: 20, minRaiseTo: 40 };
+    const d = pickAction({ ...healthy, equity: 0.95, equityIfCalled: 0.95, random: () => 0.5 });
+    expect(['raise', 'allin']).toContain(d.action);
+    expect(d.raiseTo).toBeGreaterThan(healthy.currentBet);
+  });
+});

@@ -552,7 +552,17 @@ function pickAction(params) {
   // 只收紧 toCall===0 这一支：toCall>0 时 raiseCandidate < currentBet 是有
   // 意为之的 all-in-for-less（筹码比对手浅只能跟一部分），引擎确实会推进
   // 回合，且已有测试断言这个行为，不能动。
-  const canRaise = raiseCandidate > currentBet;
+  // 判据是"这一注相对我这条街已投入的，有没有真的再多掏钱"（cost > 0），
+  // 不是"加注额有没有超过 currentBet"。两者在 all-in-for-less 场景下会
+  // 分道扬镳，而那正是本项目踩过两次坑的地方：
+  //   · 净增量为 0（raiseCandidate == myBetThisStreet）→ 空动作，引擎收下
+  //     却不推进回合，桌子卡死，必须禁止；
+  //   · 净增量 > 0 但总额仍低于 currentBet → 合法的 all-in-for-less（筹码
+  //     比对手浅、只能跟一部分），是真的投了钱，必须允许——曾经专门修过
+  //     "80% 胜率的短筹码被弃牌"这个白送筹码的 bug，见本文件 all-in-for-less
+  //     那组测试。
+  // 先前用 raiseCandidate > currentBet 会把后者一并误杀。
+  const canRaise = cost > 0;
 
   let bestAction;
   if (toCall === 0) {
@@ -560,10 +570,25 @@ function pickAction(params) {
     // "加注"和"过牌"之间选——但"加注"必须是真的能加上筹码的加注。
     bestAction = (canRaise && perceivedRaise > perceivedCall) ? 'raise' : 'check';
   } else {
-    const options = [
-      { action: 'fold', ev: perceivedFold },
-      { action: 'raise', ev: perceivedRaise },
-    ];
+    const options = [{ action: 'fold', ev: perceivedFold }];
+    // canRaise 这一支同样要判（2026-08-04 修复）：上一轮只在 toCall===0
+    // 那支加了这个门槛，理由是"toCall>0 时 raiseCandidate < currentBet 是
+    // 合法的 all-in-for-less，引擎会推进回合"——**这个假设是错的**，实测
+    // 打脸：GameEngine.raise(actor, 低于 currentBet 的额度) 返回 ok、把
+    // phase 直接推到 showdown，但 actionIndex 纹丝不动，回合并没有换人。
+    // 于是 pveRunAiLoop 又会拿同一个行动者再问一次，无限重复。
+    //
+    // 触发现场（由 2026-08-04 新加的不推进守卫在真实跑量中捕获）：
+    //   phase=preflop currentBet=20 toCall=10 maxTotal=10
+    //   __ai_1__(chips=1980,bet=10,active) __ai_2__(chips=0,bet=10,allin)
+    // 唯一活着的对手已全下且只剩 10，所以 maxTotal 被压到 10 < currentBet
+    // 20，"加注到 10" 净增量为 0——跟 toCall===0 那支是同一个病：一个加不
+    // 动任何筹码的"加注"根本不是真实动作。
+    //
+    // 注意这里不能用 call 兜底就完事：这种局面下正确的动作本来就是 call
+    // （跟到自己能付的上限，引擎的 call 会正常推进），或者 fold——下面
+    // options 里两者都在，让 EV 自己选。
+    if (canRaise) options.push({ action: 'raise', ev: perceivedRaise });
     // 浅筹码 push/fold 模式：只比较 fold vs all-in，call 不是真实选项——加
     // 注候选在这个分支已经被强制设成全下（见上面 isShortStackPreflop 分
     // 支），这本来就是个"弃还是梭哈"的二选一决策。
@@ -577,7 +602,10 @@ function pickAction(params) {
   // "有可能吓跑对手"，foldEquity===0（对手已全下/资金不够被吓跑，或者自
   // 己是 all-in-for-less 逼不走任何人）时诈唬没有任何意义，还白白把一手
   // 该弃的牌变成加注，纯粹送筹码。
-  if (bestAction === 'fold' && foldEquity > 0 && eq <= BLUFF_EQUITY_CEILING && random() < BLUFF_DEVIATION_RATE) {
+  // canRaise 同样是这一层的前提（2026-08-04）：诈唬把 fold 翻成 raise，如果
+  // 这个"raise"净增量为 0（见上面 canRaise 的说明），就会绕过前面的门槛、
+  // 重新制造出那个不推进回合的空动作。诈唬本身也需要"真的能加上筹码"才成立。
+  if (bestAction === 'fold' && canRaise && foldEquity > 0 && eq <= BLUFF_EQUITY_CEILING && random() < BLUFF_DEVIATION_RATE) {
     bestAction = 'raise';
   }
 
