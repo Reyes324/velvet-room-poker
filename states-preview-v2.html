@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Velvet Room · 状态预览 v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:wght@300;400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#030A04; font-family:'Crimson Pro',serif; color:#F2EAD0; padding:40px 48px 80px; min-width:max-content; }
+
+/* ── Page header ── */
+.pg-title { font-family:'Cinzel',serif; font-size:16px; color:#D4AF37; letter-spacing:5px; margin-bottom:5px; }
+.pg-sub { font-size:12px; color:#2A4A2C; font-style:italic; margin-bottom:48px; }
+.phase-group { margin-bottom:56px; }
+.phase-title { font-family:'Cinzel',serif; font-size:10px; color:#D4AF37; letter-spacing:4px; text-transform:uppercase; border-bottom:1px solid rgba(212,175,55,.1); padding-bottom:10px; margin-bottom:26px; }
+.frames-row { display:flex; gap:28px; align-items:flex-start; }
+.fw { display:flex; flex-direction:column; align-items:center; gap:10px; flex:0 0 auto; }
+.f-num { font-family:'Space Mono',monospace; font-size:9px; color:#1E3A20; letter-spacing:1px; }
+.f-name { font-family:'Cinzel',serif; font-size:11px; color:#A8946A; text-align:center; max-width:375px; line-height:1.5; }
+.f-note { font-size:10px; color:#1A2E1C; font-style:italic; margin-top:3px; }
+
+/* ── Phone shell ── */
+.phone { width:375px; height:812px; background:#08120A; border-radius:46px; border:2px solid rgba(212,175,55,.1); overflow:hidden; position:relative; box-shadow:0 28px 80px rgba(0,0,0,.85), inset 0 1px 0 rgba(212,175,55,.05); }
+.phone::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:128px; height:30px; background:#030A04; border-radius:0 0 20px 20px; z-index:100; }
+
+/* ── Top bar ── */
+.top-bar { position:absolute; top:36px; left:14px; right:14px; height:40px; display:flex; justify-content:space-between; align-items:center; z-index:10; }
+.menu-btn { width:32px; height:32px; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.14); border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px; color:#A8946A; }
+.bankroll { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:18px; padding:4px 12px; font-family:'Space Mono',monospace; font-size:12px; color:#D4AF37; }
+
+/* ══════════════════════════════
+   OVAL TABLE
+   Portrait: 257×330, top=98
+══════════════════════════════ */
+.table-oval {
+  position:absolute;
+  top:98px; left:59px; right:59px; /* width = 375-118 = 257px */
+  height:330px;
+  background:radial-gradient(ellipse at 50% 35%, #0C2210 0%, #061408 55%, #030A04 100%);
+  border-radius:50%;
+  border:2px solid rgba(212,175,55,.1);
+  box-shadow:inset 0 6px 60px rgba(0,0,0,.8), 0 0 0 7px rgba(4,10,6,.6), 0 12px 60px rgba(0,0,0,.7);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:10px; z-index:1;
+}
+
+/* Pot display — same gold family as s-bet to show "money in play" kinship */
+.pot { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.pot-label { font-family:'Space Mono',monospace; font-size:7px; color:#6B5A2A; letter-spacing:2px; text-transform:uppercase; }
+.pot-amt {
+  font-family:'Cinzel',serif; font-size:22px; font-weight:700; color:#D4AF37;
+  background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2);
+  border-radius:10px; padding:3px 14px;
+  box-shadow:0 0 20px rgba(212,175,55,.15);
+  line-height:1.2;
+}
+
+/* Community cards container */
+.community { display:flex; gap:5px; align-items:center; }
+
+/* ══════════════════════════════
+   CARDS — proper design
+══════════════════════════════ */
+.card { position:relative; border-radius:6px; font-family:Georgia,'Crimson Pro',serif; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.c-sm { width:36px; height:50px; }
+.c-lg { width:62px; height:84px; border-radius:10px; }
+
+/* Face-up card */
+.c-face {
+  background:#F7F2E8;
+  border:1px solid rgba(0,0,0,.07);
+  box-shadow:0 3px 14px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.8);
+  color:#1A1208;
+}
+.c-face.c-red { color:#C0392B; }
+
+/* Corner index (top-left) */
+.c-tl {
+  position:absolute; top:3px; left:4px;
+  display:flex; flex-direction:column; align-items:center; line-height:1.1;
+}
+.c-tl .cr { font-size:11px; font-weight:700; }
+.c-tl .cs { font-size:8px; line-height:1; }
+.c-lg .c-tl .cr { font-size:18px; }
+.c-lg .c-tl .cs { font-size:13px; }
+
+/* Center suit */
+.c-ct { font-size:18px; line-height:1; }
+.c-lg .c-ct { font-size:32px; }
+
+/* Back */
+.c-back {
+  background:linear-gradient(145deg, #0B2410 0%, #040E06 100%);
+  border:1px solid rgba(212,175,55,.18);
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+.c-back::after { content:'✦'; font-size:15px; color:rgba(212,175,55,.22); font-family:'Cinzel',serif; }
+.c-lg.c-back::after { font-size:26px; }
+
+/* ══════════════════════════════
+   SEAT POSITIONS
+   Oval center: x=187.5, y=263
+   (top=98, height=330 → center y=98+165=263)
+══════════════════════════════ */
+.seat { position:absolute; display:flex; flex-direction:column; align-items:center; gap:3px; z-index:5; }
+/* top-center: avatar sits on oval top border */
+.s-top   { top:76px; left:50%; transform:translateX(-50%); }
+/* left seats: left edge, stacked above/below oval center */
+.s-lu    { top:162px; left:4px; align-items:flex-start; }
+.s-ll    { top:290px; left:4px; align-items:flex-start; }
+/* right seats: right edge */
+.s-ru    { top:162px; right:4px; align-items:flex-end; }
+.s-rl    { top:290px; right:4px; align-items:flex-end; }
+
+/* Avatar */
+.avatar {
+  width:42px; height:42px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Cinzel',serif; font-size:16px; font-weight:700; color:#F2EAD0;
+  border:2px solid rgba(212,175,55,.16);
+  position:relative; flex-shrink:0;
+}
+.av-green  { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
+.av-purple { background:radial-gradient(circle at 38% 35%, #4A228A, #1E0855); }
+.av-teal   { background:radial-gradient(circle at 38% 35%, #0E6060, #042E2E); }
+.av-rust   { background:radial-gradient(circle at 38% 35%, #7A3018, #3A1008); }
+.av-olive  { background:radial-gradient(circle at 38% 35%, #4A6020, #1E2A0A); }
+.av-gold   { background:radial-gradient(circle at 38% 35%, #8B6914, #3D2800); border-color:rgba(212,175,55,.45); }
+
+/* ── Active: prominent gold pulse ── */
+.is-active .avatar {
+  border:2.5px solid #D4AF37 !important;
+  box-shadow:0 0 0 4px rgba(212,175,55,.22), 0 0 28px rgba(212,175,55,.7) !important;
+  animation:activePulse 1.8s ease-in-out infinite;
+}
+@keyframes activePulse {
+  0%,100% { box-shadow:0 0 0 4px rgba(212,175,55,.22), 0 0 18px rgba(212,175,55,.55); }
+  50%      { box-shadow:0 0 0 5px rgba(212,175,55,.36), 0 0 42px rgba(212,175,55,.95), 0 0 64px rgba(212,175,55,.2); }
+}
+.is-folded { opacity:.42; filter:grayscale(.4); }
+.is-allin .avatar { border:2px solid #C0392B !important; box-shadow:0 0 18px rgba(192,57,43,.65) !important; }
+.is-winner .avatar { border:2.5px solid #D4AF37 !important; box-shadow:0 0 0 5px rgba(212,175,55,.3), 0 0 50px rgba(212,175,55,.95) !important; animation:winGlow 1.2s ease-in-out infinite; }
+@keyframes winGlow { 0%,100%{box-shadow:0 0 0 5px rgba(212,175,55,.3),0 0 40px rgba(212,175,55,.8);}50%{box-shadow:0 0 0 7px rgba(212,175,55,.42),0 0 72px rgba(212,175,55,1);} }
+
+/* ── Position badge: small overlay on avatar bottom-right ── */
+.pos-badge {
+  position:absolute; bottom:-3px; right:-3px;
+  border-radius:6px; padding:1px 4px;
+  font-family:'Space Mono',monospace; font-size:7px; white-space:nowrap;
+  letter-spacing:0; font-weight:700; z-index:2; line-height:1.5;
+}
+.pb-d  { background:#F7F2E8; color:#1A1208; }
+.pb-sb { background:rgba(212,175,55,.18); color:#D4AF37; border:1px solid rgba(212,175,55,.35); }
+.pb-bb { background:rgba(36,113,163,.22); color:#7EB8E0; border:1px solid rgba(36,113,163,.35); }
+
+.folded-lbl { font-family:'Space Mono',monospace; font-size:8px; color:#2A4A2C; background:rgba(30,50,32,.6); border-radius:6px; padding:1px 5px; }
+.allin-lbl { font-family:'Space Mono',monospace; font-size:8px; font-weight:700; color:#fff; background:#C0392B; border-radius:6px; padding:2px 7px; letter-spacing:1px; }
+
+/* ── Action bubble — floats toward table center from each seat ── */
+.action-bubble {
+  position:absolute;
+  background:rgba(5,12,6,.94); border:1px solid rgba(212,175,55,.45); border-radius:14px;
+  padding:5px 11px; font-family:'Space Mono',monospace; font-size:9px; color:#D4AF37;
+  white-space:nowrap; z-index:30;
+}
+.action-bubble::after { content:''; position:absolute; border:5px solid transparent; }
+
+/* s-top: center is BELOW — bubble floats down */
+.s-top .action-bubble {
+  top:calc(100% + 8px); left:50%; transform:translateX(-50%);
+  animation:bubbleDown 2.5s ease-out forwards;
+}
+.s-top .action-bubble::after { bottom:100%; left:50%; transform:translateX(-50%); border-bottom-color:rgba(212,175,55,.45); }
+@keyframes bubbleDown { 0%{opacity:0;transform:translateX(-50%) translateY(-4px);}12%{opacity:1;transform:translateX(-50%) translateY(0);}75%{opacity:1;transform:translateX(-50%) translateY(8px);}100%{opacity:.35;transform:translateX(-50%) translateY(14px);} }
+
+/* s-lu / s-ll: center is to the RIGHT — bubble floats right */
+.s-lu .action-bubble, .s-ll .action-bubble {
+  left:calc(100% + 8px); top:50%; transform:translateY(-50%);
+  animation:bubbleRight 2.5s ease-out forwards;
+}
+.s-lu .action-bubble::after, .s-ll .action-bubble::after { right:100%; top:50%; transform:translateY(-50%); border-right-color:rgba(212,175,55,.45); }
+@keyframes bubbleRight { 0%{opacity:0;transform:translateY(-50%) translateX(-4px);}12%{opacity:1;transform:translateY(-50%) translateX(0);}75%{opacity:1;transform:translateY(-50%) translateX(8px);}100%{opacity:.35;transform:translateY(-50%) translateX(14px);} }
+
+/* s-ru / s-rl: center is to the LEFT — bubble floats left */
+.s-ru .action-bubble, .s-rl .action-bubble {
+  right:calc(100% + 8px); top:50%; transform:translateY(-50%);
+  animation:bubbleLeft 2.5s ease-out forwards;
+}
+.s-ru .action-bubble::after, .s-rl .action-bubble::after { left:100%; top:50%; transform:translateY(-50%); border-left-color:rgba(212,175,55,.45); }
+@keyframes bubbleLeft { 0%{opacity:0;transform:translateY(-50%) translateX(4px);}12%{opacity:1;transform:translateY(-50%) translateX(0);}75%{opacity:1;transform:translateY(-50%) translateX(-8px);}100%{opacity:.35;transform:translateY(-50%) translateX(-14px);} }
+
+/* s-bet floats toward table center per seat */
+.s-lu .s-bet, .s-ll .s-bet { position:absolute; left:calc(100% + 5px); top:10px; }
+.s-ru .s-bet, .s-rl .s-bet { position:absolute; right:calc(100% + 5px); top:10px; }
+
+/* Side seats: avatar + status only — no name/stack clutter */
+.s-lu .s-name, .s-ll .s-name, .s-ru .s-name, .s-rl .s-name,
+.s-lu .s-stack, .s-ll .s-stack, .s-ru .s-stack, .s-rl .s-stack { display:none; }
+
+/* ── Top seat: horizontal compact layout ── */
+.s-top { flex-direction:column; align-items:center; }
+.s-av-row { display:flex; flex-direction:row; align-items:center; gap:7px; background:rgba(2,8,3,.62); border-radius:14px; padding:5px 8px 5px 6px; }
+.s-info { display:flex; flex-direction:column; gap:1px; align-items:flex-start; }
+/* s-top extra items shown centered below the row */
+.s-top .s-bet, .s-top .folded-lbl, .s-top .allin-lbl { margin-top:2px; }
+
+/* Seat labels */
+.s-name { font-family:'Crimson Pro',serif; font-size:12px; color:#D8CCAC; white-space:nowrap; max-width:68px; overflow:hidden; text-overflow:ellipsis; background:rgba(2,8,3,.5); border-radius:5px; padding:0 4px; }
+.s-stack { font-family:'Space Mono',monospace; font-size:9px; color:#8A7850; background:rgba(0,0,0,.5); border:1px solid rgba(212,175,55,.1); border-radius:9px; padding:1px 6px; white-space:nowrap; }
+/* Round bet */
+.s-bet { font-family:'Space Mono',monospace; font-size:9px; color:#D4AF37; background:rgba(212,175,55,.14); border:1px solid rgba(212,175,55,.32); border-radius:7px; padding:1px 6px; white-space:nowrap; }
+/* Revealed small cards (showdown) */
+.shown-cards { display:flex; gap:3px; margin-top:3px; }
+.sc-card { width:24px; height:34px; border-radius:4px; position:relative; display:flex; align-items:center; justify-content:center; }
+.sc-card .sct { position:absolute; top:2px; left:3px; font-family:'Cinzel',serif; font-size:10px; font-weight:700; line-height:1; }
+.sc-card .scc { font-family:'Cinzel',serif; font-size:14px; font-weight:700; }
+
+/* ══════════════════════════════
+   HERO SECTION
+   bottom=186px above action bar
+══════════════════════════════ */
+.hero-section { position:absolute; bottom:186px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5; }
+.hero-cards { display:flex; gap:10px; }
+.hero-row { display:flex; align-items:center; justify-content:center; gap:14px; width:100%; padding:0 14px; }
+.hero-info { text-align:center; }
+.hero-name { font-family:'Crimson Pro',serif; font-size:14px; color:#F2EAD0; }
+.hero-chips { font-family:'Space Mono',monospace; font-size:12px; color:#D4AF37; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:13px; padding:3px 14px; display:inline-block; margin-top:2px; }
+.hero-bet { font-family:'Space Mono',monospace; font-size:10px; color:#7EB8E0; margin-top:2px; }
+
+/* ══════════════════════════════
+   ACTION BAR
+══════════════════════════════ */
+.action-bar { position:absolute; bottom:0; left:0; right:0; padding:10px 14px 26px; background:linear-gradient(to top,#050D06 68%,transparent); }
+
+/* ── Default: 3 buttons in one row ── */
+.ab-main { display:flex; gap:9px; }
+.btn { border-radius:26px; font-family:'Cinzel',serif; font-weight:600; display:flex; align-items:center; justify-content:center; letter-spacing:1px; cursor:pointer; transition:opacity .15s; }
+.btn:active { opacity:.75; }
+.b-h52 { height:52px; }
+.b-h46 { height:46px; }
+.b-fold { flex:1; background:rgba(50,80,52,.18); color:#4A6E4C; border:1px solid rgba(50,80,52,.22); font-size:13px; }
+.b-call { flex:2; background:linear-gradient(135deg,#166232,#27AE60); color:#fff; font-size:14px; box-shadow:0 4px 16px rgba(39,174,96,.2); }
+.b-check { flex:2; background:rgba(36,113,163,.2); color:#7EB8E0; border:1px solid rgba(36,113,163,.25); font-size:14px; }
+.b-raise-trigger { flex:1; background:rgba(212,175,55,.1); color:#D4AF37; border:1px solid rgba(212,175,55,.28); font-size:13px; }
+.b-confirm-raise { flex:2; background:linear-gradient(135deg,#9B7410,#D4AF37); color:#050D06; font-size:14px; font-weight:700; box-shadow:0 4px 18px rgba(212,175,55,.28); }
+.b-cancel { flex:1; background:transparent; color:#4A6E4C; border:1px solid rgba(50,80,52,.2); font-size:12px; }
+.b-allin { flex:1; background:rgba(192,57,43,.18); color:#C0392B; border:1px solid rgba(192,57,43,.3); font-size:11px; }
+
+/* ── Raise-expanded state ── */
+.ab-raise { display:none; flex-direction:column; gap:8px; }
+.ab-raise.open { display:flex; }
+.stepper-row { display:flex; gap:9px; align-items:center; }
+.stepper { display:flex; align-items:center; background:rgba(212,175,55,.07); border:1px solid rgba(212,175,55,.2); border-radius:22px; height:46px; overflow:hidden; flex:1; }
+.step-btn { width:38px; height:46px; display:flex; align-items:center; justify-content:center; font-size:22px; color:#D4AF37; cursor:pointer; }
+.step-val { flex:1; font-family:'Space Mono',monospace; font-size:14px; color:#F2EAD0; text-align:center; }
+.raise-bottom { display:flex; gap:9px; }
+
+/* ── Waiting bar ── */
+.waiting-bar { position:absolute; bottom:0; left:0; right:0; padding:12px 14px 26px; background:linear-gradient(to top,#050D06 68%,transparent); display:flex; flex-direction:column; gap:9px; align-items:center; }
+.waiting-text { font-family:'Space Mono',monospace; font-size:9px; color:#203820; letter-spacing:2px; }
+
+
+/* ══════════════════════════════
+   SETTLEMENT MODAL
+══════════════════════════════ */
+.modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,.68); backdrop-filter:blur(5px); display:flex; align-items:center; justify-content:center; z-index:60; animation:overlayFade .3s ease; }
+@keyframes overlayFade { from{opacity:0;} to{opacity:1;} }
+.modal { width:318px; background:linear-gradient(145deg,#0C1E0E,#060C07); border:1px solid rgba(212,175,55,.32); border-radius:22px; padding:24px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:14px; box-shadow:0 24px 80px rgba(0,0,0,.9); animation:modalPop .35s cubic-bezier(.34,1.56,.64,1); }
+@keyframes modalPop { from{opacity:0;transform:scale(.85);} to{opacity:1;transform:scale(1);} }
+.modal-title { font-family:'Cinzel',serif; font-size:11px; color:#D4AF37; letter-spacing:4px; text-transform:uppercase; }
+.modal-winner-av { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Cinzel',serif; font-size:22px; font-weight:700; color:#F2EAD0; border:2px solid #D4AF37; box-shadow:0 0 0 5px rgba(212,175,55,.2), 0 0 40px rgba(212,175,55,.7); }
+.modal-winner-name { font-family:'Cinzel',serif; font-size:14px; color:#F2EAD0; }
+.modal-win-amt { font-family:'Cinzel',serif; font-size:30px; font-weight:700; color:#D4AF37; }
+.modal-hand { font-family:'Crimson Pro',serif; font-size:13px; color:#A8946A; margin-top:-6px; }
+.modal-divider { width:100%; height:1px; background:rgba(212,175,55,.1); }
+.settle-list { width:100%; display:flex; flex-direction:column; gap:6px; }
+.settle-row { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:rgba(212,175,55,.04); border-radius:8px; }
+.settle-row.hero-row { background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.1); }
+.sr-name { font-family:'Crimson Pro',serif; font-size:13px; color:#C8BC9E; }
+.sr-amt { font-family:'Space Mono',monospace; font-size:12px; }
+.sr-win { color:#27AE60; } .sr-lose { color:#C0392B; } .sr-neutral { color:#5A6E5C; }
+.modal-btn { width:100%; height:48px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:24px; display:flex; align-items:center; justify-content:center; font-family:'Cinzel',serif; font-size:14px; font-weight:700; color:#050D06; letter-spacing:1px; cursor:pointer; box-shadow:0 4px 20px rgba(212,175,55,.25); margin-top:4px; }
+.cd { display:inline-block; width:18px; text-align:center; }
+
+/* ══════════════════════════════
+   LOBBY
+══════════════════════════════ */
+.lobby { position:absolute; top:86px; bottom:0; left:0; right:0; display:flex; flex-direction:column; padding:14px; }
+.lobby-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.lobby-room-name { font-family:'Cinzel',serif; font-size:19px; color:#F2EAD0; }
+.lobby-blind { font-family:'Space Mono',monospace; font-size:9px; color:#2A4A2C; margin-top:3px; letter-spacing:1px; }
+.room-code { font-family:'Cinzel',serif; font-size:22px; font-weight:700; color:#D4AF37; background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2); border-radius:10px; padding:6px 14px; letter-spacing:4px; }
+.lobby-sec { font-family:'Space Mono',monospace; font-size:8px; color:#2A4A2C; letter-spacing:3px; padding-bottom:8px; border-bottom:1px solid rgba(212,175,55,.07); margin-bottom:9px; }
+.pl-row { display:flex; align-items:center; gap:11px; padding:9px 11px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:11px; margin-bottom:7px; }
+.pr-av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Cinzel',serif; font-size:14px; font-weight:700; color:#F2EAD0; flex-shrink:0; }
+.pr-info { flex:1; }
+.pr-name { font-family:'Crimson Pro',serif; font-size:14px; color:#F2EAD0; }
+.pr-chips { font-family:'Space Mono',monospace; font-size:9px; color:#8A7850; }
+.pr-badge { font-family:'Space Mono',monospace; font-size:8px; background:rgba(212,175,55,.12); color:#D4AF37; border-radius:7px; padding:2px 7px; }
+.empty-slot { display:flex; align-items:center; gap:11px; padding:9px 11px; border:1px dashed rgba(28,48,30,.28); border-radius:11px; margin-bottom:7px; }
+.es-dot { width:36px; height:36px; border-radius:50%; border:1px dashed rgba(28,48,30,.4); display:flex; align-items:center; justify-content:center; color:#1E3820; font-size:18px; flex-shrink:0; }
+.es-txt { font-family:'Crimson Pro',serif; font-size:14px; color:#1E3820; }
+.lobby-btn { margin-top:auto; margin-bottom:12px; height:52px; background:linear-gradient(135deg,#9B7410,#D4AF37); border-radius:26px; display:flex; align-items:center; justify-content:center; font-family:'Cinzel',serif; font-size:15px; font-weight:700; color:#050D06; letter-spacing:1px; box-shadow:0 4px 24px rgba(212,175,55,.28); cursor:pointer; }
+
+/* ── Dealing overlay ── */
+.dealing-txt { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-family:'Cinzel',serif; font-size:12px; color:#D4AF37; letter-spacing:3px; animation:breathe 1s ease-in-out infinite; z-index:50; }
+@keyframes breathe { 0%,100%{opacity:.4;} 50%{opacity:1;} }
+</style>
+</head>
+<body>
+
+<div class="pg-title">VELVET ROOM · 状态预览 v2</div>
+<div class="pg-sub">一轮德州扑克完整状态流 · 14 帧 · 横向滚动 · 点击批注</div>
+
+<!-- ═══ 阶段一：开局 ═══ -->
+<div class="phase-group">
+<div class="phase-title">阶段一：开局</div>
+<div class="frames-row">
+
+<!-- 01 等待开始 -->
+<div class="fw">
+<div class="f-num">状态 01</div><div class="f-name">等待开始</div>
+<div class="phone">
+  <div class="top-bar">
+    <div class="menu-btn">≡</div>
+    <div class="bankroll">$12,549</div>
+  </div>
+  <div class="lobby">
+    <div class="lobby-head">
+      <div><div class="lobby-room-name">翡翠桌</div><div class="lobby-blind">BLIND $10 / $20</div></div>
+      <div class="room-code">4827</div>
+    </div>
+    <div class="lobby-sec">玩家 3 / 6</div>
+    <div class="pl-row"><div class="pr-av av-gold">我</div><div class="pr-info"><div class="pr-name">Augustine（我）</div><div class="pr-chips">$12,549</div></div><div class="pr-badge">房主</div></div>
+    <div class="pl-row"><div class="pr-av av-green">王</div><div class="pr-info"><div class="pr-name">王建国</div><div class="pr-chips">$1,000</div></div></div>
+    <div class="pl-row"><div class="pr-av av-purple">陈</div><div class="pr-info"><div class="pr-name">陈美玲</div><div class="pr-chips">$15,999</div></div></div>
+    <div class="empty-slot"><div class="es-dot">+</div><div class="es-txt">等待玩家加入…</div></div>
+    <div class="empty-slot"><div class="es-dot">+</div><div class="es-txt">等待玩家加入…</div></div>
+    <div class="empty-slot"><div class="es-dot">+</div><div class="es-txt">等待玩家加入…</div></div>
+    <div class="lobby-btn">开始游戏</div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+<!-- 02 发牌中 -->
+<div class="fw">
+<div class="f-num">状态 02</div><div class="f-name">发牌中</div>
+<div class="phone">
+  <div class="top-bar">
+    <div class="menu-btn">≡</div>
+    <div class="bankroll">$12,549</div>
+  </div>
+  <!-- Seats -->
+  <div class="seat s-top"><div class="s-av-row"><div class="avatar av-green">王</div><div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$1,000</div></div></div></div>
+  <div class="seat s-lu"><div class="avatar av-purple">陈</div><div class="s-name">陈美玲</div><div class="s-stack">$15,999</div></div>
+  <div class="seat s-ll"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div></div>
+  <div class="seat s-ru"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$500</div></div>
+  <div class="seat s-rl"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div></div>
+  <div class="table-oval">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$0</div></div>
+    <div class="community">
+      <div class="card c-sm c-back"></div><div class="card c-sm c-back"></div>
+      <div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div>
+    </div>
+  </div>
+  <div class="dealing-txt">正在发牌…</div>
+  <div class="hero-section">
+    <div class="hero-cards"><div class="card c-lg c-back"></div><div class="card c-lg c-back"></div></div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$12,549</div></div>
+    </div>
+  </div>
+  <div class="waiting-bar"><div class="waiting-text">正在发牌，请稍候…</div></div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+</div></div><!-- /phase 1 -->
+
+<!-- ═══ 阶段二：翻牌前 ═══ -->
+<div class="phase-group">
+<div class="phase-title">阶段二：翻牌前 Pre-flop</div>
+<div class="frames-row">
+
+<!-- 03 其他玩家思考中 -->
+<div class="fw">
+<div class="f-num">状态 03</div><div class="f-name">其他玩家思考中<br>（高亮必须非常明显）</div>
+<div class="phone">
+  <div class="top-bar">
+    <div class="menu-btn">≡</div>
+    <div class="bankroll">$12,549</div>
+  </div>
+  <!-- 王：ACTIVE + Dealer -->
+  <div class="seat s-top is-active">
+    <div class="s-av-row">
+      <div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div>
+      <div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$1,000</div></div>
+    </div>
+  </div>
+  <!-- 陈：SB -->
+  <div class="seat s-lu">
+    <div class="avatar av-purple" style="position:relative">
+      陈
+      <div class="pos-badge pb-sb">SB</div>
+    </div>
+    <div class="s-name">陈美玲</div>
+    <div class="s-stack">$15,989</div>
+    <div class="s-bet">本轮 $10</div>
+    
+  </div>
+  <!-- 张：folded -->
+  <div class="seat s-ll is-folded">
+    <div class="avatar av-teal">张</div>
+    <div class="s-name">张伟</div>
+    <div class="s-stack">$800</div>
+    <div class="folded-lbl">弃牌</div>
+  </div>
+  <!-- 李：BB -->
+  <div class="seat s-ru">
+    <div class="avatar av-rust" style="position:relative">
+      李
+      <div class="pos-badge pb-bb">BB</div>
+    </div>
+    <div class="s-name">李大明</div>
+    <div class="s-stack">$480</div>
+    <div class="s-bet">本轮 $20</div>
+    
+  </div>
+  <!-- 赵：folded -->
+  <div class="seat s-rl is-folded">
+    <div class="avatar av-olive">赵</div>
+    <div class="s-name">赵军</div>
+    <div class="s-stack">$2,000</div>
+    <div class="folded-lbl">弃牌</div>
+  </div>
+  <div class="table-oval">
+    <div class="pot">
+      <div class="pot-label">底池</div>
+      <div class="pot-amt">$30</div>
+    </div>
+    <div class="community">
+      <div class="card c-sm c-back"></div><div class="card c-sm c-back"></div>
+      <div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div>
+    </div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$12,549</div></div>
+    </div>
+  </div>
+  <div class="waiting-bar"><div class="waiting-text">等待其他玩家行动…</div>
+      
+    </div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+<!-- 04 玩家加注 + 气泡 -->
+<div class="fw">
+<div class="f-num">状态 04</div><div class="f-name">玩家加注<br>（气泡从头像飘出）</div>
+<div class="phone">
+  <div class="top-bar">
+    <div class="menu-btn">≡</div>
+    <div class="bankroll">$12,549</div>
+  </div>
+  <div class="seat s-top">
+    <div class="s-av-row">
+      <div class="avatar av-green" style="position:relative">王<div class="pos-badge pb-d">D</div><div class="action-bubble">加注 $100 ↑</div></div>
+      <div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$900</div></div>
+    </div>
+    <div class="s-bet">本轮 $100</div>
+  </div>
+  <div class="seat s-lu">
+    <div class="avatar av-purple" style="position:relative">陈<div class="pos-badge pb-sb">SB</div></div>
+    <div class="s-name">陈美玲</div><div class="s-stack">$15,989</div><div class="s-bet">本轮 $10</div>
+    
+  </div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru">
+    <div class="avatar av-rust" style="position:relative">李<div class="pos-badge pb-bb">BB</div></div>
+    <div class="s-name">李大明</div><div class="s-stack">$480</div><div class="s-bet">本轮 $20</div>
+    
+  </div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$130</div></div>
+    <div class="community"><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div></div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$12,549</div></div>
+    </div>
+  </div>
+  <div class="waiting-bar"><div class="waiting-text">等待其他玩家行动…</div></div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+<!-- 05 玩家弃牌 -->
+<div class="fw">
+<div class="f-num">状态 05</div><div class="f-name">玩家弃牌<br>（变暗 + 弃牌气泡）</div>
+<div class="phone">
+  <div class="top-bar">
+    <div class="menu-btn">≡</div>
+    <div class="bankroll">$12,549</div>
+  </div>
+  <div class="seat s-top"><div class="s-av-row"><div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div><div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$900</div></div></div><div class="s-bet">本轮 $100</div></div>
+  <!-- 陈：ACTIVE -->
+  <div class="seat s-lu is-active">
+    <div class="avatar av-purple" style="position:relative">陈<div class="pos-badge pb-sb">SB</div></div>
+    <div class="s-name">陈美玲</div><div class="s-stack">$15,989</div><div class="s-bet">本轮 $10</div>
+    
+  </div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <!-- 李：just folded, bubble -->
+  <div class="seat s-ru is-folded">
+    <div class="avatar av-rust" style="position:relative">
+      李
+      <div class="action-bubble" style="animation-duration:3s">弃牌</div>
+    </div>
+    <div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div>
+  </div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$130</div></div>
+    <div class="community"><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div></div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$12,549</div></div>
+    </div>
+  </div>
+  <div class="waiting-bar"><div class="waiting-text">等待其他玩家行动…</div></div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+<!-- 06 轮到我行动（默认 3 按钮） -->
+<div class="fw">
+<div class="f-num">状态 06</div><div class="f-name">轮到我行动<br>（默认：弃牌 / 跟注 / 加注）</div>
+<div class="phone">
+  <div class="top-bar">
+    <div class="menu-btn">≡</div>
+    <div class="bankroll">$12,549</div>
+  </div>
+  <div class="seat s-top"><div class="s-av-row"><div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div><div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$900</div></div></div><div class="s-bet">本轮 $100</div></div>
+  <div class="seat s-lu"><div class="avatar av-purple">陈</div><div class="s-name">陈美玲</div><div class="s-stack">$15,889</div><div class="s-bet">本轮 $100</div></div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru is-folded"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval" style="border-color:rgba(212,175,55,.25);">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$230</div></div>
+    <div class="community"><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div></div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$12,549</div></div>
+    </div>
+  </div>
+  <!-- Action bar: 3 default buttons -->
+  <div class="action-bar" id="ab06">
+    <div class="ab-main" id="ab06-main">
+      <div class="btn b-fold b-h52">弃牌</div>
+      <div class="btn b-call b-h52">跟注 $100</div>
+      <div class="btn b-raise-trigger b-h52" onclick="openRaise('ab06')">加注 ▸</div>
+    </div>
+    <div class="ab-raise" id="ab06-raise">
+      <div class="stepper-row">
+        <div class="stepper"><div class="step-btn">−</div><div class="step-val">$250</div><div class="step-btn">+</div></div>
+        <div class="btn b-confirm-raise b-h46">确认加注</div>
+      </div>
+      <div class="raise-bottom">
+        <div class="btn b-cancel b-h46" onclick="closeRaise('ab06')">← 返回</div>
+        <div class="btn b-fold b-h46" style="flex:1">弃牌</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="f-note">点「加注 ▸」可展开调节面板</div>
+</div>
+
+<!-- 07 我展开加注（展开状态静态展示） -->
+<div class="fw">
+<div class="f-num">状态 07</div><div class="f-name">我选择加注<br>（展开后：快捷倍数 + 确认）</div>
+<div class="phone">
+  <div class="top-bar">
+    <div class="menu-btn">≡</div>
+    <div class="bankroll">$12,549</div>
+  </div>
+  <div class="seat s-top"><div class="s-av-row"><div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div><div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$900</div></div></div><div class="s-bet">本轮 $100</div></div>
+  <div class="seat s-lu"><div class="avatar av-purple">陈</div><div class="s-name">陈美玲</div><div class="s-stack">$15,889</div><div class="s-bet">本轮 $100</div></div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru is-folded"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval" style="border-color:rgba(212,175,55,.25);">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$230</div></div>
+    <div class="community"><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div></div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$12,549</div></div>
+    </div>
+  </div>
+  <!-- Already in raise-expanded mode -->
+  <div class="action-bar">
+    <div class="ab-raise open">
+      <div class="stepper-row">
+        <div class="stepper"><div class="step-btn">−</div><div class="step-val">$250</div><div class="step-btn">+</div></div>
+        <div class="btn b-confirm-raise b-h46">确认加注</div>
+      </div>
+      <div class="raise-bottom">
+        <div class="btn b-cancel b-h46">← 返回</div>
+        <div class="btn b-fold b-h46" style="flex:1">弃牌</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+</div></div><!-- /phase 2 -->
+
+<!-- ═══ 阶段三：翻牌 ═══ -->
+<div class="phase-group">
+<div class="phase-title">阶段三：翻牌 Flop（3 张公共牌）</div>
+<div class="frames-row">
+<!-- 08 翻牌 -->
+<div class="fw">
+<div class="f-num">状态 08</div><div class="f-name">翻牌阶段<br>（陈美玲轮到行动）</div>
+<div class="phone">
+  <div class="top-bar"><div class="menu-btn">≡</div><div class="bankroll">$12,299</div></div>
+  <div class="seat s-top"><div class="s-av-row"><div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div><div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$650</div></div></div></div>
+  <div class="seat s-lu is-active">
+    <div class="avatar av-purple">陈</div>
+    <div class="s-name">陈美玲</div><div class="s-stack">$15,639</div>
+    
+  </div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru is-folded"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$730</div></div>
+    <div class="community">
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">Q</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">3</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">Q</span><span class="cs">♦</span></div><div class="c-ct">♦</div></div>
+      <div class="card c-sm c-back"></div><div class="card c-sm c-back"></div>
+    </div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$12,299</div></div>
+    </div>
+  </div>
+  <div class="waiting-bar"><div class="waiting-text">等待其他玩家行动…</div></div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+</div></div>
+
+<!-- ═══ 阶段四：转牌 ═══ -->
+<div class="phase-group">
+<div class="phase-title">阶段四：转牌 Turn（第 4 张）</div>
+<div class="frames-row">
+<!-- 09 转牌，轮到我 -->
+<div class="fw">
+<div class="f-num">状态 09</div><div class="f-name">转牌 · 轮到我行动</div>
+<div class="phone">
+  <div class="top-bar"><div class="menu-btn">≡</div><div class="bankroll">$12,099</div></div>
+  <div class="seat s-top"><div class="s-av-row"><div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div><div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$450</div></div></div><div class="s-bet">本轮 $200</div></div>
+  <div class="seat s-lu"><div class="avatar av-purple">陈</div><div class="s-name">陈美玲</div><div class="s-stack">$15,439</div><div class="s-bet">本轮 $200</div></div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru is-folded"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval" style="border-color:rgba(212,175,55,.25);">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$1,130</div></div>
+    <div class="community">
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">Q</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">3</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">Q</span><span class="cs">♦</span></div><div class="c-ct">♦</div></div>
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">7</span><span class="cs">♣</span></div><div class="c-ct">♣</div></div>
+      <div class="card c-sm c-back"></div>
+    </div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$12,099</div></div>
+    </div>
+  </div>
+  <div class="action-bar">
+    <div class="ab-main">
+      <div class="btn b-fold b-h52">弃牌</div>
+      <div class="btn b-call b-h52">跟注 $200</div>
+      <div class="btn b-raise-trigger b-h52">加注 ▸</div>
+    </div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+</div></div>
+
+<!-- ═══ 阶段五：河牌 ═══ -->
+<div class="phase-group">
+<div class="phase-title">阶段五：河牌 River（5 张全亮）</div>
+<div class="frames-row">
+<!-- 10 河牌 -->
+<div class="fw">
+<div class="f-num">状态 10</div><div class="f-name">河牌 · 等待对手行动</div>
+<div class="phone">
+  <div class="top-bar"><div class="menu-btn">≡</div><div class="bankroll">$11,899</div></div>
+  <div class="seat s-top is-active"><div class="s-av-row"><div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div><div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$250</div></div></div></div>
+  <div class="seat s-lu"><div class="avatar av-purple">陈</div><div class="s-name">陈美玲</div><div class="s-stack">$15,239</div></div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru is-folded"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$1,530</div></div>
+    <div class="community">
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">Q</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">3</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">Q</span><span class="cs">♦</span></div><div class="c-ct">♦</div></div>
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">7</span><span class="cs">♣</span></div><div class="c-ct">♣</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">2</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$11,899</div><div class="hero-bet">已投入 $200</div></div>
+    </div>
+  </div>
+  <div class="waiting-bar"><div class="waiting-text">等待其他玩家行动…</div></div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+</div></div>
+
+<!-- ═══ 阶段六：摊牌与结算 ═══ -->
+<div class="phase-group">
+<div class="phase-title">阶段六：摊牌 &amp; 结算</div>
+<div class="frames-row">
+
+<!-- 11 摊牌 -->
+<div class="fw">
+<div class="f-num">状态 11</div><div class="f-name">摊牌<br>（所有玩家亮出手牌）</div>
+<div class="phone">
+  <div class="top-bar"><div class="menu-btn">≡</div><div class="bankroll">$11,899</div></div>
+  <div class="seat s-top">
+    <div class="s-av-row">
+      <div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div>
+      <div class="s-info">
+        <div class="s-name">王建国</div><div class="s-stack">$250</div>
+        <div class="shown-cards" style="margin-top:3px;">
+          <div class="sc-card c-face" style="background:#F7F2E8;border:1px solid rgba(0,0,0,.07);box-shadow:0 2px 8px rgba(0,0,0,.35)"><span class="sct">K</span><span class="scc">♠</span></div>
+          <div class="sc-card c-face c-red" style="background:#F7F2E8;border:1px solid rgba(0,0,0,.07);box-shadow:0 2px 8px rgba(0,0,0,.35);color:#C0392B"><span class="sct">A</span><span class="scc" style="color:#C0392B">♥</span></div>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:8px;color:#8A7850;">一对 Q</div>
+      </div>
+    </div>
+  </div>
+  <div class="seat s-lu">
+    <div class="avatar av-purple">陈</div>
+    <div class="s-name">陈美玲</div><div class="s-stack">$15,239</div>
+    <div class="shown-cards">
+      <div class="sc-card c-face c-red" style="background:#F7F2E8;border:1px solid rgba(0,0,0,.07);box-shadow:0 2px 8px rgba(0,0,0,.35);color:#C0392B"><span class="sct">5</span><span class="scc">♦</span></div>
+      <div class="sc-card c-face" style="background:#F7F2E8;border:1px solid rgba(0,0,0,.07);box-shadow:0 2px 8px rgba(0,0,0,.35)"><span class="sct">5</span><span class="scc">♣</span></div>
+    </div>
+    <div style="font-family:'Space Mono',monospace;font-size:8px;color:#8A7850;margin-top:2px;">两对 Q&amp;5</div>
+  </div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru is-folded"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$1,780</div></div>
+    <div class="community">
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">Q</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">3</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">Q</span><span class="cs">♦</span></div><div class="c-ct">♦</div></div>
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">7</span><span class="cs">♣</span></div><div class="c-ct">♣</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">2</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$11,899</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#8A7850;margin-top:2px;">一对 Q（J踢脚）</div></div>
+    </div>
+  </div>
+  <div class="waiting-bar"><div class="waiting-text">正在比牌…</div></div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+<!-- 12 结算弹窗 -->
+<div class="fw">
+<div class="f-num">状态 12</div><div class="f-name">结算弹窗<br>（居中 Modal + 5s 倒计时）</div>
+<div class="phone">
+  <div class="top-bar"><div class="menu-btn">≡</div><div class="bankroll">$11,899</div></div>
+  <!-- Background game state (dimmed) -->
+  <div class="seat s-top" style="opacity:.3"><div class="s-av-row"><div class="avatar av-green">王</div><div class="s-info"><div class="s-name">王建国</div></div></div></div>
+  <div class="seat s-lu" style="opacity:.3"><div class="avatar av-purple">陈</div><div class="s-name">陈美玲</div></div>
+  <div class="table-oval" style="opacity:.4">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$1,780</div></div>
+    <div class="community">
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">Q</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">3</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">Q</span><span class="cs">♦</span></div><div class="c-ct">♦</div></div>
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">7</span><span class="cs">♣</span></div><div class="c-ct">♣</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">2</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+  </div>
+  <!-- Settlement Modal -->
+  <div class="modal-overlay" id="modal12">
+    <div class="modal">
+      <div class="modal-title">✦ 本局结算</div>
+      <div class="modal-winner-av av-purple">陈</div>
+      <div class="modal-winner-name">陈美玲</div>
+      <div class="modal-win-amt">+ $1,780</div>
+      <div class="modal-hand">两对 Q 和 5</div>
+      <div class="modal-divider"></div>
+      <div class="settle-list">
+        <div class="settle-row"><span class="sr-name">陈美玲</span><span class="sr-amt sr-win">+$1,780</span></div>
+        <div class="settle-row"><span class="sr-name">王建国</span><span class="sr-amt sr-lose">−$500</span></div>
+        <div class="settle-row hero-row"><span class="sr-name">Augustine（我）</span><span class="sr-amt sr-lose">−$650</span></div>
+        <div class="settle-row"><span class="sr-name">张伟 / 李大明 / 赵军</span><span class="sr-amt sr-neutral">弃牌</span></div>
+      </div>
+      <div class="modal-btn" onclick="document.getElementById('modal12').style.display='none'">
+        我知道了（<span class="cd" id="cd12">5</span>s）
+      </div>
+    </div>
+  </div>
+</div>
+<div class="f-note">5 秒后自动关闭，可手动点击关闭</div>
+</div>
+
+</div></div><!-- /phase 6 -->
+
+<!-- ═══ 特殊状态 ═══ -->
+<div class="phase-group">
+<div class="phase-title">特殊状态</div>
+<div class="frames-row">
+
+<!-- 13 全押 -->
+<div class="fw">
+<div class="f-num">状态 13</div><div class="f-name">玩家全押<br>（红色边框 + ALL IN 标签）</div>
+<div class="phone">
+  <div class="top-bar"><div class="menu-btn">≡</div><div class="bankroll">$11,899</div></div>
+  <div class="seat s-top is-allin">
+    <div class="s-av-row">
+      <div class="avatar av-green">王<div class="pos-badge pb-d">D</div></div>
+      <div class="s-info"><div class="s-name">王建国</div><div class="s-stack" style="color:#C0392B">$0</div></div>
+    </div>
+    <div class="allin-lbl">ALL IN</div>
+  </div>
+  <div class="seat s-lu is-active"><div class="avatar av-purple">陈</div><div class="s-name">陈美玲</div><div class="s-stack">$15,089</div></div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru is-folded"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt">$2,030</div></div>
+    <div class="community">
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">Q</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">3</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">Q</span><span class="cs">♦</span></div><div class="c-ct">♦</div></div>
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">7</span><span class="cs">♣</span></div><div class="c-ct">♣</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">2</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+  </div>
+  <div class="hero-section">
+    <div class="hero-cards">
+      <div class="card c-lg c-face"><div class="c-tl"><span class="cr">8</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-lg c-face c-red"><div class="c-tl"><span class="cr">J</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+    </div>
+    <div class="hero-row">
+      <div class="hero-info"><div class="hero-name">Augustine（我）</div><div class="hero-chips">$11,899</div><div class="hero-bet">已投入 $200</div></div>
+    </div>
+  </div>
+  <div class="waiting-bar"><div class="waiting-text">等待其他玩家行动…</div></div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+<!-- 14 其他人全弃 直接胜 -->
+<div class="fw">
+<div class="f-num">状态 14</div><div class="f-name">其他人全弃牌<br>（直接胜，弹窗无需摊牌）</div>
+<div class="phone">
+  <div class="top-bar"><div class="menu-btn">≡</div><div class="bankroll">$12,929</div></div>
+  <div class="seat s-top is-folded"><div class="s-av-row"><div class="avatar av-green">王</div><div class="s-info"><div class="s-name">王建国</div><div class="s-stack">$900</div></div></div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-lu is-folded"><div class="avatar av-purple">陈</div><div class="s-name">陈美玲</div><div class="s-stack">$15,639</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ll is-folded"><div class="avatar av-teal">张</div><div class="s-name">张伟</div><div class="s-stack">$800</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-ru is-folded"><div class="avatar av-rust">李</div><div class="s-name">李大明</div><div class="s-stack">$480</div><div class="folded-lbl">弃牌</div></div>
+  <div class="seat s-rl is-folded"><div class="avatar av-olive">赵</div><div class="s-name">赵军</div><div class="s-stack">$2,000</div><div class="folded-lbl">弃牌</div></div>
+  <div class="table-oval" style="opacity:.5">
+    <div class="pot"><div class="pot-label">底池</div><div class="pot-amt" style="color:#D4AF37">$680</div></div>
+    <div class="community">
+      <div class="card c-sm c-face"><div class="c-tl"><span class="cr">Q</span><span class="cs">♠</span></div><div class="c-ct">♠</div></div>
+      <div class="card c-sm c-face c-red"><div class="c-tl"><span class="cr">3</span><span class="cs">♥</span></div><div class="c-ct">♥</div></div>
+      <div class="card c-sm c-back"></div><div class="card c-sm c-back"></div><div class="card c-sm c-back"></div>
+    </div>
+  </div>
+  <!-- Direct win modal -->
+  <div class="modal-overlay" id="modal14">
+    <div class="modal">
+      <div class="modal-title">✦ 本局结算</div>
+      <div class="modal-winner-av av-gold">我</div>
+      <div class="modal-winner-name" style="color:#D4AF37">Augustine（我）</div>
+      <div class="modal-win-amt">+ $680</div>
+      <div class="modal-hand">其他玩家全部弃牌</div>
+      <div class="modal-divider"></div>
+      <div class="settle-list">
+        <div class="settle-row hero-row"><span class="sr-name">Augustine（我）</span><span class="sr-amt sr-win">+$680</span></div>
+        <div class="settle-row"><span class="sr-name">王建国</span><span class="sr-amt sr-neutral">弃牌</span></div>
+        <div class="settle-row"><span class="sr-name">陈美玲</span><span class="sr-amt sr-neutral">弃牌</span></div>
+      </div>
+      <div class="modal-btn" onclick="document.getElementById('modal14').style.display='none'">
+        我知道了（<span class="cd" id="cd14">5</span>s）
+      </div>
+    </div>
+  </div>
+</div>
+<div class="f-note">批注区</div>
+</div>
+
+</div></div><!-- /special -->
+
+<script>
+// ── Action bar toggle ──
+function openRaise(id) {
+  document.getElementById(id+'-main').style.display = 'none';
+  document.getElementById(id+'-raise').classList.add('open');
+}
+function closeRaise(id) {
+  document.getElementById(id+'-main').style.display = 'flex';
+  document.getElementById(id+'-raise').classList.remove('open');
+}
+
+// ── Modal countdown ──
+document.addEventListener('DOMContentLoaded', () => {
+  ['12','14'].forEach(n => {
+    const cdEl = document.getElementById('cd'+n);
+    const modal = document.getElementById('modal'+n);
+    if (!cdEl || !modal) return;
+    let t = 5;
+    const timer = setInterval(() => {
+      t--;
+      cdEl.textContent = t;
+      if (t <= 0) { clearInterval(timer); modal.style.display = 'none'; }
+    }, 1000);
+  });
+});
+</script>
+</body>
+</html>
