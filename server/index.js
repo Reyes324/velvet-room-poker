@@ -127,7 +127,20 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
       const s = pveSessions.get(pveId);
       if (!s || !s.isAiTurn()) return;
       s.touch();
-      const r = s.aiAction();
+      // aiAction 现在会在"这手牌停止推进"时主动抛错（见 PveSession 的
+      // AI_DECISIONS_PER_HAND_LIMIT）。接住它：把现场打进服务端日志供事后
+      // 定位，给玩家一个明确提示并结束这局，而不是让循环继续自我重排、把
+      // 桌子永久冻死——那正是这个守卫要防的结果。
+      let r;
+      try {
+        r = s.aiAction();
+      } catch (e) {
+        console.error('[pve] 牌局停止推进，已中止该局:', e.message);
+        const socketId = pveActiveSocket.get(pveId);
+        if (socketId) io.to(socketId).emit('game:error', '这局出现异常已中止，请重新开始一局');
+        pveSessions.delete(pveId);
+        return;
+      }
       if (r) pveHandleResult(s, r.result);
       pveRunAiLoop(pveId);
     }, delay);

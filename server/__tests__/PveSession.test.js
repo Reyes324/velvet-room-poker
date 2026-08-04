@@ -731,3 +731,50 @@ describe('PveSession — 按对手下注尺寸推断范围 + 两次胜率（2026
     expect(second.opponentRangePct).toBeLessThanOrEqual(first.opponentRangePct);
   });
 });
+
+describe('PveSession — 牌局不推进的安全网（2026-08-04）', () => {
+  // 2026-08-03 修掉了一个"零增量加注"导致牌桌永久冻结的 bug（tasks.md
+  // 69.23），但之后一次 15×200 平衡回归里守卫又触发了一次，说明还有更罕见
+  // 的路径没堵住且难以稳定复现。这个守卫的作用是让它自己暴露现场：与其无限
+  // 空转把桌子冻死，不如抛错并带上完整状态。
+  it('同一手牌内 AI 连续决策超过上限时抛错，而不是无限空转', () => {
+    // 用一个永远不推进回合的假策略模拟"卡住"：始终返回 check。真实引擎里
+    // check 会推进 actionIndex，所以这里直接把 _dispatch 打桩成 no-op，
+    // 精确模拟"动作被接受但回合没推进"这个致命形态。
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
+    s._dispatch = () => ({}); // 不报错、也不推进——正是卡死的形态
+    expect(() => {
+      for (let i = 0; i < 500; i++) s.aiAction();
+    }).toThrow(/停止推进/);
+  });
+
+  it('抛出的错误带上足够定位的现场信息（手数、街、行动者、筹码）', () => {
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'check' });
+    s._dispatch = () => ({});
+    let msg = '';
+    try {
+      for (let i = 0; i < 500; i++) s.aiAction();
+    } catch (e) { msg = e.message; }
+    expect(msg).toMatch(/phase=/);
+    expect(msg).toMatch(/actor=/);
+    expect(msg).toMatch(/currentBet=/);
+    expect(msg).toMatch(/seats=\[/);
+  });
+
+  it('正常牌局不会触发守卫——连打多手都不抛错', () => {
+    const s = makeSession({ seatCount: 4 });
+    fakeStrategy.pickAction.mockReturnValue({ action: 'call' });
+    expect(() => {
+      let guard = 0;
+      for (let hand = 0; hand < 5; hand++) {
+        while (!s.isOver() && guard++ < 400) {
+          if (s.isAiTurn()) s.aiAction();
+          else s.humanAction('call');
+        }
+        if (s.isOver()) s.readyNext();
+      }
+    }).not.toThrow();
+  });
+});

@@ -31,6 +31,12 @@ const OVERBET_BOTTOM_PCT = 0.15;
 // 池施压时，还敢跟我再加的只会更强，不该反过来被放宽。
 const CALLER_RANGE_PCT = 0.35;
 
+// 同一手牌里允许的 AI 连续决策次数上限——超过即判定"牌局停止推进"并抛错。
+// 见 aiAction() 里的说明：这是为了让残余的死循环自己暴露现场，而不是无限
+// 空转把桌子冻死。8 人桌 × 4 条街、每街可多轮再加注，正常量级在几十次，
+// 200 是有充足余量的上限。
+const AI_DECISIONS_PER_HAND_LIMIT = 200;
+
 function betSizeRangeFactor(ratio) {
   for (const { maxRatio, factor } of BET_SIZE_RANGE_FACTORS) {
     if (ratio <= maxRatio) return factor;
@@ -274,6 +280,37 @@ class PveSession {
   // layer, not the decision engine.
   aiAction() {
     if (!this.isAiTurn()) return null;
+    // 不推进检测（2026-08-04）：2026-08-03 修掉了一个"零增量加注"导致牌桌
+    // 永久冻结的 bug（见 tasks.md 69.23），但之后一次 15×200 的平衡回归里
+    // 守卫又触发了一次——说明还有一条更罕见的路径没堵住，且多次尝试都没能
+    // 稳定复现。与其继续盲猜，不如让程序自己抓：同一手牌里 AI 连续决策数
+    // 超过上限就抛错并带上完整现场，而不是无限空转。
+    //
+    // 双重作用：(1) 线上真碰上时，玩家看到的是一个明确的错误而不是永久
+    // 卡死的桌子；(2) 离线跑量（pveBalanceCheck/pvePreflopStats）能直接
+    // 拿到"卡在哪一手、什么牌面、谁在行动、筹码多少"，不用再靠复现去猜。
+    //
+    // 上限依据：8 人桌 × 4 条街，每条街理论上可以多轮再加注，正常一手牌的
+    // AI 决策数在几十次量级，200 留了充足余量——正常牌局绝不会碰到。
+    if (this.handNumber !== this._aiDecisionHand) {
+      this._aiDecisionHand = this.handNumber;
+      this._aiDecisionCount = 0;
+    }
+    this._aiDecisionCount += 1;
+    if (this._aiDecisionCount > AI_DECISIONS_PER_HAND_LIMIT) {
+      const g = this.game;
+      const actor = this.actionPlayerId;
+      const p = g.players.find(x => x.id === actor);
+      const seats = g.players
+        .map(x => `${x.id}(chips=${x.chips},bet=${x.bet},${x.status})`)
+        .join(' ');
+      throw new Error(
+        `PVE 牌局停止推进：第 ${this.handNumber} 手内 AI 已连续决策 ${this._aiDecisionCount} 次。`
+        + ` phase=${g.phase} actor=${actor} currentBet=${g.currentBet} pot=${g.pot}`
+        + ` toCall=${p ? g.currentBet - p.bet : 'n/a'} maxTotal=${g.maxTotalFor(actor)}`
+        + ` seats=[${seats}]`,
+      );
+    }
     const actingId = this.actionPlayerId;
     const seat = this.aiSeats.find(s => s.id === actingId);
     const aiIdx = this.game.players.findIndex(p => p.id === actingId);
