@@ -289,6 +289,60 @@ const FACING_RAISE_FOLD_SCALE = 0.65;
 // 比例算的尺度在筹码这么浅的时候天然算不出接近全下的数，不加这个特判，
 // 浅筹码根本不会自然收敛到标准的 push/fold 打法。
 const SHORT_STACK_BB_THRESHOLD = 15;
+
+// ---------------------------------------------------------------------------
+// 翻前起手牌门槛（2026-08-05）
+//
+// 病根：在此之前 AI **完全没有"起手牌范围"这个概念**。HAND_CLASSES（按 Chen
+// 分排好序的 169 个手牌类别）一直只被用来猜**对手**的范围，从没拿来筛过自己
+// 的牌——翻前和翻后走的是同一套纯 EV 蒙特卡洛，一手牌该不该开池完全由"这一
+// 注的期望值是不是正的"决定。真实德扑不是这么打的：翻前信息最少、后面还有
+// 三条街要打，人类靠的是一张按位置划定的起手牌表，而不是每手现算 EV。
+//
+// 缺了它的后果是三个看起来无关的症状，其实是同一个根（见 tasks.md 69.24 /
+// 69.27 / 69.28）：满桌 PFR 31.6%（目标 15-25%）、3bet 33%（真人 7-10%）、
+// 全下率 14.7%（真人 2-5%，因为反复破产重买把筹码打到浅筹码区）。
+//
+// 这里补的就是那张表。索引是 playersToActAfter = 这条街上我之后还没行动的
+// 活跃玩家数——沿用 2026-08-04 位置感知设计文档定的核心量（见
+// docs/superpowers/specs/2026-08-04-pve-ai-positional-awareness-design.md）：
+// 选连续量而不是"早/中/晚位"分档，因为分档在桌型变化时语义会漂移，而这个量
+// 在任何桌型、任何街上都直接可比，单挑也天然成立。
+//
+// 数值对齐公开的标准开池范围（枪口位约 12%、按钮位约 45%），八个位置平均下
+// 来约 24%，正落在 15-25% 目标区间的上沿——门槛是**上限**不是配额，EV 仍然
+// 可以在范围内选择不加注，所以实际 PFR 只会更低。
+// 数值经过一轮实测校准：第一版取的是教科书开池范围的原值
+// [0.55,0.45,0.33,0.26,0.21,0.17,0.14,0.12]，满桌实测 PFR 落在 14.6-16.2%
+// ——擦着 15-25% 目标区间的下沿，两次独立运行里有一次已经掉出区间。门槛是
+// 上限、EV 还会在范围内再筛一道，所以实际 PFR 必然低于门槛均值；照搬教科书
+// 数字会系统性偏紧，把 AI 打成"岩石"（只拿最好的牌进攻，同样不像真人）。
+// 整体上调约 20% 后复测：PFR 15.4%，只挪动了 0.8pp。这个几乎不动的结果本身
+// 是有信息量的——说明**多数位置上真正卡住的不是这道门槛而是 EV**：范围内的
+// 牌 EV 引擎还会再筛掉一批（池控制折扣、MDF 弃牌权益、选择效应三层叠加）。
+// 门槛的作用是砍掉范围外那条长尾（40% 以后的牌开池率 25%/20%/11% → 1%/2%/
+// 1%），不是决定范围内打多凶。保留上调后的值：代价为零，而且能把 PFR 从贴着
+// 15% 下沿的位置推开一点，不至于因为随机波动掉出区间。想继续往区间中部拉，
+// 要动的是 EV 那一侧而不是这张表——已记入 tasks.md 的 backlog。
+const PREFLOP_OPEN_THRESHOLDS = [0.62, 0.52, 0.40, 0.32, 0.26, 0.21, 0.17, 0.14];
+function preflopOpenThreshold(playersToActAfter) {
+  const i = Math.max(0, Math.min(PREFLOP_OPEN_THRESHOLDS.length - 1, playersToActAfter));
+  return PREFLOP_OPEN_THRESHOLDS[i];
+}
+// 面对加注时（3bet/4bet）范围要比开池窄得多——开池是在跟一群还没表态的人
+// 抢底池，3bet 是在跟一个已经表示自己有牌的人对抗。乘完之后各位置落在
+// 4%-12%，平均约 8%，对齐真人 3bet 频率 7-10% 这个公开基准。
+const PREFLOP_REBET_TIGHTEN = 0.35;
+
+// 每个手牌类别"排在它前面的更强组合"占全部 1326 个组合的比例——也就是这手
+// 牌的强度百分位（越小越强，AA=0）。跟 getRangeSet 复用同一份已经排好序、
+// 已经标注过 cumBefore 的 HAND_CLASSES，这里只是把它反过来用：以前是"给我
+// 前 X% 的集合"（猜对手），现在是"我这手牌排在前百分之几"（筛自己）。
+const HAND_PERCENTILE = new Map(HAND_CLASSES.map(c => [c.key, c.cumBefore / TOTAL_COMBOS]));
+function handStrengthPercentile(holeCards) {
+  if (!Array.isArray(holeCards) || holeCards.length < 2) return null;
+  return HAND_PERCENTILE.get(handClassKey(holeCards[0], holeCards[1])) ?? null;
+}
 // EV-最优动作是弃牌、且自己胜率明显偏低时，保留这么大的概率不按最优走、
 // 改成诈唬式加注——避免"胜率一低就必弃牌"这种能被一眼看穿的规律。
 // 2026-08-02 最终审查修复：AI 几乎从不弃牌的问题修好之后，会有远多于以前
@@ -421,6 +475,10 @@ function pickAction(params) {
     opponentFoldToRaiseRate = null,
     style = null,
     facingRaise = false,
+    // 翻前起手牌门槛用的两个量（2026-08-05）。两者都必须给才会启用这道门
+    // 槛——任一为 null/undefined 时行为与改动前逐位一致，既有测试不受影响。
+    handPercentile = null,      // 自己这手牌的强度百分位，0=AA，1=最差（由 handStrengthPercentile 算）
+    playersToActAfter = null,   // 这条街上我之后还没行动的活跃玩家数（越多=位置越差）
     noiseFraction = 0, // 感知噪声标准差 = potSize × 这个比例；0 = 不开启，精确比较（默认，向后兼容）
   } = params;
 
@@ -598,7 +656,37 @@ function pickAction(params) {
   //     "80% 胜率的短筹码被弃牌"这个白送筹码的 bug，见本文件 all-in-for-less
   //     那组测试。
   // 先前用 raiseCandidate > currentBet 会把后者一并误杀。
-  const canRaise = cost > 0;
+  // 翻前起手牌门槛（2026-08-05，见 PREFLOP_OPEN_THRESHOLDS 上方的长注释）。
+  //
+  // 实测动机：8 人满桌统计 AI 在无人加注时按手牌强度分档的开池率——
+  //   前 0-20% 强牌 76% / 20-40% 50% / 40-60% 25% / 60-80% 20% / 后 20% 垃圾 11%
+  // 形状是单调递减的（EV 引擎没搞反），但整体右移：**32% 的开池来自后 60%
+  // 的牌**，而真人满桌 40% 以后基本不开。补的就是这一刀。
+  //
+  // 三条设计约束，都有前车之鉴：
+  // 1. **只否决加注，不强制弃牌**。门槛回答的是"这手牌配不配主动进攻"，
+  //    至于被否决之后是跟注还是弃牌，仍然交给 EV 按底池赔率决定——真人也
+  //    是这样：范围外的牌不代表面对一个便宜的跟注也必须扔。
+  // 2. **用客观的手牌百分位，不掺任何风格/主观调整**。这跟 2026-08-02
+  //    （风格调整过的胜率流进池控制阈值）和 2026-08-03（equityIfCalled 满
+  //    桌符号反了）踩的是同一类坑：客观事实与主观偏好必须分层。风格影响的
+  //    是"范围内的牌打多凶"，不该影响"范围本身有多宽"。
+  // 3. **浅筹码 push/fold 不受这道门槛约束**。10-15bb 的正确推牌范围本来
+  //    就远宽于开池范围（后面没有翻后可打，靠的是弃牌权益而不是牌力）。而
+  //    且那条分支已经有自己的筛子——实测 12bb 需要 40% 胜率、15bb 需要 50%
+  //    才会推，不是乱推。两道门槛叠加会把浅筹码打成过度保守。
+  const preflopRangeVeto = street === 'preflop'
+    && !isShortStackPreflop
+    && handPercentile != null
+    && playersToActAfter != null
+    && handPercentile > preflopOpenThreshold(playersToActAfter)
+      * (facingRaise ? PREFLOP_REBET_TIGHTEN : 1);
+
+  // 门槛并进 canRaise 而不是单独判一次：canRaise 已经是本文件里"这个 raise
+  // 到底成不成立"的唯一收口（零增量空动作的两处修复都挂在它上面），诈唬层
+  // 也复用它。走同一个口子能保证诈唬不会绕过范围门槛重新开一个漏洞——翻前
+  // 拿垃圾牌诈唬开池正是这次要消灭的行为。
+  const canRaise = cost > 0 && !preflopRangeVeto;
 
   let bestAction;
   if (toCall === 0) {
@@ -659,4 +747,5 @@ module.exports = {
   computeEquity, pickAction, raiseSizeFraction, STYLES, EV_NOISE_FRACTION,
   POT_CONTROL_MURKY_LOW, POT_CONTROL_MURKY_HIGH, POT_CONTROL_DISCOUNT,
   SIZE_PRESSURE_CAP, sizePressure, potCommitmentFactor, POT_COMMIT_PIVOT, POT_COMMIT_FLOOR,
+  handStrengthPercentile, preflopOpenThreshold, PREFLOP_OPEN_THRESHOLDS, PREFLOP_REBET_TIGHTEN,
 };

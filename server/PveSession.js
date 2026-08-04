@@ -507,6 +507,38 @@ class PveSession {
         return { opponentCommitted: deepest.totalBet, opponentRemaining: deepest.chips };
       })(),
       liveOpponentCount,
+      // 翻前起手牌门槛用的两个量（2026-08-05，见 pveStrategy.js 里
+      // PREFLOP_OPEN_THRESHOLDS 的注释）。
+      //
+      // playersToActAfter = 这条街上我之后还没行动的活跃玩家数。沿用
+      // 2026-08-04 位置感知设计文档定的核心量：从当前行动位往后绕一圈，数
+      // 还没弃牌、且这条街还没行动过的人。数据全部现成（actionIndex /
+      // actedThisStreet / status），不需要任何引擎改动。
+      //
+      // 为什么不直接用 liveOpponentCount 代替：翻前第一圈里两者恰好相等
+      // （前面弃掉的人同时从"还没弃牌"和"还没说话"两个集合里消失），但翻
+      // 后就彻底脱钩——liveOpponentCount 在一条街内恒定不动，而"我后面还有
+      // 几个人能反应"是递减的。虽然这道门槛目前只作用于翻前，仍然按正确的
+      // 语义算，避免以后接翻后时踩到这个隐式等价。
+      // 刻意直接用模块的 handStrengthPercentile，而不是走可注入的
+      // this.strategy——手牌百分位是一张固定的查表（Chen 分排序），是客观
+      // 事实不是策略选择，没有任何理由让它跟着注入对象换实现。更要紧的是
+      // 健壮性：写成 this.strategy.handStrengthPercentile?.() 时，任何只
+      // 实现了 computeEquity/pickAction 的注入对象都会让它静默返回
+      // undefined，整道门槛无声失效。这个坑当场就踩到了——本轮的诊断脚本
+      // 正是这样注入的，跑出"门槛毫无效果"的假数据，跟正式验收脚本
+      // （PFR 31.6%→14.6%）直接矛盾，查了才发现是量错了不是修错了。
+      handPercentile: pveStrategy.handStrengthPercentile(ai.holeCards),
+      playersToActAfter: (() => {
+        const ps = this.game.players;
+        const n = ps.length;
+        let count = 0;
+        for (let k = 1; k < n; k += 1) {
+          const p = ps[(aiIdx + k) % n];
+          if (p.status !== 'folded' && !this.game.actedThisStreet.has(p.id)) count += 1;
+        }
+        return count;
+      })(),
       bigBlind: this.bigBlind,
       opponentFoldToRaiseRate,
       style: seat.style,

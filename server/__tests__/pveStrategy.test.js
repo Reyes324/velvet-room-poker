@@ -11,6 +11,10 @@ const {
   POT_CONTROL_DISCOUNT,
   SIZE_PRESSURE_CAP,
   sizePressure,
+  handStrengthPercentile,
+  preflopOpenThreshold,
+  PREFLOP_OPEN_THRESHOLDS,
+  PREFLOP_REBET_TIGHTEN,
 } = require('../pveStrategy');
 
 // 2026-08-04（Minor 2）：以前在两个 it() 里各自重复定义了一份逐位相同的
@@ -898,5 +902,127 @@ describe('pveStrategy — toCall>0 时的零增量加注（2026-08-04 真实跑�
     const d = pickAction({ ...healthy, equity: 0.95, equityIfCalled: 0.95, random: () => 0.5 });
     expect(['raise', 'allin']).toContain(d.action);
     expect(d.raiseTo).toBeGreaterThan(healthy.currentBet);
+  });
+});
+
+describe('pveStrategy — 翻前起手牌门槛（2026-08-05）', () => {
+  // 无人加注、正常筹码深度（50bb）的标准开池局面
+  const openSpot = {
+    street: 'preflop', toCall: 20, currentBet: 20, potSize: 30,
+    myChips: 1000, minRaiseTo: 40, bigBlind: 20,
+    liveOpponentCount: 1, facingRaise: false, random: () => 0.5,
+  };
+
+  it('手牌百分位：越强的牌排名越靠前，AA 为 0', () => {
+    expect(handStrengthPercentile(['Ah', 'Ad'])).toBe(0);
+    const aks = handStrengthPercentile(['Ah', 'Kh']);
+    const t2o = handStrengthPercentile(['Th', '2s']);
+    const o72 = handStrengthPercentile(['7h', '2s']);
+    expect(aks).toBeLessThan(0.05);
+    expect(t2o).toBeGreaterThan(0.8);
+    expect(o72).toBeGreaterThan(t2o);
+  });
+
+  it('手牌百分位：输入不合法时返回 null（门槛随之不启用，不会误伤）', () => {
+    expect(handStrengthPercentile(undefined)).toBeNull();
+    expect(handStrengthPercentile(['Ah'])).toBeNull();
+  });
+
+  it('位置门槛单调：后面还没说话的人越多，允许开池的范围越窄', () => {
+    for (let k = 1; k < PREFLOP_OPEN_THRESHOLDS.length; k += 1) {
+      expect(preflopOpenThreshold(k)).toBeLessThan(preflopOpenThreshold(k - 1));
+    }
+    // 越界索引要夹住，不能返回 undefined 让门槛静默失效
+    expect(preflopOpenThreshold(99)).toBe(preflopOpenThreshold(PREFLOP_OPEN_THRESHOLDS.length - 1));
+    expect(preflopOpenThreshold(-1)).toBe(preflopOpenThreshold(0));
+  });
+
+  it('范围外的垃圾牌不再开池——哪怕 EV 算出来是正的', () => {
+    // 72o（百分位 99%）在枪口位（后面还有 7 人）。给一个高到足以让 evRaise
+    // 为正的弃牌率，证明被否决的是"范围"而不是"EV 恰好为负"。
+    const d = pickAction({
+      ...openSpot, equity: 0.35, equityIfCalled: 0.30,
+      handPercentile: handStrengthPercentile(['7h', '2s']),
+      playersToActAfter: 7, opponentFoldToRaiseRate: 0.9,
+    });
+    expect(['raise', 'allin']).not.toContain(d.action);
+  });
+
+  it('同一手牌在按钮位能开、在枪口位不能——位置真的生效了', () => {
+    // 76s 百分位约 18%：落在按钮位门槛（45%）内、枪口位门槛（12%）外
+    const hand = handStrengthPercentile(['7h', '6h']);
+    const params = { ...openSpot, equity: 0.55, equityIfCalled: 0.52, opponentFoldToRaiseRate: 0.6 };
+    const late = pickAction({ ...params, handPercentile: hand, playersToActAfter: 1 });
+    const early = pickAction({ ...params, handPercentile: hand, playersToActAfter: 7 });
+    expect(['raise', 'allin']).toContain(late.action);
+    expect(['raise', 'allin']).not.toContain(early.action);
+  });
+
+  it('强牌不受影响：AA 在最差位置照样加注', () => {
+    const d = pickAction({
+      ...openSpot, equity: 0.85, equityIfCalled: 0.80,
+      handPercentile: handStrengthPercentile(['Ah', 'Ad']), playersToActAfter: 7,
+    });
+    expect(['raise', 'allin']).toContain(d.action);
+  });
+
+  it('门槛只否决加注，不强制弃牌——范围外的牌仍可按底池赔率跟注', () => {
+    // 便宜的跟注：只要跟 10 就能争 200 的底池，EV 上该跟
+    const d = pickAction({
+      ...openSpot, potSize: 200, toCall: 10, currentBet: 10, minRaiseTo: 20,
+      equity: 0.35, equityIfCalled: 0.30,
+      handPercentile: handStrengthPercentile(['7h', '2s']), playersToActAfter: 7,
+    });
+    expect(d.action).toBe('call');
+  });
+
+  it('面对加注时范围更窄：同一手牌能开池、却不能 3bet', () => {
+    // 断言先用门槛函数本身把"这手牌确实卡在开池范围内、3bet 范围外"表达出
+    // 来，而不是把某个具体门槛数字写死在测试里——门槛表被校准过一次，写死
+    // 数字的断言当场就挂了（76s 的 18.1% 正好被新表的 3bet 门槛 18.2% 越过）。
+    const hand = handStrengthPercentile(['7h', '6h']);
+    const pos = 3;
+    expect(hand).toBeGreaterThan(preflopOpenThreshold(pos) * PREFLOP_REBET_TIGHTEN);
+    expect(hand).toBeLessThan(preflopOpenThreshold(pos));
+    const d = pickAction({
+      ...openSpot, potSize: 150, toCall: 60, currentBet: 80, minRaiseTo: 160,
+      equity: 0.55, equityIfCalled: 0.50, opponentFoldToRaiseRate: 0.6,
+      handPercentile: hand, playersToActAfter: pos, facingRaise: true,
+    });
+    expect(['raise', 'allin']).not.toContain(d.action);
+    // 对照：同一手牌、同一位置，没面对加注时是可以开池的
+    const opening = pickAction({
+      ...openSpot, equity: 0.55, equityIfCalled: 0.50, opponentFoldToRaiseRate: 0.6,
+      handPercentile: hand, playersToActAfter: pos, facingRaise: false,
+    });
+    expect(['raise', 'allin']).toContain(opening.action);
+  });
+
+  it('浅筹码 push/fold 不受门槛约束（推牌范围本来就远宽于开池范围）', () => {
+    const d = pickAction({
+      ...openSpot, myChips: 200, // 10bb
+      equity: 0.52, equityIfCalled: 0.50,
+      handPercentile: handStrengthPercentile(['7h', '6h']), playersToActAfter: 7,
+    });
+    expect(d.action).toBe('allin');
+  });
+
+  it('向后兼容：不传这两个参数时行为与改动前一致（门槛不启用）', () => {
+    const withoutGate = pickAction({ ...openSpot, equity: 0.35, equityIfCalled: 0.30, opponentFoldToRaiseRate: 0.9 });
+    const halfGate = pickAction({
+      ...openSpot, equity: 0.35, equityIfCalled: 0.30, opponentFoldToRaiseRate: 0.9,
+      handPercentile: 0.99, // 只给一个，位置没给 → 仍然不启用
+    });
+    expect(halfGate.action).toBe(withoutGate.action);
+  });
+
+  it('翻后不受这道门槛影响（它只管翻前）', () => {
+    const d = pickAction({
+      street: 'flop', toCall: 0, currentBet: 0, potSize: 200,
+      myChips: 1000, minRaiseTo: 20, bigBlind: 20, liveOpponentCount: 1,
+      equity: 0.75, equityIfCalled: 0.72, random: () => 0.5,
+      handPercentile: 0.99, playersToActAfter: 7,
+    });
+    expect(['raise', 'allin']).toContain(d.action);
   });
 });
