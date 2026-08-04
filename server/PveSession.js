@@ -339,7 +339,29 @@ class PveSession {
     const liveOpponentCount = this.game.players.filter(
       p => p.id !== actingId && p.status !== 'folded',
     ).length;
-    const { opponentFoldToRaiseRate, opponentAggressionRate } = this._opponentReads();
+    // 对手读数只在人类还在这手牌里时才用（2026-08-04 修复）。
+    //
+    // oppStats 只统计人类玩家的动作（见 humanAction 里那几行累加），但读数
+    // 此前被无差别地用于**所有** AI 对**所有**对手的判断——包括 AI 之间互
+    // 打时。后果是灾难性的：抓真实对局的 3bet 决策现场，每一条的
+    // opponentFoldToRaiseRate 都是 1.00，因为测试里人类每手弃牌，于是每个
+    // AI 都以为"对手必然弃牌"，加注等于白捡底池，用 29%、30% 的烂牌一路
+    // 3bet/4bet 加到 58bb 全下。实测同一场景：弃牌率 1.00 → 加注到 18.4bb，
+    // 换成 0.60 → 老实跟注。这一个参数就解释了用户反馈的"反复加注 + 动不动
+    // all in"。
+    //
+    // 真实玩家侧同样会中招：一个面对加注 60% 弃牌的正常玩家，会让所有 AI
+    // 之间也按 0.50 的弃牌率互相判断；而一个从不加注的玩家会把
+    // opponentAggressionRate 压到 0，让 AI 假设彼此的起手范围只有 10%。
+    //
+    // 判据是"人类这手牌还没弃牌"而不是"人类在座"——人类一旦弃牌，桌上剩下
+    // 的就是纯 AI 对局，那些读数描述的对象已经不在牌局里了。
+    const humanStillIn = this.game.players.some(
+      p => p.id === this.humanId && p.status !== 'folded',
+    );
+    const { opponentFoldToRaiseRate, opponentAggressionRate } = humanStillIn
+      ? this._opponentReads()
+      : { opponentFoldToRaiseRate: null, opponentAggressionRate: null };
     // 对手范围建模（2026-08-02 最终审查修复）：只在真的面对加注时才收窄
     // computeEquity 模拟的对手范围——用真实观测到的 opponentAggressionRate
     // （没数据时默认 35%），不面对加注时范围不收窄（=1，AI 没有理由假设对
