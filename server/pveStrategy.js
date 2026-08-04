@@ -238,6 +238,34 @@ const DEFAULT_FOLD_PRIOR = 0.45;
 // 的高位。
 const SIZE_PRESSURE_CAP = 1.6;
 
+// 底池投入承诺（pot commitment，2026-08-04）。真实德扑的经验法则：当一个
+// 人已经把身家的相当一部分推进池子里，他就"回不了头"了——再弃牌等于把已
+// 投入的全部送人，所以他的弃牌率会急剧趋近 0。
+//
+// 缺这一层的后果（实测）：深度加注战争里 evRaise 的构成是
+//   evRaise = 弃牌率 × 底池  +  (1−弃牌率) × (被跟注后的盈亏)
+// 第一项随底池膨胀而膨胀。6bet 时底池 800、假设弃牌率 29%，光第一项就
+// +232，足以盖过第二项的 −54，于是加注永远"划算"。这形成正反馈：底池越
+// 大 → 加注 EV 越高 → 继续加 → 底池更大，一路 6bet/7bet 打到全下。实测
+// 3bet 频率占开池 73%、4bet 占 3bet 90%（真人 3bet 只有 5-10%）。
+// 把弃牌率按真实情况压到 0.05，同一局面 evRaise 变成 −32，AI 就会收手。
+//
+// commitRatio = 对手已投入 / (已投入 + 剩余)，0 到 1。
+// 0.5 这个拐点对齐德扑常识："投入超过剩余筹码的三分之一就基本 committed"。
+const POT_COMMIT_PIVOT = 0.5;
+// 完全 committed 时保留的最低弃牌率倍率——不设成 0，是因为总有极少数人
+// 真的会在巨池前放弃，而且 0 会让 evRaise 的第一项彻底消失、模型过于绝对。
+const POT_COMMIT_FLOOR = 0.08;
+
+// 对手投入越深 → 弃牌率倍率越低。线性衰减到 POT_COMMIT_FLOOR 为止。
+function potCommitmentFactor(opponentCommitted, opponentRemaining) {
+  const total = opponentCommitted + opponentRemaining;
+  if (!(total > 0) || !(opponentCommitted > 0)) return 1;
+  const ratio = opponentCommitted / total;
+  const decayed = 1 - ratio / POT_COMMIT_PIVOT;
+  return Math.max(POT_COMMIT_FLOOR, Math.min(1, decayed));
+}
+
 // 弃牌权益的尺寸依赖（MDF，最小防守频率——德扑标准理论，不是拍脑袋的
 // 数字）：对手需要再拿出 opponentDelta 才能去争一个 potAfterRaise 大的
 // 底池，其理论弃牌上限即 opponentDelta / potAfterRaise。这里归一化成
@@ -341,6 +369,7 @@ function estimateFoldEquity({
   opponentFoldToRaiseRate, liveOpponentCount = 1, style = null,
   facingRaise = false, opponentCeiling = Infinity, currentBet = 0,
   opponentDelta = null, potAfterRaise = null,
+  opponentCommitted = null, opponentRemaining = null,
 }) {
   if (opponentCeiling <= currentBet) return 0;
   let p = opponentFoldToRaiseRate ?? DEFAULT_FOLD_PRIOR;
@@ -351,6 +380,11 @@ function estimateFoldEquity({
   // 这个函数虽然没导出，但保留这个默认分支让调用点的改动可以分步验证。
   if (opponentDelta != null && potAfterRaise != null) {
     p *= sizePressure(opponentDelta, potAfterRaise);
+  }
+  // 底池投入承诺：对手已经陷得越深，越不可能弃牌（见常量注释）。两个参数
+  // 都给了才生效，不给时保持改动前行为。
+  if (opponentCommitted != null && opponentRemaining != null) {
+    p *= potCommitmentFactor(opponentCommitted, opponentRemaining);
   }
   p = Math.min(1, Math.max(0, p));
   const n = Math.max(1, liveOpponentCount);
@@ -379,6 +413,7 @@ function raiseSizeFraction(equity, random) {
 function pickAction(params) {
   const {
     street, equity, equityIfCalled, toCall, potSize, myChips, currentBet = toCall, minRaiseTo,
+    opponentCommitted, opponentRemaining,
     random = Math.random,
     opponentCeiling = Infinity,
     liveOpponentCount = 1,
@@ -432,6 +467,7 @@ function pickAction(params) {
   let foldEquity = estimateFoldEquity({
     opponentFoldToRaiseRate, liveOpponentCount, style, facingRaise, opponentCeiling, currentBet,
     opponentDelta, potAfterRaise: potSize + cost,
+    opponentCommitted, opponentRemaining,
   });
 
   // all-in-for-less（自己的加注/全下额度不到当前下注额，等价于筹码比对手
@@ -622,5 +658,5 @@ function pickAction(params) {
 module.exports = {
   computeEquity, pickAction, raiseSizeFraction, STYLES, EV_NOISE_FRACTION,
   POT_CONTROL_MURKY_LOW, POT_CONTROL_MURKY_HIGH, POT_CONTROL_DISCOUNT,
-  SIZE_PRESSURE_CAP, sizePressure,
+  SIZE_PRESSURE_CAP, sizePressure, potCommitmentFactor, POT_COMMIT_PIVOT, POT_COMMIT_FLOOR,
 };

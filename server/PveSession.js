@@ -31,6 +31,24 @@ const OVERBET_BOTTOM_PCT = 0.15;
 // 池施压时，还敢跟我再加的只会更强，不该反过来被放宽。
 const CALLER_RANGE_PCT = 0.35;
 
+// 持续施压 → 范围收窄。**两种施压强度不同，必须分开算**：
+//
+//  · BARREL（跨街）：翻牌下注、转牌又下注、河牌再下注。持续下注确实偏强，
+//    但也可能是标准的持续下注/半诈唬，信号温和 → 0.75，沿用原值。
+//  · RERAISE（同一条街内再加注）：3bet / 4bet / 5bet 战争。真实德扑里 4bet
+//    基本就是 AA/KK/AK 级别，是**极强**信号 → 0.40。这个数字对齐真实德扑
+//    的范围收窄比例（开池 ~20% → 3bet ~7% → 4bet ~2.5%，每级约 0.35-0.4 倍）。
+//
+// 2026-08-04 之前这两者被合并成「面对过加注的街的集合」，同一条街内的再加
+// 注根本不计数（Set 里始终只有那一条街），导致 3bet/4bet 战争完全不收窄。
+const BARREL_NARROWING = 0.75;
+const RERAISE_NARROWING = 0.40;
+// 范围下限。原值 0.10 是按街收窄时定的（最多 3-4 次，够用）；改成按次数计
+// 数后深度能到 5-6 次，0.10 会成为瓶颈——实测收窄到第 5 次就被它挡住，加注
+// 率纹丝不动。真实德扑 4bet 范围约 2-3%（AA/KK/AK），5bet 更窄，所以放到
+// 0.03。已实测确认 computeEquity 的拒绝采样在 2-3% 宽度下趋势仍然正确。
+const RANGE_PCT_FLOOR = 0.03;
+
 // 同一手牌里允许的 AI 连续决策次数上限——超过即判定"牌局停止推进"并抛错。
 // 见 aiAction() 里的说明：这是为了让残余的死循环自己暴露现场，而不是无限
 // 空转把桌子冻死。8 人桌 × 4 条街、每街可多轮再加注，正常量级在几十次，
@@ -159,11 +177,10 @@ class PveSession {
     // 2026-07-31, screenshot). set in index.js's pveHandleResult when a
     // hand ends, cleared in _dealNewHand below when the next one starts.
     this.lastShowdown = null;
-    // 翻牌后范围收窄（用户反馈的遗留项——之前 opponentRangePct 只按跨局累计
-    // 的 opponentAggressionRate 算一次，同一手牌里对手连续几条街都下注/加
-    // 注也不会让范围继续收窄）。按 AI 坐位记录"这手牌里、轮到它决策时，已
-    // 经在哪些街面对过加注"，每手开局清空（_dealNewHand 里重置）——见
-    // aiAction() 里的用法。
+    // 持续施压收窄：按 AI 坐位记录"这手牌里、轮到它决策时已经面对过多少次
+    // 加注"，每手开局清空（_dealNewHand 里重置）——见 aiAction() 里的用法。
+    // 2026-08-04 从「面对过加注的街的集合」改成「次数计数」，原因见那里的
+    // 长注释（同一条街内的 3bet/4bet 战争原本完全不收窄）。
     this._dealNewHand();
   }
 
@@ -219,7 +236,7 @@ class PveSession {
     if (this.handNumber > 0) this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
     this.handNumber += 1;
     this.game = new GameEngine(this.players, this.dealerIndex, this.bigBlind, this.random);
-    this.handAggressionStreets = {};
+    this.handAggressionCount = {};
   }
 
   get actionPlayerId() {
@@ -329,18 +346,36 @@ class PveSession {
     // 手手牌比随机更强）。clamp 到 [0.10, 0.90] 防止极端样本把范围收窄/放
     // 宽到不合理的程度。
     const baseRangePct = Math.min(0.90, Math.max(0.10, opponentAggressionRate ?? 0.35));
-    // 翻牌后继续收窄（用户反馈的遗留项）：上面那个 baseRangePct 只反映"跨
-    // 局累计的整体激进程度"，同一手牌里如果对手连续几条街都在下注/加注
-    // （常说的"barrel"），这通常意味着牌更强，范围应该比单纯翻前那一次判
-    // 断更窄。这里按"这手牌里、轮到这个 AI 坐位时已经面对过加注的街数"做
-    // 指数收窄——第一次面对加注（streak=1）不额外收窄，跟以前行为一致；
-    // 之后每多一条街还在面对加注，再乘 0.75，同样 clamp 到 [0.10, 0.90]。
+    // 持续施压收窄：对手每多施压一次，他手里是强牌的可能性就更大，假设的
+    // 范围就该更窄。
+    //
+    // 2026-08-04 修复（用户实测反馈"动不动 all in、3bet 尺度都挺大"）：这里
+    // 原本用一个 Set 装「已经面对过加注的**街**」，同一条街内不管对手 3bet、
+    // 4bet、5bet 多少次，Set 里始终只有那一条街、size 恒为 1、收窄系数恒为
+    // 1.000——**同一条街内的再加注完全不收窄**。实测后果是一个正反馈死循环：
+    //   面对开池 假设对手范围13% 加注率50%
+    //   面对3bet 假设对手范围13%(没变) 加注率73%
+    //   面对4bet 假设对手范围13%(没变) 加注率80%
+    //   面对5bet 假设对手范围13%(没变) 加注率87%
+    // 对手范围估计一路锁死不动，而底池越滚越大让加注的潜在收益越看越诱人，
+    // 于是越打越激进，一路 6bet/7bet 打到全下。实测 3bet 频率占开池 75%
+    // （真人 5-10%）、4bet 占 3bet 88%，翻后 all-in 率 37.9%，120 手里破产
+    // 30 次——用户看到的"筹码差距上万"正是反复破产重买堆出来的。
+    //
+    // 改成按「面对加注的次数」计数：真实德扑里对手 4bet 基本就是 AA/KK/AK
+    // 级别（2-3% 范围），必须随每一次再加注收窄。按次数计数天然同时涵盖了
+    // 原来想要的跨街 barrel（每条街的下注各算一次），所以不需要再单独记街。
     let opponentRangePct = 1;
     let opponentBottomPct = 0;
     if (facingRaise) {
-      const streets = this.handAggressionStreets[actingId] ?? (this.handAggressionStreets[actingId] = new Set());
-      streets.add(street);
-      const narrowingFactor = 0.75 ** Math.max(0, streets.size - 1);
+      // 分别累计「跨街施压」和「本街内再加注」，两者收窄强度不同（见常量注释）。
+      const rec = this.handAggressionCount[actingId]
+        ?? (this.handAggressionCount[actingId] = { streets: new Set(), street: null, reraises: 0 });
+      if (rec.street !== street) { rec.street = street; rec.reraises = 0; }
+      rec.streets.add(street);
+      rec.reraises += 1;
+      const narrowingFactor = (BARREL_NARROWING ** Math.max(0, rec.streets.size - 1))
+        * (RERAISE_NARROWING ** Math.max(0, rec.reraises - 1));
       // 组件 B（2026-08-03）：把"对手下了多重"这个信号叠进来。改动前只看
       // 加没加注、不看多大，导致玩家超池和下 1/4 池在 AI 眼里是同一件事。
       //
@@ -381,7 +416,7 @@ class PveSession {
         opponentBottomPct = OVERBET_BOTTOM_PCT;
       } else {
         const sizeFactor = betSizeRangeFactor(betRatio);
-        opponentRangePct = Math.min(0.90, Math.max(0.10, baseRangePct * narrowingFactor * sizeFactor));
+        opponentRangePct = Math.min(0.90, Math.max(RANGE_PCT_FLOOR, baseRangePct * narrowingFactor * sizeFactor));
       }
     }
     // 翻前现在也算真实胜率（board=[]），不再走单独的起手牌分档表——见
@@ -438,6 +473,17 @@ class PveSession {
       currentBet: this.game.currentBet,
       minRaiseTo: this.game.currentBet + this.game.lastRaiseAmount,
       opponentCeiling: this.game.maxTotalFor(actingId),
+      // 底池投入承诺（2026-08-04）：对手在这手牌里已经投进去多少、身后还剩
+      // 多少。投得越深越不可能弃牌——缺这一层时，「弃牌率 × 底池」这一项会
+      // 随底池膨胀而膨胀，把深度加注战争推成正反馈（详见 pveStrategy.js 里
+      // POT_COMMIT_PIVOT 的注释）。多个对手时取投入最深的那个：只要还有一个
+      // 人已经陷进去了，靠加注把所有人吓跑就不现实。
+      ...(() => {
+        const others = this.game.players.filter(p => p.id !== actingId && p.status !== 'folded');
+        if (!others.length) return {};
+        const deepest = others.reduce((a, b) => (a.totalBet >= b.totalBet ? a : b));
+        return { opponentCommitted: deepest.totalBet, opponentRemaining: deepest.chips };
+      })(),
       liveOpponentCount,
       bigBlind: this.bigBlind,
       opponentFoldToRaiseRate,
