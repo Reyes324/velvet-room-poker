@@ -182,12 +182,61 @@
   font-size:19px; font-weight:700; border-radius:8px 8px 0 0;
   text-shadow:0 1px 4px rgba(0,0,0,.9), 0 0 10px rgba(255,90,40,.5);
 }
-/* 最后 5 秒：加重并轻微脉动。倒计时到点会真的替你执行默认动作（弃牌/过牌），
-   所以"快没时间了"这件事必须能被余光扫到，而不是要盯着数字看。 */
-.think-overlay--urgent { color:#FF3B2F; animation:urgentPulse .8s ease-in-out infinite; }
-@keyframes urgentPulse {
-  0%,100% { transform:scale(1);    text-shadow:0 1px 4px rgba(0,0,0,.9), 0 0 10px rgba(255,60,40,.6); }
-  50%     { transform:scale(1.12); text-shadow:0 1px 4px rgba(0,0,0,.9), 0 0 18px rgba(255,60,40,.95); }
+/* ── 回合倒计时：沿座位轮廓走线的描边 ──────────────────────────────────────
+   替代了原来那个盖住整张头像的数字方块。旧做法在"轮到你了"这一刻同时有三样
+   东西在动：is-active 的金色呼吸边框、盖脸的数字方块、以及紧接着弹出的动作
+   气泡——信息全糊在一起，反而没有一个是清楚的。
+   现在只留一个信号：金色描边从满环匀速走空，最后 5 秒转红。 */
+.turn-ring {
+  position:absolute; inset:0; width:100%; height:100%;
+  pointer-events:none; z-index:3; overflow:visible;
+}
+.turn-ring rect {
+  fill:none;
+  stroke:#D4AF37;
+  stroke-width:2.5;
+  /* 卡片周长约 2*(54+58) = 224，取 232 留出圆角的余量 */
+  stroke-dasharray:232;
+  stroke-dashoffset:0;
+  stroke-linecap:round;
+  filter:drop-shadow(0 0 4px rgba(212,175,55,.55));
+  animation-name:ringDrain;
+  animation-timing-function:linear;
+  animation-fill-mode:forwards;
+  transition:stroke .4s ease, filter .4s ease;
+}
+@keyframes ringDrain { to { stroke-dashoffset:232; } }
+
+.turn-ring--urgent rect {
+  stroke:#FF3B2F;
+  filter:drop-shadow(0 0 7px rgba(255,60,40,.85));
+}
+
+/* 座位在计时状态下的底色处理：只留一层极淡的内发光，不再有呼吸动画——
+   动的东西只该有环这一个。 */
+.is-timed .avatar-card { border-color:rgba(212,175,55,.30); box-shadow:inset 0 0 12px rgba(212,175,55,.10); }
+
+/* 秒数缩成右上角标，不再盖脸。用等宽字体避免 9→8 时宽度跳动。 */
+.turn-secs {
+  position:absolute; top:2px; right:3px;
+  font-family:var(--font-mono); font-size:11px; font-weight:700; line-height:1;
+  color:#D4AF37; padding:1px 3px; border-radius:4px;
+  background:rgba(4,10,6,.55);
+  text-shadow:0 1px 3px rgba(0,0,0,.9);
+  transition:color .4s ease;
+}
+.turn-secs--urgent { color:#FF3B2F; font-size:12px; }
+
+/* 信号交接：线走到最后已经几乎没有长度了，恰恰是最需要提醒的时刻反而最不
+   显眼。所以在最后 5 秒把信号从"线"交给"卡片本身"——描边淡出的同时卡片开
+   始泛红呼吸。仍然只有一个概念在表达时间，不是又叠一层动画。 */
+.is-timed-urgent .avatar-card {
+  border-color:rgba(255,59,47,.55);
+  animation:timeUrgentGlow .9s ease-in-out infinite;
+}
+@keyframes timeUrgentGlow {
+  0%,100% { box-shadow:inset 0 0 12px rgba(255,60,40,.14), 0 0 0 0 rgba(255,60,40,.34); }
+  50%     { box-shadow:inset 0 0 18px rgba(255,60,40,.30), 0 0 0 4px rgba(255,60,40,.16); }
 }
 .av-green  .avatar-photo { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
 .av-purple .avatar-photo { background:radial-gradient(circle at 38% 35%, #4A228A, #1E0855); }

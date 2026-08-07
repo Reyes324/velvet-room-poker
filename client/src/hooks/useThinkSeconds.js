@@ -19,8 +19,8 @@ export function useCountdownSeconds(endsAt) {
   // setState 只发生在回调里——两条 react-hooks 规则都不碰。
   //
   // 绑定是必需的：不绑的话，新回合的头一两帧会渲染上一回合结束时那个 0，而
-  // 0 同时会触发"最后 5 秒"的红色脉动，于是每个回合刚开始都闪一下红，正好和
-  // 它要表达的意思相反。
+  // 0 同时会触发"最后 5 秒"的红色，于是每个回合刚开始都闪一下红，正好和它
+  // 要表达的意思相反。
   const [tick, setTick] = useState(null); // { endsAt, left } | null
 
   useEffect(() => {
@@ -32,6 +32,30 @@ export function useCountdownSeconds(endsAt) {
   }, [endsAt]);
 
   return endsAt && tick?.endsAt === endsAt ? tick.left : null;
+}
+
+// 环形进度需要的两个 CSS 动画参数：这一轮总时长，以及**已经过去多久**。
+// 后者做成负的 animation-delay，动画就会从正确的位置接着走——中途重连、
+// 或者点了延时之后，环都不会跳回满格。
+//
+// 只在 startedAt/endsAt 变化时算一次（回合级别），所以在渲染期读 Date.now()
+// 的问题不存在：它被关在 useMemo 之外的 effect 里。
+export function useRingTiming(startedAt, endsAt) {
+  // 跟 useCountdownSeconds 一样把值与其来源绑定，并且只在回调里 setState：
+  // 直接在 effect 体内同步 setState 会被 react-hooks 判为级联渲染。
+  const [timing, setTiming] = useState(null); // { key, totalMs, elapsedMs } | null
+
+  useEffect(() => {
+    if (!startedAt || !endsAt) return;
+    const id = setTimeout(() => setTiming({
+      key: `${startedAt}-${endsAt}`,
+      totalMs: Math.max(1, endsAt - startedAt),
+      elapsedMs: Math.max(0, Date.now() - startedAt),
+    }), 0);
+    return () => clearTimeout(id);
+  }, [startedAt, endsAt]);
+
+  return startedAt && endsAt && timing?.key === `${startedAt}-${endsAt}` ? timing : null;
 }
 
 export function useThinkSeconds(isAction) {

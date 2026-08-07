@@ -636,6 +636,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             bubble={visibleBubble(me.id)}
             poked={pokedSeat?.targetId === me.id}
             turnEndsAt={turnClock?.playerId === me.id ? turnClock.endsAt : null}
+            turnStartedAt={turnClock?.playerId === me.id ? turnClock.startedAt : null}
           />
         </div>
       )}
@@ -674,6 +675,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               onPoke={() => onPoke?.(p.id)}
               poked={pokedSeat?.targetId === p.id}
               turnEndsAt={turnClock?.playerId === p.id ? turnClock.endsAt : null}
+              turnStartedAt={turnClock?.playerId === p.id ? turnClock.startedAt : null}
               revealedCards={revealedPlayers[p.id]?.holeCards ?? null}
               bestCardRaws={hasBestCards ? bestCardRaws : null}
             />

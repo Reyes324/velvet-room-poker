@@ -426,7 +426,11 @@ class Room {
   }
 
   startTurnClock(playerId, baseMs) {
-    this.turnClock = { playerId, endsAt: Date.now() + baseMs, seq: this.getTurnSeq() };
+    // startedAt 一并下发：客户端的环形进度要知道"这一轮总共多长"才能把进度
+    // 画准——只有 endsAt 的话，中途重连或延时之后拿到的是残缺信息，环只能
+    // 从满格重画一遍，跟实际剩余时间对不上。
+    const now = Date.now();
+    this.turnClock = { playerId, startedAt: now, endsAt: now + baseMs, seq: this.getTurnSeq() };
     return this.turnClock;
   }
 

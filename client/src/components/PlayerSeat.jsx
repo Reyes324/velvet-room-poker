@@ -6,7 +6,7 @@
 // never shown face-down pre-showdown (removed — they carried no information
 // and only ate into the tight center-strip space); they only appear at real
 // showdown.
-import { useThinkSeconds, useCountdownSeconds } from '../hooks/useThinkSeconds';
+import { useThinkSeconds, useCountdownSeconds, useRingTiming } from '../hooks/useThinkSeconds';
 import Card from './Card';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
@@ -41,7 +41,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -51,13 +51,18 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   // 回退到原来那个正数计时，行为跟改动前一致。
   const countdown = useCountdownSeconds(isAction ? turnEndsAt : null);
   const thinkSeconds = useThinkSeconds(isAction);
-  const clockText = countdown != null ? `${countdown}s` : `${thinkSeconds}s`;
-  const urgent = countdown != null && countdown <= 5;
+  const ring = useRingTiming(isAction ? turnStartedAt : null, isAction ? turnEndsAt : null);
+  const timed = countdown != null && !!ring;
+  const urgent = timed && countdown <= 5;
 
   const seatClass = [
     'seat',
     isWinner && 'is-winner',
-    isAction && !isWinner && 'is-active',
+    // 有倒计时环的时候不要 is-active——那是个金色呼吸边框，跟环叠在一起就
+    // 是两圈边同时动。环本身已经在表达"轮到你了"，比呼吸更明确。
+    isAction && !isWinner && !timed && 'is-active',
+    isAction && timed && !isWinner && 'is-timed',
+    isAction && timed && urgent && !isWinner && 'is-timed-urgent',
     folded && 'is-folded',
     allin && 'is-allin',
     poked && 'is-poked',
@@ -70,10 +75,36 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         {badge && <span className="pos-badge">{badge}</span>}
       </div>
       <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>
+        {/* 回合倒计时：沿卡片轮廓走线的描边，满环起始、匀速走空。取代了原来
+            那个盖住整张脸的数字方块——那个方块跟 is-active 的金色呼吸边框、
+            以及动作气泡三者同时变化，信息全糊在一起。
+            负的 animation-delay 让环从"已经过去多久"的位置接着走，所以中途
+            重连或点了延时之后都不会跳回满格。key 保证换回合时动画重播。 */}
+        {timed && (
+          <svg
+            key={ring.key}
+            className={`turn-ring${urgent ? ' turn-ring--urgent' : ''}`}
+            viewBox="0 0 56 60"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <rect
+              x="1" y="1" width="54" height="58" rx="9" ry="9"
+              style={{
+                animationDuration: `${ring.totalMs}ms`,
+                animationDelay: `-${ring.elapsedMs}ms`,
+              }}
+            />
+          </svg>
+        )}
         <div className="avatar-photo">
           {player.name[0].toUpperCase()}
+          {/* 数字缩成右上角标，不再盖脸。没有倒计时（人机对战）时退回原来的
+              正数计时显示，行为与改动前一致。 */}
           {isAction && (
-            <div className={`think-overlay${urgent ? ' think-overlay--urgent' : ''}`}>{clockText}</div>
+            timed
+              ? <div className={`turn-secs${urgent ? ' turn-secs--urgent' : ''}`}>{countdown}</div>
+              : <div className="think-overlay">{thinkSeconds}s</div>
           )}
         </div>
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
