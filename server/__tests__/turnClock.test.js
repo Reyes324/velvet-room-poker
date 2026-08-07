@@ -195,3 +195,32 @@ describe('时间银行（+15 秒延时）', () => {
     expect(acted).toBe(true);
   });
 });
+
+describe('同一个人连续两个回合（评审 high 档发现的缺陷）', () => {
+  it('单挑：大盲翻牌前最后行动、翻牌后第一个行动 → 必须重新计时，不能继承上一街的剩余时间', async () => {
+    // 单挑里 SB/庄家翻牌前先动，BB 后动；进入翻牌圈后顺序反转，BB 变成第一个
+    // 行动的人。于是同一个 playerId 连着占了两个回合。只比对 playerId 会把这
+    // 两个回合当成同一个，倒计时不重启，BB 在翻牌圈继承的是翻牌前用剩的时间
+    // ——极端情况下翻牌一落地就只剩 1、2 秒，甚至直接被自动过牌。
+    const { c1, c2, room, actorId } = await startedRoom();
+    const sb = actorId === 'p1' ? c1 : c2;
+    const bbId = actorId === 'p1' ? 'p2' : 'p1';
+    const bb = actorId === 'p1' ? c2 : c1;
+
+    sb.emit('game:action', { playerId: actorId, action: 'call' });
+    await waitUntil(() => room.getActionPlayerId() === bbId);
+
+    // 故意把 BB 这个回合的时间用掉大半，再过牌进翻牌圈
+    await new Promise(r => setTimeout(r, BASE_MS * 0.7));
+    const preflopEndsAt = room.turnClock.endsAt;
+
+    bb.emit('game:action', { playerId: bbId, action: 'check' });
+    await waitUntil(() => room.game?.phase === 'flop');
+
+    // 翻牌圈行动方仍是 BB——这正是触发条件
+    expect(room.getActionPlayerId()).toBe(bbId);
+    // 必须是一个全新的截止时刻，而不是翻牌前那个
+    expect(room.turnClock.endsAt).toBeGreaterThan(preflopEndsAt);
+    expect(room.turnClock.endsAt - Date.now()).toBeGreaterThan(BASE_MS * 0.8);
+  });
+});

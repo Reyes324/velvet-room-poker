@@ -320,6 +320,12 @@ function createServer({
     room.awaitingBustResolution = false;
     room.gameTimerEndsAt = null;
     room.awaitingTimerDecision = false;
+    // 这个函数直接发 room:state，绕过了 broadcastRoom 这个漏斗，所以
+    // maybeArmTurnClock 不会跑——必须自己把倒计时收干净。否则 getLobbyState()
+    // 会继续给一个已经结束的牌局下发 turnClock，而残留的定时器还可能在房主
+    // 立刻重开一局时替新的行动方执行默认动作。
+    clearTurnTimer(room);
+    room.clearTurnClock();
     room.touch();
     io.to(room.code).emit('room:state', room.getLobbyState());
     io.to(room.code).emit('game:ended', { ended: true, reason, hostEnded: true });
@@ -339,21 +345,31 @@ function createServer({
   // 屏/切后台会误判——见 RoomManager nextRound 上方那段历史）在这里没有任何
   // 作用，只会多一个可能出错的输入。断线玩家因此自然地在到点被执行默认动作，
   // 无需任何特判。
+  function clearTurnTimer(room) {
+    const existing = turnTimers.get(room.code);
+    if (existing) {
+      clearTimeout(existing.timer);
+      turnTimers.delete(room.code);
+    }
+  }
+
   function maybeArmTurnClock(room) {
     const existing = turnTimers.get(room.code);
     // isAwaitingAction() 而不是裸的 getActionPlayerId()：一手结束后牌局对象
     // 仍在、actionIndex 也还停在最后行动的人身上，只信后者会让倒计时对着一
     // 手已经结束的牌反复执行默认动作（实测：每个周期给同一个人弃牌一次）。
     const actionPlayerId = room.isAwaitingAction() ? room.getActionPlayerId() : null;
+    const seq = room.getTurnSeq();
 
-    // 还是同一个人的回合（比如别人重连触发了一次无关的广播）——绝不能重置
-    // 计时，否则任意一次广播都能给当前行动方无限续命。
-    if (existing && existing.playerId === actionPlayerId) return;
+    // 还是同一个人的**同一个回合**（比如别人重连触发了一次无关的广播）——绝
+    // 不能重置计时，否则任意一次广播都能给当前行动方无限续命。
+    //
+    // 必须连 seq 一起比：单挑里大盲翻牌前最后行动、翻牌后第一个行动，光比
+    // playerId 会把这两个回合当成一个，于是他在翻牌圈继承上一街用剩的时间
+    // （实测：翻牌一落地就只剩几十毫秒，直接被自动过牌）。
+    if (existing && existing.playerId === actionPlayerId && existing.seq === seq) return;
 
-    if (existing) {
-      clearTimeout(existing.timer);
-      turnTimers.delete(room.code);
-    }
+    clearTurnTimer(room);
     if (!actionPlayerId) { room.clearTurnClock(); return; }
 
     const { endsAt } = room.startTurnClock(actionPlayerId, TURN_BASE_MS);
@@ -368,12 +384,14 @@ function createServer({
     const timer = setTimeout(() => {
       turnTimers.delete(room.code);
       // 到点前重新确认一次：这中间他可能已经行动了、这手可能已经结束了。
-      if (room.getActionPlayerId() !== playerId) return;
+      // 用 isAwaitingAction() 而不是裸的 getActionPlayerId()——后者在一手结束
+      // 后仍会返回最后行动那个人的 id，分不出"还轮着他"和"牌已经打完了"。
+      if (!room.isAwaitingAction() || room.getActionPlayerId() !== playerId) return;
       const result = defaultActionFor(room, playerId);
       if (!result.error) handleActionResult(room, result);
     }, Math.max(0, endsAt - Date.now()));
     timer.unref?.();
-    turnTimers.set(room.code, { playerId, timer });
+    turnTimers.set(room.code, { playerId, timer, seq: room.getTurnSeq() });
   }
 
   // 超时默认动作：无人加注就过牌，有人加注就弃牌（业内标准的 check/fold

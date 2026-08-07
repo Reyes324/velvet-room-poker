@@ -112,6 +112,10 @@ class GameEngine {
     this.pot = 0;
     this.sidePots = []; // [{ amount, eligibleIds }]
     this.phase = 'preflop';
+    // 行动权变更的单调序号。倒计时靠它区分"同一个人的同一个回合"和"同一个
+    // 人的下一个回合"——单挑里大盲翻牌前最后行动、翻牌后第一个行动，只比对
+    // playerId 会把这两个回合当成一个，于是他在翻牌圈继承上一街用剩的时间。
+    this.turnSeq = 0;
     this.currentBet = 0;
     this.lastRaiseAmount = bigBlind;
 
@@ -135,9 +139,9 @@ class GameEngine {
     // Action starts left of BB in a ring game (3+ players) — but heads-up
     // (2 players) is the special case where the dealer/SB acts first
     // preflop instead (see _assignBlinds for why n===2 needs its own branch).
-    this.actionIndex = this._nextActive(
+    this._setActionIndex(this._nextActive(
       this.players.length === 2 ? this.dealerIndex : (this.dealerIndex + 3) % this.players.length
-    );
+    ));
     this.lastAggressorIndex = this.actionIndex;
     this.actedThisStreet = new Set();
     // 谁刚做了动作、这是第几次动作——跟 actionIndex 是两件独立的事。
@@ -186,6 +190,13 @@ class GameEngine {
 
   _seat(i) {
     return this.players[i % this.players.length];
+  }
+
+  // 行动权的唯一赋值入口——三处（开局、街内推进、新街开始）都走这里，序号
+  // 才不会漏加。见构造函数里 turnSeq 的说明。
+  _setActionIndex(idx) {
+    this.actionIndex = idx;
+    this.turnSeq += 1;
   }
 
   _nextActive(from) {
@@ -363,7 +374,7 @@ class GameEngine {
 
     // Move to next active player
     const next = this._nextActive((this.actionIndex + 1) % this.players.length);
-    this.actionIndex = next;
+    this._setActionIndex(next);
     return { state: this.getPublicState() };
   }
 
@@ -390,7 +401,7 @@ class GameEngine {
     }
 
     // Action starts left of dealer among active players
-    this.actionIndex = this._nextActive((this.dealerIndex + 1) % this.players.length);
+    this._setActionIndex(this._nextActive((this.dealerIndex + 1) % this.players.length));
 
     // If at most one player can still act (everyone else is folded or
     // all-in), there's no one left to bet against — no more meaningful

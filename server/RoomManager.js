@@ -418,8 +418,15 @@ class Room {
     for (const p of this.players) p.timeBankMs = bankMs;
   }
 
+  // seq 是引擎的行动权序号（GameEngine.turnSeq）。必须一起存：单挑里大盲翻牌
+  // 前最后行动、翻牌后第一个行动，光看 playerId 分不出这是"同一个回合"还是
+  // "同一个人的下一个回合"，后者必须重新计时。
+  getTurnSeq() {
+    return this.game?.turnSeq ?? null;
+  }
+
   startTurnClock(playerId, baseMs) {
-    this.turnClock = { playerId, endsAt: Date.now() + baseMs };
+    this.turnClock = { playerId, endsAt: Date.now() + baseMs, seq: this.getTurnSeq() };
     return this.turnClock;
   }
 
@@ -439,7 +446,11 @@ class Room {
     p.timeBankMs = remaining - spend;
     // 从**当前剩余时间**上加，而不是从"现在"重新计时——否则在还剩 18 秒时
     // 点一下反而会把时间缩短到 15 秒。
-    this.turnClock.endsAt += spend;
+    //
+    // 但要先跟"现在"取大：截止时刻可能已经过去（点击到达服务端时正好卡在到
+    // 点前后）。直接在过去的时刻上加，算出来的剩余时间仍然是负的，玩家会扣
+    // 掉 15 秒储备后立刻被执行默认动作——正是这个功能要防的事。
+    this.turnClock.endsAt = Math.max(this.turnClock.endsAt, Date.now()) + spend;
     return { ok: true, endsAt: this.turnClock.endsAt, timeBankMs: p.timeBankMs };
   }
 
