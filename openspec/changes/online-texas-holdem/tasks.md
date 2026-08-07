@@ -1027,3 +1027,14 @@
   - **范围（用户明确收窄）**：只给真正丢了牌局的人弹，首页访客不打扰；弹窗内不列本次更新内容
   - **验收**：服务端 312/312；新增 e2e `serverReset.spec.js` 4/4（两种文案各一条、首页访客不打扰、同进程刷新不弹窗）
   - **既有问题，与本次无关**：`integration.test.js` 的 "room:end-game" 用例跑全量时偶发失败；原始代码跑全量三次为 1 挂/2 挂/全过，已确认是既有的跨文件时序不稳定
+
+- [x] **修复"断线中"提示频繁误报**（用户反馈 #9，2026-08-07）
+  - **根因**：socket.io 靠 ping 超时发现死连接，旧 socket 的 `disconnect` 可能在客户端已用新 socket 重连**之后**才到达；`index.js` 无条件 `setConnected(false)`，把活连接覆盖成"断线中"。手机端切后台/切网络频繁触发，正对应"好频繁"
+  - **佐证**：同一类竞态本项目已防住两处（PVE 的 `pveActiveSocket`、大厅移除定时器的 `player.socketId === deadSocketId`），唯独这一行漏了；已确认无第四处
+  - 新增 `RoomManager.markDisconnectedIfCurrent(playerId, socketId)`，只在仍是当前连接时标记并返回结果；迟到的 disconnect 直接 return，不标记不广播不排定时器
+  - **验收**：新增 `staleDisconnect.test.js` 2 条（修复前实测失败）；服务端全量 314 通过
+- [ ] **待办：修掉 `integration.test.js` 的测试竞态**（与 #9 同源，非产品代码问题）
+  - 多条用例用 `waitFor(..., 'room:state')` 的 `.once()` 等广播，会捕获到上一次广播的残留而偶发失败
+  - 已量化：同文件跑 5 次，有/无 #9 修复均挂 2 次，**确认是既有问题**
+  - 危害：每日反馈 routine 依赖"测试全绿"才推送，这类偶发失败会让它放弃本来正确的修复
+  - 方向：统一改成条件轮询（参考 `staleDisconnect.test.js` 里的 `waitUntil` / `staysTrue`）

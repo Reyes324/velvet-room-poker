@@ -1516,3 +1516,31 @@ RAW_OVERLAPS=[]
 **验证**：服务端全量 **312/312 通过**（新增 3 条 `serverIdentity` + 6 条纯函数分支用例）。新增 e2e `e2e/serverReset.spec.js` **4/4 通过**：commit 变了→新版本文案+回首页+本地标记已清、commit 没变→重启文案（不谎称发版）、首页访客不打扰、同一进程刷新照常回房间且不弹窗。测试不需要真的重启服务器——客户端的判断只依赖"localStorage 存的身份 vs `server:hello` 带来的身份"，往 localStorage 塞一个过期 bootId 就能完整走通这条路径。
 
 **一处诚实记录**：`__tests__/integration.test.js` 里"房主发送 room:end-game"那条用例在**跑全量套件时偶发失败**（`status` 期望 `waiting` 实得 `playing`）。已确认**与本次改动无关**：用未改动的原始代码跑全量三次，结果为 1 挂 / 2 挂 / 全过；单独跑 integration 文件则三次全过。属于既有的跨文件时序不稳定，本次不在范围内，另行处理。
+
+
+## Bug 修复：其他玩家的"断线中"提示频繁误报（用户反馈 #9，2026-08-07）
+
+**反馈原文**："现在其他玩家断线的提示好频繁，是怎么触发的，确定玩家是真的断线了吗"
+
+**触发路径**：`connected === false` 会在两处显示——牌桌上的「XXX 断线中，等待重连…」（`client/src/pages/RoomPage.jsx:371`，仅当轮到该玩家时）和大厅列表的「（断线中）」（`client/src/components/Lobby.jsx:120`）。
+
+**根因**：一个迟到事件的竞态。socket.io 靠 ping 超时发现死连接，所以**旧 socket 的 `disconnect` 事件可能在客户端已经用新 socket 重连之后才姗姗来迟**（滞后可达十几秒）。而 `server/index.js` 的 disconnect 处理函数无条件执行 `room.setConnected(myPlayerId, false)`，不检查这个 socket 是不是该玩家当前的连接——于是刚建立的活连接被覆盖，全桌看到一个正在正常打牌的人显示"断线中"。
+
+手机上尤其频繁，正好对应"好频繁"这个描述：微信里切出去、iOS 切后台、WiFi↔蜂窝切换，每一次都是一轮断开+重连，每一轮都可能撞上这个竞态。
+
+**这是本项目第三次遇到同一类竞态，而前两处都已经防住了**——这也是判定根因的关键佐证，不是猜的：
+
+- `server/index.js` 的 PVE 路径：`if (pveActiveSocket.get(pveId) === socket.id) pveActiveSocket.delete(pveId)`，注释明写 "don't let it clobber the new, live association"
+- 同一个 disconnect 函数底部的大厅宽限期移除定时器：`if (stillRoom && player && player.socketId === deadSocketId)`
+
+唯独 `setConnected(false)` 这一行漏了。已确认没有第四处（`setConnected` 的其余调用只有重连时的 `true`）。
+
+**修复**：新增 `RoomManager.markDisconnectedIfCurrent(playerId, socketId)`，只在 `socketId` 仍是该玩家当前连接时才标记，并返回是否真的标记了；`index.js` 据此决定要不要继续走广播/定时器逻辑，迟到的 disconnect 直接 `return`——既不标记、也不广播、更不给一个活着的玩家安排移除定时器。判断收进 RoomManager 而不是写在 index.js 里，是遵循 CLAUDE.md"状态通过类自己的方法管理，不从类外部直接塞属性"。
+
+保留 `p.socketId` 为空时按真实断线处理的分支——否则这个防护会退化成"再也不显示断线"。大厅定时器自己那个 `socketId` 检查仍然保留：它查的是**定时器触发时刻**的归属（断线后可能在宽限期内重连），跟断线时刻的检查是两回事，不是冗余。
+
+**验证**：新增 `server/__tests__/staleDisconnect.test.js` 两条用例——迟到的旧 socket disconnect 不得改变 `connected`（修复前**实测失败**，确认复现了真实缺陷）、真实断线仍须标记 `connected:false`（防止把防护做成永不标记）。服务端全量 314 条通过。
+
+**写测试时踩到的坑，值得记下来**：第一版用 `waitFor(c1, 'room:state')` 等断线广播，结果 `.once()` 捕获到的是上一次 join 广播的残留，把"真实断线"误判成了"没有标记"。改成直接轮询服务端状态（`waitUntil` / `staysTrue`）才测准。`integration.test.js` 里已有注释记录过同一个坑——见下条。
+
+**一处诚实记录：既有的测试不稳定，与本次改动无关**。`integration.test.js` 反复出现偶发失败。已量化对比：同一文件跑 5 次，**有本次修复时挂 2 次，回退到 HEAD 同样挂 2 次**，比例一致，因此不是本次引入的。从失败用例自带的注释看（"c1 received two room:state events in quick succession... that .once() listener catches this stale join event"），根因与上一段完全相同——是测试用 `.once()` 等广播事件的写法本身有竞态，不是产品代码问题。危害是实际的：每日反馈 routine 跑 `npm run test:all` 时可能因这类偶发失败而误判"测试没全绿"，从而放弃一个本来正确的修复。建议后续统一改成条件轮询。

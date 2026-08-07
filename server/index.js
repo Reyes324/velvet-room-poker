@@ -862,7 +862,10 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
       const room = rooms.getRoomByPlayer(myPlayerId);
       if (!room) return;
 
-      room.setConnected(myPlayerId, false);
+      // 迟到的旧 socket 的 disconnect：玩家早就用新 socket 重连了，这条事
+      // 件不代表任何真实的断线。什么都不做——既不标记，也不广播，更不给
+      // 一个活着的玩家安排移除定时器。见 markDisconnectedIfCurrent 的注释。
+      if (!room.markDisconnectedIfCurrent(myPlayerId, socket.id)) return;
 
       if (room.isAwaitingSettlementAck()) {
         // Settlement-wait disconnect: unlike the old behavior, we do NOT

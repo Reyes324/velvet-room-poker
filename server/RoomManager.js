@@ -183,6 +183,29 @@ class Room {
     if (p) p.connected = connected;
   }
 
+  // 标记断线，但只在 socketId 仍然是该玩家当前连接时才生效；返回是否真的
+  // 标记了，调用方据此决定要不要广播。
+  //
+  // 用户反馈 #9「其他玩家断线的提示好频繁，确定玩家是真的断线了吗」的根
+  // 因：socket.io 靠 ping 超时发现死连接，旧 socket 的 disconnect 可能在
+  // 客户端已经用新 socket 重连**之后**才姗姗来迟。无条件 setConnected
+  // (false) 会把刚建立的活连接覆盖掉，全桌于是看到一个正在正常打牌的人显
+  // 示"断线中"。手机上尤其频繁：微信切出去、iOS 切后台、WiFi↔蜂窝切换，
+  // 每次都是一轮断开+重连。
+  //
+  // 同样的"这个 socket 还是当前那个吗"检查，本项目已经在另外两处做了：
+  // server/index.js 的 PVE 路径（pveActiveSocket）和大厅宽限期移除定时器
+  // （player.socketId === deadSocketId）。这里补上第三处。
+  markDisconnectedIfCurrent(playerId, socketId) {
+    const p = this.players.find(p => p.id === playerId);
+    if (!p) return false;
+    // socketId 为空表示没有任何活连接记录，这时按真实断线处理——不能因为
+    // 记录缺失就永远不标记（否则这个防护会变成"再也不显示断线"）。
+    if (p.socketId && p.socketId !== socketId) return false;
+    p.connected = false;
+    return true;
+  }
+
   // durationMinutes: null/omitted → untimed (plain "开始游戏"); a number →
   // "计时游戏", room.gameTimerEndsAt is set to that many minutes from now.
   startGame(durationMinutes = null) {
