@@ -23,7 +23,12 @@ const FEEDBACK_MAX_IMAGE_BASE64_LENGTH = 3_000_000; // ~2.25MB decoded; client c
 const FEEDBACK_MAX_IMAGES = 4;
 const FEEDBACK_MAX_IMAGES_TOTAL_BASE64_LENGTH = 6_000_000;
 
-function createServer({ feedbackReporter = require('./feedbackReporter') } = {}) {
+function createServer({
+  feedbackReporter = require('./feedbackReporter'),
+  // 可注入，跟 feedbackReporter 是同一个"方便测试"的模式——否则验证"到点
+  // 自动推进"就得让测试真的等 15 秒。
+  settlementDisplayMs = 15 * 1000,
+} = {}) {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, {
@@ -200,7 +205,9 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
   // forever. Analogous to maybeArmPauseTimer but for the settlement phase
   // — the action-phase timer fires fold, this one fires dropFromSettlementWait.
   const settlementTimers = new Map();
-  const SETTLEMENT_TIMEOUT_MS = 10 * 60 * 1000;
+  // 结算画面的展示时长——到点自动进入下一手。既是"给大家看一眼结果"的节奏，
+  // 也是唯一的推进保障（见 armSettlementTimer 的说明）。
+  const SETTLEMENT_DISPLAY_MS = settlementDisplayMs;
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size }));
@@ -343,29 +350,31 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
   // fire time, all disconnected eligible players are dropped so the room
   // can advance. Clears + rearms on each call (lives alongside the pause
   // timer for the action phase, which is a different concern).
+  // 结算展示时间到就推进，**不问原因**。用户反馈 #10「多个玩家的时候，
+  // 现在的交互设计太慢了。因为现在很多步骤都依赖于所有玩家确认」。
+  //
+  // 旧版本是三层条件缠在一起：只在"名单里有人被标成断线"时才启动、10 分钟
+  // 超时、超时后逐个把断线的人摘出名单再看能不能推进。三层都建立在"要先
+  // 判断出这个人为什么不点"之上——而断线、已退出、就是在发呆，这三种情况
+  // 本来就该是同一个结果：别让一个人卡住其他所有人。所以合并成一条无条件
+  // 的规则，删掉的分支比留下的多。
+  //
+  // 信息不会因此丢失：这一手在 beginSettlementWait 的下一行就已经写进
+  // room.handHistory，随时可以从牌局记录里回看。这个等待保护的从来只是
+  // "给大家几秒看一眼结果"的节奏，而节奏用计时就够，不需要一个 N 人全票
+  // 通过的阻塞依赖。
   function armSettlementTimer(room) {
     clearSettlementTimer(room);
     if (!room.isAwaitingSettlementAck()) return;
-    const eligible = room.settlementWait.eligiblePlayerIds;
-    const anyDisconnected = room.players.some(p => eligible.has(p.id) && p.connected === false);
-    if (!anyDisconnected) return;
 
     const timer = setTimeout(() => {
       settlementTimers.delete(room.code);
       if (!room.isAwaitingSettlementAck()) return;
-      for (const p of room.players) {
-        if (p.connected === false && eligible.has(p.id)) {
-          if (room.dropFromSettlementWait(p.id)) {
-            advanceRoom(room);
-            return;
-          }
-        }
-      }
-      // Dropped all disconnected players but still didn't fire advanceRoom
-      // (not all remaining eligible have acked yet). Broadcast the updated
-      // progress so the stuck players know something changed.
-      io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
-    }, SETTLEMENT_TIMEOUT_MS);
+      advanceRoom(room);
+    }, SETTLEMENT_DISPLAY_MS);
+    // .unref() 跟下方的 idle-room reaper 一致：这个计时器本身不该让 Node
+    // 进程（或一次测试运行）为了等它而活着。
+    timer.unref?.();
     settlementTimers.set(room.code, timer);
   }
 
@@ -402,7 +411,14 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
       };
       io.to(room.code).emit('game:showdown', showdownData);
       room.lastShowdown = showdownData;
-      room.beginSettlementWait();
+      room.beginSettlementWait(SETTLEMENT_DISPLAY_MS);
+      // 每次结算都起计时，不再等"发现有人断线"才补救——那正是旧版本会让
+      // 一个已退出/发呆的玩家把整桌永久卡住的原因。
+      armSettlementTimer(room);
+      // 连同 endsAt 一起立刻发一次：客户端要靠它显示"Ns 后自动继续"。以前
+      // 这个事件只在有人点确认或有人断线时才发，弹窗一出来的那段时间里客
+      // 户端手里是没有进度信息的。
+      io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
 
       room.handHistory.push({
         handNumber: room.handHistory.length + 1,
@@ -873,13 +889,14 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
         // the root cause of Bug 3 — in heads-up, the brief disconnect
         // would trigger advanceRoom → nextRound → only 1 active player →
         // game ends). Instead, treat it like any other mid-game disconnect:
-        // just mark connected:false and let the settlement safety timeout
-        // handle the "never came back" case. We broadcast room:state and
-        // settlement-progress (but NOT game:state, which would clear other
-        // players' settlement modals via the client's game:state handler).
+        // just mark connected:false. 结算的推进由 beginSettlementWait 时就
+        // 已经起好的 15 秒计时负责，这里**不重新起计时**——断线不该把结算
+        // 画面延长，否则每来一次断线全桌就多等 15 秒。We broadcast
+        // room:state and settlement-progress (but NOT game:state, which
+        // would clear other players' settlement modals via the client's
+        // game:state handler).
         io.to(room.code).emit('room:state', room.getLobbyState());
         io.to(room.code).emit('game:settlement-progress', room.getSettlementProgress());
-        armSettlementTimer(room);
       } else if (room.game) {
         // Mid-hand disconnect: no auto-fold, no removal. broadcastRoom lets
         // everyone see the "connected:false" flag immediately, and (once

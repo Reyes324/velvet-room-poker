@@ -358,6 +358,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
             iAmReady={iAmReady}
             readyCount={settlementProgress?.readyCount ?? (iAmReady ? 1 : 0)}
             totalCount={settlementProgress?.totalCount ?? (roomState?.players ?? []).length}
+            endsAt={settlementProgress?.endsAt ?? null}
             onReady={handleReady}
             isFoldWin={isFoldWin}
             iAmWinner={iAmWinner}

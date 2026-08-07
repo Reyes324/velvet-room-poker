@@ -299,9 +299,19 @@ class Room {
   // (the fallback timer) and broadcasts the result; the ready-tracking data
   // itself belongs to the room.
 
-  beginSettlementWait() {
+  // displayMs：结算画面展示多久后自动推进。存成**绝对时间戳**而不是时长，
+  // 跟 gameTimerEndsAt 同样的理由——每个客户端拿自己的 Date.now() 一减就
+  // 能显示倒计时，不用来回问服务端，也不会因为反复从时长重新推算而累积漂移。
+  beginSettlementWait(displayMs = null) {
     this.settlementWait = {
-      eligiblePlayerIds: new Set(this.players.filter(p => p.socketId).map(p => p.id)),
+      endsAt: displayMs == null ? null : Date.now() + displayMs,
+      // `!p.left` 是必须的：socketId 按设计永不清除（见 setConnected 上方
+      // 的注释），而 leave() 只把 left 置 true——只筛 socketId 的话，一个
+      // 已经点了"退出房间"、人已经回到首页的玩家仍会被算作"还需要点确认
+      // 的人"，而他永远不会再点。在无条件超时推进落地之前，这会让整桌永久
+      // 卡死（旧的兜底定时器只在名单里有人被标成断线时才启动，而主动退出
+      // 的人 socket 往往还活着，connected 仍是 true）。
+      eligiblePlayerIds: new Set(this.players.filter(p => p.socketId && !p.left).map(p => p.id)),
       readyPlayerIds: new Set(),
     };
   }
@@ -337,8 +347,8 @@ class Room {
   // never reflected who else had actually acked.
   getSettlementProgress() {
     if (!this.settlementWait) return null;
-    const { eligiblePlayerIds, readyPlayerIds } = this.settlementWait;
-    return { readyCount: readyPlayerIds.size, totalCount: eligiblePlayerIds.size };
+    const { eligiblePlayerIds, readyPlayerIds, endsAt } = this.settlementWait;
+    return { readyCount: readyPlayerIds.size, totalCount: eligiblePlayerIds.size, endsAt };
   }
 
   _allSettlementAcksIn() {
