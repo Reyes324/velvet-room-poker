@@ -6,7 +6,7 @@
 // never shown face-down pre-showdown (removed — they carried no information
 // and only ate into the tight center-strip space); they only appear at real
 // showdown.
-import { useThinkSeconds } from '../hooks/useThinkSeconds';
+import { useThinkSeconds, useCountdownSeconds } from '../hooks/useThinkSeconds';
 import Card from './Card';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
@@ -41,13 +41,18 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
   const badge = player.isDealer ? '庄家' : player.isSB ? '小盲' : player.isBB ? '大盲' : null;
   const avClass = isMe ? 'av-gold' : AV[color % AV.length];
+  // 有服务端下发的截止时刻就显示倒计时；没有（人机对战、或还没收到状态）就
+  // 回退到原来那个正数计时，行为跟改动前一致。
+  const countdown = useCountdownSeconds(isAction ? turnEndsAt : null);
   const thinkSeconds = useThinkSeconds(isAction);
+  const clockText = countdown != null ? `${countdown}s` : `${thinkSeconds}s`;
+  const urgent = countdown != null && countdown <= 5;
 
   const seatClass = [
     'seat',
@@ -68,7 +73,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         <div className="avatar-photo">
           {player.name[0].toUpperCase()}
           {isAction && (
-            <div className="think-overlay">{thinkSeconds}s</div>
+            <div className={`think-overlay${urgent ? ' think-overlay--urgent' : ''}`}>{clockText}</div>
           )}
         </div>
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>

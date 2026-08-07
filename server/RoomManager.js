@@ -56,6 +56,15 @@ class Room {
     // a hand that's still in progress — the current hand always finishes
     // first, by construction, not by an extra timing check.
     this.awaitingTimerDecision = false;
+    // 当前回合的倒计时：{ playerId, endsAt }。endsAt 是**绝对时间戳**，跟
+    // gameTimerEndsAt 同样的理由——客户端拿自己的 Date.now() 一减就能显示
+    // 倒计时，不用问服务端，也不会因反复从时长推算而累积漂移。
+    //
+    // 刻意**不参考 connected**：倒计时问的是"有没有在时限内行动"，而切后台
+    // 的人、断线的人、发呆的人都不会行动，结果本就相同。断线判定（socket.io
+    // 默认 25s/20s 心跳，手机锁屏/切后台会误判）在这里没有任何作用，只会多
+    // 一个可能出错的输入。见 design.md 同名章节。
+    this.turnClock = null;
   }
 
   touch() {
@@ -217,6 +226,7 @@ class Room {
     const dealerIndex = idx === -1 ? 0 : idx;
     this.dealerId = seated[dealerIndex].id;
     this.game = new GameEngine(seated, dealerIndex, BIG_BLIND);
+    this.clearTurnClock();
     this.gameTimerEndsAt = durationMinutes ? Date.now() + durationMinutes * 60_000 : null;
     this.awaitingTimerDecision = false;
     return { ok: true };
@@ -274,6 +284,7 @@ class Room {
     const dealerIndex = prevIdx === -1 ? 0 : (prevIdx + 1) % active.length;
     this.dealerId = active[dealerIndex].id;
     this.game = new GameEngine(active, dealerIndex, BIG_BLIND);
+    this.clearTurnClock();
     return { ok: true };
   }
 
@@ -383,6 +394,59 @@ class Room {
     return this.resolveDisconnectedTurn(targetId);
   }
 
+  // 这手牌此刻是否真的在等某个人行动。
+  //
+  // 单看 getActionPlayerId() 是不够的：牌局对象在一手结束后仍然存在，
+  // actionIndex 也还停在最后行动的那个人身上，所以摊牌/结算/破产决策期间它
+  // 照样返回一个 id。倒计时如果只信它，就会对着一手**已经结束**的牌反复执行
+  // 默认动作——实测表现为超时回调每 250ms 触发一次、不断给同一个人弃牌。
+  isAwaitingAction() {
+    if (!this.game) return false;
+    if (this.game.phase === 'showdown') return false;
+    if (this.isAwaitingSettlementAck()) return false;
+    if (this.awaitingBustResolution) return false;
+    return this.getActionPlayerId() != null;
+  }
+
+  // ─── 回合倒计时 & 时间银行 ────────────────────────────────────────────────
+  // 时长一律由调用方传入（index.js 的 createServer 可注入），跟
+  // beginSettlementWait(displayMs) 一个模式——否则每条超时测试都得真等 20 秒。
+
+  // 每手开始时重置所有人的储备池。中途加入的人这一手没有 timeBankMs，
+  // extendTurn 里按 0 处理，下一手就会被这里补上。
+  resetTimeBanks(bankMs) {
+    for (const p of this.players) p.timeBankMs = bankMs;
+  }
+
+  startTurnClock(playerId, baseMs) {
+    this.turnClock = { playerId, endsAt: Date.now() + baseMs };
+    return this.turnClock;
+  }
+
+  clearTurnClock() {
+    this.turnClock = null;
+  }
+
+  // 玩家点「+15 秒」。从他自己的储备池里扣，扣完为止——用户原方案是无上限
+  // 续杯，那会把"一个人拖住全桌"原样带回来。
+  extendTurn(playerId, stepMs) {
+    if (!this.turnClock || this.turnClock.playerId !== playerId) return { error: '现在不是你的回合' };
+    const p = this.players.find(p => p.id === playerId);
+    if (!p) return { error: '玩家不存在' };
+    const remaining = p.timeBankMs ?? 0;
+    if (remaining <= 0) return { error: '延时时间已用完' };
+    const spend = Math.min(stepMs, remaining);
+    p.timeBankMs = remaining - spend;
+    // 从**当前剩余时间**上加，而不是从"现在"重新计时——否则在还剩 18 秒时
+    // 点一下反而会把时间缩短到 15 秒。
+    this.turnClock.endsAt += spend;
+    return { ok: true, endsAt: this.turnClock.endsAt, timeBankMs: p.timeBankMs };
+  }
+
+  timeBankFor(playerId) {
+    return this.players.find(p => p.id === playerId)?.timeBankMs ?? 0;
+  }
+
   playerAction(playerId, action, amount) {
     if (!this.game) return { error: '游戏未开始' };
     switch (action) {
@@ -406,8 +470,11 @@ class Room {
       hostId: this.hostId,
       status: this.status,
       startingChips: STARTING_CHIPS,
-      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false, left: p.left || false })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false, left: p.left || false, timeBankMs: p.timeBankMs ?? 0 })),
       awaitingBustResolution: this.awaitingBustResolution,
+      // 当前回合的倒计时。公开信息——每个人都该看到轮到谁、还剩多久，不只是
+      // 行动方自己。endsAt 是绝对时间戳，客户端自行与本地时间相减。
+      turnClock: this.turnClock,
       gameTimerEndsAt: this.gameTimerEndsAt,
       awaitingTimerDecision: this.awaitingTimerDecision,
     };

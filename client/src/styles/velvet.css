@@ -182,6 +182,13 @@
   font-size:19px; font-weight:700; border-radius:8px 8px 0 0;
   text-shadow:0 1px 4px rgba(0,0,0,.9), 0 0 10px rgba(255,90,40,.5);
 }
+/* 最后 5 秒：加重并轻微脉动。倒计时到点会真的替你执行默认动作（弃牌/过牌），
+   所以"快没时间了"这件事必须能被余光扫到，而不是要盯着数字看。 */
+.think-overlay--urgent { color:#FF3B2F; animation:urgentPulse .8s ease-in-out infinite; }
+@keyframes urgentPulse {
+  0%,100% { transform:scale(1);    text-shadow:0 1px 4px rgba(0,0,0,.9), 0 0 10px rgba(255,60,40,.6); }
+  50%     { transform:scale(1.12); text-shadow:0 1px 4px rgba(0,0,0,.9), 0 0 18px rgba(255,60,40,.95); }
+}
 .av-green  .avatar-photo { background:radial-gradient(circle at 38% 35%, #2E7A40, #0A2E14); }
 .av-purple .avatar-photo { background:radial-gradient(circle at 38% 35%, #4A228A, #1E0855); }
 .av-teal   .avatar-photo { background:radial-gradient(circle at 38% 35%, #0E6060, #042E2E); }
@@ -407,6 +414,9 @@
 .b-call { flex:2; background:linear-gradient(135deg,#166232,#27AE60); color:#fff; font-size:14px; box-shadow:0 4px 16px rgba(39,174,96,.2); }
 .b-check { flex:2; background:rgba(36,113,163,.2); color:#7EB8E0; border:1px solid rgba(36,113,163,.25); font-size:14px; }
 .b-raise-trigger { flex:1; background:rgba(212,175,55,.1); color:#D4AF37; border:1px solid rgba(212,175,55,.28); font-size:13px; }
+/* 延时按钮。刻意比三个动作按钮窄（flex:0 0 auto）也更低调——它不是一个牌桌
+   动作，只是给自己多要一点时间，不该跟弃牌/跟注/加注抢视觉权重。 */
+.b-extend { flex:0 0 auto; padding:0 12px; background:rgba(120,140,190,.12); color:#8FA5CC; border:1px solid rgba(120,140,190,.26); font-size:13px; font-family:var(--font-mono); }
 /* flex:2 vs. b-cancel/b-allin's flex:1 each — widest of the three raise-bottom
    buttons, on request (2026-07-31): 返回/全下/确认加注 left-to-right,
    确认加注 gets the most visual weight since it's the commit action. */

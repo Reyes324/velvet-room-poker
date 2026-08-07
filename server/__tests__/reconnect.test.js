@@ -174,8 +174,12 @@ describe('打牌中断线：暂停而不是自动弃牌/踢出', () => {
   });
 });
 
-describe('打牌中断线：5 分钟安全兜底', () => {
-  it('轮到断线玩家超过 5 分钟没人处理 → 自动帮他弃牌', async () => {
+describe('打牌中断线：回合倒计时兜底', () => {
+  // 原来这里是 5 分钟的 PAUSE_TIMEOUT_MS，且只对断线玩家生效——一个在线但
+  // 不动的人可以无限拖住全桌（用户反馈 #10）。现在改成对所有人一视同仁的
+  // 20 秒回合倒计时，断线玩家不再需要任何特判：他按不了延时按钮，到点自然
+  // 就被执行默认动作。见 design.md「行动倒计时 + 时间银行」。
+  it('轮到断线玩家、到点没人处理 → 自动执行默认动作，且人仍留在座位上', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const { c1, c2, actingId } = await setupPlayingRoom();
@@ -192,12 +196,16 @@ describe('打牌中断线：5 分钟安全兜底', () => {
       // so the test failed deterministically with `10000` regardless of
       // implementation correctness. Verified: raising this above the total
       // advance amount fixes it, with the assertions unchanged.
-      const advanced = waitFor(otherSocket, 'room:state', 5 * 60 * 1000 + 5000);
-      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+      const TURN_BASE_MS = 20 * 1000; // createServer 的默认值
+      const advanced = waitFor(otherSocket, 'room:state', TURN_BASE_MS + 10000);
+      await vi.advanceTimersByTimeAsync(TURN_BASE_MS + 1000);
       await advanced;
 
       const room = rooms.getRoomByPlayer(actingId === 'p1' ? 'p2' : 'p1');
-      expect(room.players.map(p => p.id)).toContain(actingId); // still seated
+      expect(room.players.map(p => p.id)).toContain(actingId); // 断线不等于离座
+      // 默认动作确实执行了：要么行动权转走，要么这手已经因弃牌结束。只断言
+      // "人还在座位上"是不够的——那在超时逻辑完全失效时同样成立。
+      expect(room.isAwaitingSettlementAck() || room.getActionPlayerId() !== actingId).toBe(true);
     } finally {
       vi.useRealTimers();
     }

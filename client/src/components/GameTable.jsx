@@ -181,7 +181,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -635,6 +635,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             color={colorForId(me.id)}
             bubble={visibleBubble(me.id)}
             poked={pokedSeat?.targetId === me.id}
+            turnEndsAt={turnClock?.playerId === me.id ? turnClock.endsAt : null}
           />
         </div>
       )}
@@ -672,6 +673,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               bubbleSide={bubbleSide}
               onPoke={() => onPoke?.(p.id)}
               poked={pokedSeat?.targetId === p.id}
+              turnEndsAt={turnClock?.playerId === p.id ? turnClock.endsAt : null}
               revealedCards={revealedPlayers[p.id]?.holeCards ?? null}
               bestCardRaws={hasBestCards ? bestCardRaws : null}
             />
@@ -713,7 +715,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
       {amPlaying
         ? (myTurn
-            ? <ActionBar gameState={gameState} myId={myId} onAction={onAction} disabled={actionDisabled} />
+            ? <ActionBar gameState={gameState} myId={myId} onAction={onAction} disabled={actionDisabled} timeBankMs={myTimeBankMs} onExtendTurn={onExtendTurn} />
             : <div className="waiting-bar"><div className="waiting-text">{isShowdown ? '正在比牌…' : '等待其他玩家行动…'}</div></div>)
         : (myChips > 0
             ? <div className="waiting-bar"><div className="waiting-text">旁观中，下一手自动入座</div></div>

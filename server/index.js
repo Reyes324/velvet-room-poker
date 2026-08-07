@@ -28,6 +28,11 @@ function createServer({
   // 可注入，跟 feedbackReporter 是同一个"方便测试"的模式——否则验证"到点
   // 自动推进"就得让测试真的等 15 秒。
   settlementDisplayMs = 15 * 1000,
+  // 回合倒计时（用户反馈 #7 / #10）。同样可注入——否则每条"到点自动执行"的
+  // 测试都得真等 20 秒。
+  turnBaseMs = 20 * 1000,
+  timeBankPerHandMs = 30 * 1000,
+  turnExtendStepMs = 15 * 1000,
 } = {}) {
   const app = express();
   const server = http.createServer(app);
@@ -188,21 +193,22 @@ function createServer({
   // action a large fraction of the time on mobile. See GRACE_PERIOD_MS.
   const pendingRemovals = new Map();
   const GRACE_PERIOD_MS = 120000;
-  // Safety-timeout for a mid-hand pause: if the player whose turn it is
-  // stays disconnected this long with nobody (them or the host) resolving
-  // it, auto-fold on their behalf so the table isn't stuck forever if the
-  // host is unreachable too. Keyed by room code — only one turn can be
-  // "stuck" at a time per room. See maybeArmPauseTimer below.
-  const pauseTimers = new Map();
-  const PAUSE_TIMEOUT_MS = 5 * 60 * 1000;
-  // Same 5-minute safety net, for the "someone busted and won't decide"
-  // pause (awaitingBustResolution) instead of a stuck mid-hand turn. Keyed
-  // by room code, like pauseTimers — see maybeArmBustTimer below.
+  // 当前回合的倒计时定时器，按房间号存——一个房间同一时刻只可能有一个人在
+  // 行动。见 maybeArmTurnClock。取代了原来的 pauseTimers/PAUSE_TIMEOUT_MS
+  // （5 分钟，且只对断线玩家生效）。
+  const turnTimers = new Map();
+  const TURN_BASE_MS = turnBaseMs;
+  const TIME_BANK_PER_HAND_MS = timeBankPerHandMs;
+  const TURN_EXTEND_STEP_MS = turnExtendStepMs;
+  // "有人破产了却不做决定"的兜底，跟回合倒计时是两回事——倒计时管的是牌桌上
+  // 的行动，这个管的是 awaitingBustResolution 这个暂停。Keyed by room code,
+  // see maybeArmBustTimer below.
+  const BUST_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
   const bustTimers = new Map();
   // Settlement safety-timeout: if an eligible player disconnects during
   // settlement wait and never returns, auto-drop them after 10 minutes so
   // the remaining connected players can advance instead of being stuck
-  // forever. Analogous to maybeArmPauseTimer but for the settlement phase
+  // forever. Analogous to maybeArmTurnClock but for the settlement phase
   // — the action-phase timer fires fold, this one fires dropFromSettlementWait.
   const settlementTimers = new Map();
   // 结算画面的展示时长——到点自动进入下一手。既是"给大家看一眼结果"的节奏，
@@ -221,7 +227,7 @@ function createServer({
 
   function broadcastRoom(room) {
     room.touch();
-    maybeArmPauseTimer(room);
+    maybeArmTurnClock(room);
     maybeArmBustTimer(room);
     for (const p of room.players) {
       if (!p.socketId) continue;
@@ -231,7 +237,7 @@ function createServer({
     io.to(room.code).emit('room:state', room.getLobbyState());
   }
 
-  // Mirrors maybeArmPauseTimer, for the "someone busted, hasn't rebought or
+  // Mirrors maybeArmTurnClock, for the "someone busted, hasn't rebought or
   // left yet" pause instead of a stuck mid-hand turn. Re-evaluated from the
   // same broadcastRoom funnel point after every event that could change who's
   // pending (a bust, a rebuy, a leave).
@@ -254,7 +260,7 @@ function createServer({
       const stillPending = room.players.filter(p => p.chips === 0 && !p.left);
       for (const p of stillPending) room.markLeft(p.id);
       tryAdvanceIfClear(room);
-    }, PAUSE_TIMEOUT_MS);
+    }, BUST_DECISION_TIMEOUT_MS);
     bustTimers.set(room.code, { pendingIds, timer });
   }
 
@@ -297,6 +303,8 @@ function createServer({
     }
 
     const nr = room.nextRound();
+    // 储备池按手重置——每手都是新的 30 秒，不跨手累积也不跨手透支。
+    room.resetTimeBanks(TIME_BANK_PER_HAND_MS);
     if (nr.ended) io.to(room.code).emit('game:ended', nr);
     broadcastRoom(room);
   }
@@ -322,27 +330,63 @@ function createServer({
   // the single broadcastRoom() funnel point below, so it re-evaluates
   // after every event that could change whose turn it is or someone's
   // connection status (actions, disconnects, reconnects).
-  function maybeArmPauseTimer(room) {
-    const existing = pauseTimers.get(room.code);
-    const actionPlayerId = room.getActionPlayerId();
-    const player = actionPlayerId ? room.players.find(p => p.id === actionPlayerId) : null;
-    const shouldBeArmed = !!player && player.connected === false;
+  // 回合倒计时（用户反馈 #7 / #10）。取代了原来那个 5 分钟的
+  // PAUSE_TIMEOUT_MS——那个只对**断线**玩家生效，所以一个在线但不动的人可以
+  // 无限拖住全桌，正是 #10 抱怨的"太慢了"。
+  //
+  // 刻意**不看 connected**：倒计时问的是"有没有在时限内行动"，切后台的、断线
+  // 的、发呆的都不会行动，结果本就相同。断线判定（socket.io 默认心跳，手机锁
+  // 屏/切后台会误判——见 RoomManager nextRound 上方那段历史）在这里没有任何
+  // 作用，只会多一个可能出错的输入。断线玩家因此自然地在到点被执行默认动作，
+  // 无需任何特判。
+  function maybeArmTurnClock(room) {
+    const existing = turnTimers.get(room.code);
+    // isAwaitingAction() 而不是裸的 getActionPlayerId()：一手结束后牌局对象
+    // 仍在、actionIndex 也还停在最后行动的人身上，只信后者会让倒计时对着一
+    // 手已经结束的牌反复执行默认动作（实测：每个周期给同一个人弃牌一次）。
+    const actionPlayerId = room.isAwaitingAction() ? room.getActionPlayerId() : null;
 
-    if (existing && existing.playerId === actionPlayerId && shouldBeArmed) return; // already correct
+    // 还是同一个人的回合（比如别人重连触发了一次无关的广播）——绝不能重置
+    // 计时，否则任意一次广播都能给当前行动方无限续命。
+    if (existing && existing.playerId === actionPlayerId) return;
+
     if (existing) {
       clearTimeout(existing.timer);
-      pauseTimers.delete(room.code);
+      turnTimers.delete(room.code);
     }
-    if (!shouldBeArmed) return;
+    if (!actionPlayerId) { room.clearTurnClock(); return; }
+
+    const { endsAt } = room.startTurnClock(actionPlayerId, TURN_BASE_MS);
+    scheduleTurnExpiry(room, actionPlayerId, endsAt);
+  }
+
+  // 单独拆出来，因为「+15 秒」延时也要用它重新排期（见 game:extend-turn）。
+  function scheduleTurnExpiry(room, playerId, endsAt) {
+    const existing = turnTimers.get(room.code);
+    if (existing) clearTimeout(existing.timer);
 
     const timer = setTimeout(() => {
-      pauseTimers.delete(room.code);
-      // Re-validate at fire time — the situation may have resolved itself
-      // (reconnect, host fold, hand ended) between arming and firing.
-      const result = room.resolveDisconnectedTurn(actionPlayerId);
+      turnTimers.delete(room.code);
+      // 到点前重新确认一次：这中间他可能已经行动了、这手可能已经结束了。
+      if (room.getActionPlayerId() !== playerId) return;
+      const result = defaultActionFor(room, playerId);
       if (!result.error) handleActionResult(room, result);
-    }, PAUSE_TIMEOUT_MS);
-    pauseTimers.set(room.code, { playerId: actionPlayerId, timer });
+    }, Math.max(0, endsAt - Date.now()));
+    timer.unref?.();
+    turnTimers.set(room.code, { playerId, timer });
+  }
+
+  // 超时默认动作：无人加注就过牌，有人加注就弃牌（业内标准的 check/fold
+  // default，也是用户在 #10 里提的）。
+  //
+  // 判定方式是"先试 check，被引擎拒绝就 fold"，而不是在这里重新推导"当前有
+  // 没有需要跟的注"——后者等于把引擎的下注规则复制一份出来，两份迟早会不
+  // 一致。GameEngine.check() 的两个错误分支都在任何状态改动之前返回，所以
+  // 这样试探是安全的。
+  function defaultActionFor(room, playerId) {
+    const checked = room.playerAction(playerId, 'check');
+    if (!checked.error) return checked;
+    return room.playerAction(playerId, 'fold');
   }
 
   // Arms a safety-timeout for the settlement-wait phase: if any eligible
@@ -527,6 +571,7 @@ function createServer({
       if (room.hostId !== playerId) return socket.emit('game:error', '只有房主可以开始游戏');
       const result = room.startGame(durationMinutes);
       if (result.error) return socket.emit('game:error', result.error);
+      room.resetTimeBanks(TIME_BANK_PER_HAND_MS);
       broadcastRoom(room);
     });
 
@@ -536,6 +581,20 @@ function createServer({
       const result = room.playerAction(playerId, action, amount);
       if (result.error) return socket.emit('game:error', result.error);
       handleActionResult(room, result);
+    });
+
+    // 「+15 秒」延时。从玩家自己每手 30 秒的储备池里扣，扣完为止——用户原
+    // 方案是无上限续杯，那会把"一个人拖住全桌"原样带回来。
+    socket.on('game:extend-turn', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.extendTurn(playerId, TURN_EXTEND_STEP_MS);
+      if (result.error) return socket.emit('game:error', result.error);
+      room.touch();
+      // 定时器要按新的截止时刻重新排期，否则时间加了但到点动作照旧在原时刻
+      // 触发——这正是"加了时间却还是被弃牌"那类最难查的 bug。
+      scheduleTurnExpiry(room, playerId, result.endsAt);
+      broadcastRoom(room);
     });
 
     socket.on('player:rebuy', ({ playerId }) => {
@@ -688,7 +747,7 @@ function createServer({
       pendingRemovals.delete(playerId);
       // Broadcast to the whole room (not just this socket) so everyone
       // else's "XXX 断线中" indicator clears too, and — once a game is in
-      // progress — so maybeArmPauseTimer (Task 7) re-evaluates whether the
+      // progress — so maybeArmTurnClock re-evaluates whether the
       // safety timeout should still be ticking.
       if (room.isAwaitingSettlementAck() && room.game) {
         // Reconnection during settlement wait: send room:state to everyone
