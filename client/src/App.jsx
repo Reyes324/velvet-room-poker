@@ -1,9 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './styles/global.css';
 import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
 import PvePage from './pages/PvePage';
 import StatesGallery from './StatesGallery';
+import ServerResetModal from './components/ServerResetModal';
+import { getSocket } from './hooks/useSocket';
+import {
+  classifyServerChange, readStoredIdentity, writeStoredIdentity,
+  hasActiveSession, clearSessionMarkers,
+} from './utils/serverIdentity';
 
 // 人机对战的"回来接着打"只在离开后不太久才有意义——用户反馈（2026-07-31）：
 // 联机房间不一样（房间是共享状态，只要房间还在就该带你回去），但人机对战
@@ -13,6 +19,12 @@ import StatesGallery from './StatesGallery';
 // 服务端那边的对局本来就已经被清掉了，客户端再尝试"恢复"也只是拿到一局
 // 全新的，不如干脆回首页，语义更诚实。
 const PVE_RESUME_WINDOW_MS = 30 * 60 * 1000;
+
+// 等 server:hello 的兜底上限。会话恢复要等这个事件（见下方 identityReady），
+// 所以它必须有个下限保障：万一服务器是还没带 server:hello 的旧版本、或者
+// 连接迟迟建不起来，恢复流程不能被永久卡住——超时就按"一切正常"继续，最
+// 坏情况退回到改动前的行为，而不是把人锁在首页。
+const HELLO_TIMEOUT_MS = 3000;
 
 export default function App() {
   const [room, setRoom] = useState(null); // { code, playerId, playerName } | { autoJoinCode }
@@ -25,6 +37,30 @@ export default function App() {
   const [pveName, setPveName] = useState(null);
   const [pveSeatCount, setPveSeatCount] = useState(2);
 
+  // 服务器进程换过了、玩家的牌局随内存一起没了 → { kind: 'version'|'restart' }。
+  const [serverReset, setServerReset] = useState(null);
+  // server:hello 已到达（或已超时兜底）。会话恢复必须等它——见下面那个 effect。
+  const [identityReady, setIdentityReady] = useState(false);
+  const restoredRef = useRef(false);
+
+  // 进程身份握手。必须在任何 rejoin 之前完成：以前的顺序是"先拿旧房间号去
+  // rejoin → 服务器回'未找到房间' → toast 报错 → 人卡在原地"，玩家完全不知
+  // 道发生了什么。现在先问清楚"服务器还是不是刚才那个进程"，是重启就根本
+  // 不发起那次注定失败的 rejoin，直接告诉玩家。
+  useEffect(() => {
+    const socket = getSocket();
+    function onHello(incoming) {
+      const result = classifyServerChange(readStoredIdentity(), incoming, hasActiveSession());
+      writeStoredIdentity(incoming);
+      if (result) setServerReset(result);
+      setIdentityReady(true);
+    }
+    socket.on('server:hello', onHello);
+    if (!socket.connected) socket.connect();
+    const timer = setTimeout(() => setIdentityReady(true), HELLO_TIMEOUT_MS);
+    return () => { socket.off('server:hello', onHello); clearTimeout(timer); };
+  }, []);
+
   // 路由重构（2026-08-02，用户反馈"主域名无论什么时候访问都应该是首页"）：
   // 裸域名 `/` 永远只渲染首页，不再在这里做任何自动恢复——首页自己的
   // "继续上局"卡片（HomePage.jsx）才是从 `/` 进入已有会话的唯一入口。这个
@@ -33,6 +69,11 @@ export default function App() {
   // 或从首页卡片点进来后 pushState 到这里）——这两种都是明确的目的地导航，
   // 跟"裸域名该不该自动带你进会话"是两个问题。
   useEffect(() => {
+    // 等握手结果再决定要不要恢复。serverReset 非空表示牌局确实已经没了——
+    // 这时候恢复只会去 rejoin 一个不存在的房间，换来一句"未找到房间"。
+    if (!identityReady || serverReset || restoredRef.current) return;
+    restoredRef.current = true;
+
     const pathMatch = window.location.pathname.match(/^\/room\/([0-9]{6})$/i);
     const params = new URLSearchParams(window.location.search);
     const urlCode = (pathMatch?.[1] ?? params.get('room'))?.toUpperCase() ?? null;
@@ -94,7 +135,7 @@ export default function App() {
       localStorage.removeItem('vr_pveLastActive');
       window.history.replaceState({}, '', '/');
     }
-  }, []);
+  }, [identityReady, serverReset]);
 
   // Browser back button → go home
   useEffect(() => {
@@ -102,6 +143,17 @@ export default function App() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+
+  // 牌局已经确定不存在了，本地这些标记全是过期的——不清掉的话，下次进站
+  // 又会拿着它们去 rejoin 一个不存在的房间，正是这次要堵掉的那条死路。
+  function handleServerResetDismiss() {
+    clearSessionMarkers();
+    restoredRef.current = true; // 已经在首页了，别再触发一次恢复
+    window.history.replaceState({}, '', '/');
+    setRoom(null);
+    setPveName(null);
+    setServerReset(null);
+  }
 
   function handleJoined(code, playerId, playerName, justCreated) {
     window.history.pushState({}, '', '/room/' + code);
@@ -150,16 +202,28 @@ export default function App() {
     return <StatesGallery index={Number(statesParam) || 0} />;
   }
 
+  // 牌局没了的提示要盖在当前画面之上，所以每个分支都带上它——判定发生时
+  // 恢复已经被拦住了，实际上人多半停在首页，但重连也可能发生在任何一屏。
+  const resetModal = serverReset
+    ? <ServerResetModal kind={serverReset.kind} onDismiss={handleServerResetDismiss} />
+    : null;
+
   if (pveName !== null) {
     return (
       <div className="stage-wrap">
         <PvePage playerName={pveName} seatCount={pveSeatCount} onLeave={handlePveLeave} />
+        {resetModal}
       </div>
     );
   }
 
   if (!room?.code) {
-    return <HomePage onJoined={handleJoined} onPve={handlePve} initialCode={room?.autoJoinCode} />;
+    return (
+      <>
+        <HomePage onJoined={handleJoined} onPve={handlePve} initialCode={room?.autoJoinCode} />
+        {resetModal}
+      </>
+    );
   }
 
   return (
@@ -171,6 +235,7 @@ export default function App() {
         justCreated={room.justCreated}
         onLeave={handleLeave}
       />
+      {resetModal}
     </div>
   );
 }

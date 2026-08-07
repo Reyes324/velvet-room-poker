@@ -5,6 +5,7 @@ const path = require('path');
 const { RoomManager } = require('./RoomManager');
 const { parseCard } = require('./GameEngine');
 const { PveSession } = require('./PveSession');
+const { getServerIdentity } = require('./serverIdentity');
 
 // 固定四档，非法/缺省一律回退单挑——不接受任意人数。Module scope (not
 // re-allocated per pve:start call) and coerced with Number() before the
@@ -420,6 +421,10 @@ function createServer({ feedbackReporter = require('./feedbackReporter') } = {})
 
   io.on('connection', (socket) => {
     let myPlayerId = null;
+
+    // 第一件事就报出进程身份——客户端要靠它判断"我存着的房间还在不在"，
+    // 所以必须先于任何 rejoin 尝试到达。见 client/src/utils/serverIdentity.js。
+    socket.emit('server:hello', getServerIdentity());
 
     // Read-only lookup for the "XXX invited you" banner on the join screen —
     // no side effects (doesn't touch players/sockets), safe to call before

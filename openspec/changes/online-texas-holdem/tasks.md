@@ -1017,3 +1017,13 @@
     - #3 多图 UI——`multiple` 属性生效、连选两张后缩略图数=2 计数=2/4、删除一张后=1、窄屏无横向溢出、无 console error
     - #4 卡死修复——**用吞掉 `pve:action` 出站消息的方式复现"服务器永远不回状态"**，点击后操作栏消失（正是用户截图里的卡死态），8 秒后自动恢复可操作
     - #5 弹窗顺序——每手全下打到破产，实测"先出结算表 → 点我知道了 → 才出借一底弹窗"，顺序正确
+
+- [x] **服务器重启/发版导致牌局丢失时给玩家提示**（用户需求，2026-08-07）
+  - 新增 `server/serverIdentity.js`：进程启动时生成 `bootId`（每次启动不同）+ 读 `RENDER_GIT_COMMIT` 得 `version`（本地回退 `dev`）；`io.on('connection')` 第一件事发 `server:hello`
+  - 新增 `client/src/utils/serverIdentity.js`：纯函数 `classifyServerChange`，五条分支决定"不提示 / 新版本 / 重启"
+  - 新增 `client/src/components/ServerResetModal.jsx`：两种文案，无 backdrop 关闭
+  - **区分"发版"和"重启"**：免费档闲置休眠冷启动同样清空内存但没有新版本，且大概率比推送更频繁——一律说"发布了新版本"是在骗玩家。用 commit 号区分
+  - **顺带堵掉"未找到房间"死胡同**：`App.jsx` 的会话恢复改成等 `server:hello` 后再决定，判定重置就不发起那次注定失败的 rejoin，避免报错 toast 与弹窗竞态；`HELLO_TIMEOUT_MS = 3000` 兜底防止把人锁在首页
+  - **范围（用户明确收窄）**：只给真正丢了牌局的人弹，首页访客不打扰；弹窗内不列本次更新内容
+  - **验收**：服务端 312/312；新增 e2e `serverReset.spec.js` 4/4（两种文案各一条、首页访客不打扰、同进程刷新不弹窗）
+  - **既有问题，与本次无关**：`integration.test.js` 的 "room:end-game" 用例跑全量时偶发失败；原始代码跑全量三次为 1 挂/2 挂/全过，已确认是既有的跨文件时序不稳定
