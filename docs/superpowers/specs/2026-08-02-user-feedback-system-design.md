@@ -42,7 +42,16 @@
 
 - 用当前会话环境自带的定时唤醒能力，**每天一次**自动醒来，拉取所有还没处理过的 `feedback` 标签 Issue；用户也可以随时手动喊我检查，不用等定时任务。
 
-> **实施结果（2026-08-02，Task 7 记录）**：规划阶段把上面这句话具体化为"用 `RemoteTrigger`，不用 `CronCreate`"——`CronCreate` 是会话级的，创建它的会话一结束就没了，且不管会话是否还在都会在 7 天后硬性自动过期，不适合"每天一次、长期运行"的需求。但实际执行这一步时，`RemoteTrigger` 的 `create` 动作被账号配置卡住：需要一个账号级的 `job_config.ccr.environment_id`（或 `self_hosted_runner_pool_id`），且没有任何发现机制——`RemoteTrigger` 自己的 `list` 返回空，也没有工具能枚举合法的 environment id。这个问题升级给了用户，用户选择先用 `CronCreate` 顶上（job id `9885f659`，schedule `17 3 * * *` = 每天本地时间 3:17，recurring）。**这是明确的临时垫档方案，不是这里设计的持久方案**：7 天后按工具自身限制自动失效，创建它的 Claude 会话结束也会立刻失效，需要人工定期续期；要变成真正的 `RemoteTrigger` 长期方案，需要用户先在自己的 claude.ai 账号上找到/配置一个 `environment_id`（当前位置未知，需要用户自己排查），这是一项跟这轮功能实施范围无关的后续待办，本文档的设计意图（每天一次、长期自动运行）保持不变，只是记录当前用的是哪个机制在顶替它。
+> **实施结果（2026-08-02，Task 7 记录）**：规划阶段把上面这句话具体化为“用 `RemoteTrigger`，不用 `CronCreate`”——`CronCreate` 是会话级的，创建它的会话一结束就没了，且不管会话是否还在都会在 7 天后硬性自动过期，不适合“每天一次、长期运行”的需求。但实际执行这一步时，`RemoteTrigger` 的 `create` 动作被账号配置卡住：需要一个账号级的 `job_config.ccr.environment_id`，且当时没有任何发现机制。这个问题升级给了用户，用户选择先用 `CronCreate` 顶上（job id `9885f659`），并明确记录为临时垫档。
+>
+> **实施结果（2026-08-07 更新，blocker 已解除）**：`CronCreate` 垫档如预期失效了——7 天过期 + 创建它的会话结束，两个条件都触发，`CronList` 与 `RemoteTrigger list` 均为空，期间 Issue #7 无人处理。同日发现 `environment_id` 现在**可以枚举**（`Default` / `env_01WiZuy2n9EsiJy7BxMDpBbg`），原 blocker 解除，遂按本文档最初的设计意图建立了持久的云端 routine：
+>
+> - routine id：`trig_014hQaj11hsgnCLecf5dvQZb`（名称「velvet-room-poker 每日反馈闭环」）
+> - 排期：`0 19 * * *` UTC = **每天北京时间凌晨 3:00**
+> - 模型：`claude-sonnet-5`。曾短暂设为 opus-5，随后改回：真正的安全防线是“四条准入条件 + 测试不全绿不推送”的门禁，而非模型强弱，且此 job 多数日子只做打标签评估。
+> - 运行环境：Anthropic 云端隔离会话，独立 clone 本仓库，**与用户本机开关机无关**——这正是 `CronCreate` 做不到的那一点。
+> - 推送授权：用户于 2026-08-07 明确授权“**bug 类修复可直接推 main**，需要决策的才找我讨论”。这是对平时“不经同意不 push”规矩的一项**限定例外**，仅限本 routine、仅限 bug 类、仅限测试全绿时。
+> - 管理入口：https://claude.ai/code/routines/trig_014hQaj11hsgnCLecf5dvQZb （删除 routine 只能在这个页面操作）
 - 对每一条：按 Section 2 的标准分类、打标签、写评估理由评论。
 - 只有同时满足以下**全部**条件，才允许自动修复 + 测试 + 推送到线上，否则一律留给下次真人对话一起处理：
   1. 类别是 `bug`（不是 `design`/`off-topic`）
