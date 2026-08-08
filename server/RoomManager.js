@@ -146,6 +146,19 @@ class Room {
     return { ok: true };
   }
 
+  // 归零之后的第三个选择——旁观留下，不借钱也不退出。跟 rebuy/markLeft 一
+  // 样解除 index.js 的 awaitingBustResolution 暂停（房间不会被他晾在那
+  // 儿），但既不加筹码也不动 left。之后这个人自然落进 nextRound() 的
+  // chips>0 过滤之外（他本来就是 0），跟"中途加入还没赶上"是同一条旁观展
+  // 示路径，界面上不区分。
+  spectate(playerId) {
+    const p = this.players.find(p => p.id === playerId);
+    if (!p) return { error: '玩家不存在' };
+    if (p.chips !== 0) return { error: '筹码充足，无需旁观' };
+    p.bustResolved = true;
+    return { ok: true };
+  }
+
   // Was removePlayer(id) — deleted the row outright, which silently wiped
   // that player's chips/debt from the shared ledger the moment they left
   // (confirmed by user feedback: the ledger is meant to be the group's
@@ -244,7 +257,12 @@ class Room {
   syncChipsFromGame() {
     for (const rp of this.players) {
       const gp = this.game?.players.find(p => p.id === rp.id);
-      if (gp) rp.chips = gp.chips;
+      if (!gp) continue;
+      // 刚从有筹码变成 0——这是一次新的归零，之前那次的"旁观留下"决定不能
+      // 沿用到这一次（否则借回筹码又打光之后，会直接跳过决策弹窗）。只在
+      // 这个 >0→0 的瞬间重置，chips 本来就是 0 或者还 >0 都不动它。
+      if (rp.chips > 0 && gp.chips === 0) rp.bustResolved = false;
+      rp.chips = gp.chips;
     }
   }
 
@@ -485,7 +503,7 @@ class Room {
       hostId: this.hostId,
       status: this.status,
       startingChips: STARTING_CHIPS,
-      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false, left: p.left || false, timeBankMs: p.timeBankMs ?? 0 })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false, left: p.left || false, timeBankMs: p.timeBankMs ?? 0, bustResolved: p.bustResolved || false })),
       awaitingBustResolution: this.awaitingBustResolution,
       // 当前回合的倒计时。公开信息——每个人都该看到轮到谁、还剩多久，不只是
       // 行动方自己。endsAt 是绝对时间戳，客户端自行与本地时间相减。

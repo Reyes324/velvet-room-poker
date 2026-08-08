@@ -359,6 +359,74 @@ describe('Room — 借一底 (rebuy)', () => {
   });
 });
 
+describe('Room — 旁观留下 (spectate)', () => {
+  it('归零后可以选择旁观留下，标记 bustResolved', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.players[0].chips = 0;
+    const result = room.spectate('p1');
+    expect(result.ok).toBe(true);
+    expect(room.players[0].bustResolved).toBe(true);
+    expect(room.players[0].chips).toBe(0); // 不加筹码，跟借一底不同
+    expect(room.players[0].left).toBe(false); // 不退出，跟离开不同
+  });
+
+  it('筹码充足时不能选择旁观留下', () => {
+    const room = rooms.create('p1', 'Alice');
+    const result = room.spectate('p1');
+    expect(result.error).toBeDefined();
+    expect(room.players[0].bustResolved).toBeFalsy();
+  });
+
+  it('不存在的玩家旁观留下 → 返回错误', () => {
+    const room = rooms.create('p1', 'Alice');
+    const result = room.spectate('nobody');
+    expect(result.error).toBeDefined();
+  });
+
+  it('旁观留下的人不进入下一手，但不影响其他人继续（三人局）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    rooms.join(room.code, 'p3', 'Charlie', 's3');
+    room.startGame();
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+    room.game.players.find(p => p.id === 'p1').chips = 1500;
+    room.game.players.find(p => p.id === 'p3').chips = 1500;
+    room.syncChipsFromGame();
+
+    room.spectate('p2');
+    const result = room.nextRound();
+
+    expect(result.ended).toBeUndefined();
+    expect(room.status).toBe('playing');
+    expect(room.game.players.map(p => p.id).sort()).toEqual(['p1', 'p3']);
+    // p2 还在房间里，旁观，且没有被强制退出
+    const p2 = room.players.find(p => p.id === 'p2');
+    expect(p2.chips).toBe(0);
+    expect(p2.left).toBe(false);
+    expect(p2.bustResolved).toBe(true);
+  });
+
+  it('再次归零时，之前的旁观决定被重置——不会延续到下一次归零', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 's2');
+    room.startGame();
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+    room.game.players.find(p => p.id === 'p1').chips = 2000;
+    room.syncChipsFromGame();
+    room.spectate('p2');
+    expect(room.players.find(p => p.id === 'p2').bustResolved).toBe(true);
+
+    // 借一底回来，再打光一次
+    room.rebuy('p2');
+    room.game.players.find(p => p.id === 'p2').chips = 1000; // rebuy 已经写回引擎副本，这里对齐一下方便下一步归零
+    room.game.players.find(p => p.id === 'p2').chips = 0;
+    room.syncChipsFromGame();
+
+    // 新的这次归零，不该沿用上一次"旁观留下"的决定
+    expect(room.players.find(p => p.id === 'p2').bustResolved).toBe(false);
+  });
+});
+
 describe('Room — nextRound 筹码归零处理', () => {
   it('筹码归零的玩家不进入下一手，但仍留在房间里', () => {
     const room = rooms.create('p1', 'Alice');

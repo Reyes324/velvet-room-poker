@@ -225,6 +225,13 @@ function createServer({
 
   // ─── helpers ───────────────────────────────────────────────────────────────
 
+  // Still owes the room a bust decision (rebuy / spectate / leave) — the one
+  // definition of "pending", shared by the pause check, its timer, and the
+  // timer's own timeout fallback, so the three can't drift apart.
+  function bustPending(room) {
+    return room.players.filter(p => p.chips === 0 && !p.left && !p.bustResolved);
+  }
+
   function broadcastRoom(room) {
     room.touch();
     maybeArmTurnClock(room);
@@ -243,7 +250,7 @@ function createServer({
   // pending (a bust, a rebuy, a leave).
   function maybeArmBustTimer(room) {
     const existing = bustTimers.get(room.code);
-    const pendingIds = room.players.filter(p => p.chips === 0 && !p.left).map(p => p.id).sort().join(',');
+    const pendingIds = bustPending(room).map(p => p.id).sort().join(',');
     const shouldBeArmed = room.awaitingBustResolution && pendingIds.length > 0;
 
     if (existing && existing.pendingIds === pendingIds) return; // already correct
@@ -255,10 +262,9 @@ function createServer({
 
     const timer = setTimeout(() => {
       bustTimers.delete(room.code);
-      // Re-validate at fire time — someone may have resolved (rebought or
-      // left) between arming and firing.
-      const stillPending = room.players.filter(p => p.chips === 0 && !p.left);
-      for (const p of stillPending) room.markLeft(p.id);
+      // Re-validate at fire time — someone may have resolved (rebought,
+      // spectated, or left) between arming and firing.
+      for (const p of bustPending(room)) room.markLeft(p.id);
       tryAdvanceIfClear(room);
     }, BUST_DECISION_TIMEOUT_MS);
     bustTimers.set(room.code, { pendingIds, timer });
@@ -268,19 +274,19 @@ function createServer({
   // next hand: holds (and broadcasts the pause) if anyone's chips===0 and
   // hasn't resolved yet, otherwise proceeds to nextRound() as before. Called
   // both right after the settlement-ack wait clears, and again whenever a
-  // pending player resolves (rebuy or leave) — either can be the thing that
-  // finally clears the pause.
+  // pending player resolves (rebuy, spectate, or leave) — any of the three
+  // can be the thing that finally clears the pause.
   function tryAdvanceIfClear(room) {
     // Deliberately does NOT call room.syncChipsFromGame() itself — that
     // must happen exactly once, right when a hand finishes (see
     // advanceRoom), not on every call here. This function is also called
-    // after a rebuy/leave resolves the pause, and by then room.players
-    // already holds the current truth (the rebuy already incremented
-    // chips directly); re-syncing from the finished, untouched game engine
-    // at that point would clobber the rebuy's chips right back down to 0
-    // (confirmed the hard way — a live test kept looping instead of
-    // clearing the pause).
-    const busted = room.players.filter(p => p.chips === 0 && !p.left);
+    // after a rebuy/spectate/leave resolves the pause, and by then
+    // room.players already holds the current truth (the rebuy already
+    // incremented chips directly); re-syncing from the finished, untouched
+    // game engine at that point would clobber the rebuy's chips right back
+    // down to 0 (confirmed the hard way — a live test kept looping instead
+    // of clearing the pause).
+    const busted = bustPending(room);
     if (busted.length > 0) {
       room.awaitingBustResolution = true;
       broadcastRoom(room);
@@ -624,6 +630,20 @@ function createServer({
       // If the room was paused waiting on this player's bust decision,
       // rebuying is one of the two ways to resolve it — re-check whether
       // everyone's clear to deal the next hand now.
+      if (room.awaitingBustResolution) tryAdvanceIfClear(room);
+      else io.to(room.code).emit('room:state', room.getLobbyState());
+    });
+
+    // Third bust-decision option — stay and watch, no rebuy, no leaving.
+    // Resolves the room's pause the same as rebuy/leave-room do; the
+    // player then simply falls out of nextRound()'s chips>0 filter like
+    // any other spectator (mid-game joiner, previous busted-and-waiting).
+    socket.on('player:spectate', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.spectate(playerId);
+      if (result.error) return socket.emit('game:error', result.error);
+      room.touch();
       if (room.awaitingBustResolution) tryAdvanceIfClear(room);
       else io.to(room.code).emit('room:state', room.getLobbyState());
     });

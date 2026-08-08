@@ -56,7 +56,7 @@ export default function StatesGallery({ index = 0 }) {
           onReveal={() => {}}
         />
       )}
-      {s.bustPreview && <BustDecisionModal onRebuy={() => {}} onLeave={() => {}} />}
+      {s.bustPreview && <BustDecisionModal onRebuy={() => {}} onSpectate={() => {}} onLeave={() => {}} />}
       {s.ledgerPreview && (
         <LedgerModal
           players={s.ledgerPreview.players}

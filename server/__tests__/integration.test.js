@@ -523,6 +523,35 @@ describe('集成测试 — 游戏流程', () => {
     expect(room.players.find(p => p.id === 'p1').chips).toBe(1000);
   });
 
+  it('筹码归零后选择旁观留下 → 解除暂停（单挑桌因规则本身仍会结束，但暂停被真正解除，不是卡住）', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    const room = rooms.getRoomByPlayer('p1');
+    room.game.players.find(p => p.id === 'p1').chips = 0;
+
+    const showdown = waitFor(c1, 'game:showdown');
+    c1.emit('game:action', { playerId: 'p1', action: 'fold' });
+    await showdown;
+
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(room.awaitingBustResolution).toBe(true);
+
+    c1.emit('player:spectate', { playerId: 'p1' });
+    await new Promise((r) => setTimeout(r, 150));
+    // 解除了暂停（不是含糊地晾着），单挑桌活跃人数<2 这条规则本身接管，游戏结束
+    expect(room.awaitingBustResolution).toBe(false);
+    expect(room.status).toBe('waiting');
+    const p1 = room.players.find(p => p.id === 'p1');
+    expect(p1.bustResolved).toBe(true);
+    expect(p1.left).toBe(false); // 没有被当成离开处理，账本/身份都还在
+    expect(p1.chips).toBe(0);
+  });
+
   it('房主可以帮不响应的筹码归零玩家（非房主本人）"退出对局"，解除暂停', async () => {
     const { c1, c2 } = await setupRoom(); // p1 = 房主
     const gs1 = waitFor(c1, 'game:state');

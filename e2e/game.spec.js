@@ -344,7 +344,7 @@ test.describe('旁观视图渲染（?states= 开发自检画廊）', () => {
     await expect(rebuyBtn).toContainText('借一底');
   });
 
-  test('筹码归零决策弹窗：两个选项都存在', async ({ page }) => {
+  test('筹码归零决策弹窗：三个选项都存在（旁观留下已在 sit-out 设计下重新加回）', async ({ page }) => {
     // states=9, not 8 — a "结算弹窗·弃牌结束" fixture was inserted earlier in
     // the STATES array (fixtures.js) after this test was written, shifting
     // every fixture after it down by one index; this test was never updated
@@ -354,9 +354,7 @@ test.describe('旁观视图渲染（?states= 开发自检画廊）', () => {
     await page.waitForTimeout(300);
     await expect(page.locator('.modal-title:has-text("筹码已用完")')).toBeVisible();
     await expect(page.locator('.modal-btn:has-text("借一底")')).toBeVisible();
-    // Only two options — a third "旁观留下" (spectate) choice was cut per
-    // explicit user feedback (see BustDecisionModal.jsx's own comment); this
-    // test used to assert three and was never updated.
+    await expect(page.locator('.modal-btn:has-text("旁观留下")')).toBeVisible();
     await expect(page.locator('.modal-btn-danger:has-text("退出对局")')).toBeVisible();
   });
 

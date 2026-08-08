@@ -156,6 +156,10 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     emit('player:rebuy', { playerId });
   }
 
+  function spectate() {
+    emit('player:spectate', { playerId });
+  }
+
   // Intentional leave — used by the busted player's "退出对局", an
   // impatient other player's "退出" while waiting on someone else's bust
   // decision, and the lobby's own "退出房间". Resolves immediately server-
@@ -222,11 +226,14 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     emit('game:fold-disconnected', { hostId: playerId, targetId: stuckPlayer.id });
   }
 
-  // Anyone with 0 chips who hasn't left yet is exactly who the room is
-  // holding the next hand for (server-side: awaitingBustResolution) — the
-  // room stays on 'playing' status throughout, so this only needs the
-  // roomState.players list, not any dedicated event.
-  const bustedPlayers = inGame ? (roomState.players ?? []).filter(p => p.chips === 0 && !p.left) : [];
+  // Anyone with 0 chips who hasn't left AND hasn't already resolved their
+  // bust decision is exactly who the room is holding the next hand for
+  // (server-side: awaitingBustResolution) — the room stays on 'playing'
+  // status throughout, so this only needs the roomState.players list, not
+  // any dedicated event. `bustResolved` excludes a player who already
+  // picked "旁观留下" — without it they'd see this same blocking modal
+  // again on every subsequent hand instead of the passive spectate view.
+  const bustedPlayers = inGame ? (roomState.players ?? []).filter(p => p.chips === 0 && !p.left && !p.bustResolved) : [];
   const myBust = bustedPlayers.find(p => p.id === playerId);
   const othersBust = bustedPlayers.filter(p => p.id !== playerId);
 
@@ -320,7 +327,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           ——用 !settlement 当条件的话，结算表永远不消失、借一底弹窗永远不
           出现，直接死锁，比原来的 bug 还严重。 */}
       {myBust && (!settlement || iAmReady) && (
-        <BustDecisionModal onRebuy={rebuy} onLeave={leaveRoom} />
+        <BustDecisionModal onRebuy={rebuy} onSpectate={spectate} onLeave={leaveRoom} />
       )}
       {!myBust && othersBust.length > 0 && (
         <BustWaitModal names={othersBust.map(p => p.name)} onLeave={leaveRoom} />
