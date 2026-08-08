@@ -191,15 +191,23 @@
   position:absolute; inset:0; width:100%; height:100%;
   pointer-events:none; z-index:3; overflow:visible;
 }
-.turn-ring rect {
-  fill:none;
-  stroke:#D4AF37;
-  stroke-width:2.5;
+.turn-ring rect { fill:none; }
+/* 底环：走完的那一段用它露出来，才看得出"已经走了多少"，不然消失的部分
+   就是裸露的卡片边缘，跟"没在计时"分不清（真机截图确认过，加粗到 3.5px
+   同样是那次反馈——2.5px 在 56px 宽的座位上不够醒目）。 */
+.turn-ring-track {
+  stroke:var(--gold-400);
+  stroke-width:3.5;
+  opacity:.16;
+}
+.turn-ring-progress {
+  stroke:var(--gold-400);
+  stroke-width:3.5;
   /* 卡片周长约 2*(54+58) = 224，取 232 留出圆角的余量 */
   stroke-dasharray:232;
   stroke-dashoffset:0;
   stroke-linecap:round;
-  filter:drop-shadow(0 0 4px rgba(212,175,55,.55));
+  filter:drop-shadow(0 0 5px rgba(212,175,55,.6)) drop-shadow(0 0 11px rgba(212,175,55,.3));
   animation-name:ringDrain;
   animation-timing-function:linear;
   animation-fill-mode:forwards;
@@ -207,9 +215,10 @@
 }
 @keyframes ringDrain { to { stroke-dashoffset:232; } }
 
-.turn-ring--urgent rect {
-  stroke:#FF3B2F;
-  filter:drop-shadow(0 0 7px rgba(255,60,40,.85));
+.turn-ring--urgent .turn-ring-track { stroke:var(--urgent-red); opacity:.2; }
+.turn-ring--urgent .turn-ring-progress {
+  stroke:var(--urgent-red);
+  filter:drop-shadow(0 0 8px rgba(255,59,47,.9)) drop-shadow(0 0 16px rgba(255,59,47,.45));
 }
 
 /* 座位在计时状态下的底色处理：只留一层极淡的内发光，不再有呼吸动画——
@@ -220,17 +229,19 @@
 .turn-secs {
   position:absolute; top:2px; right:3px;
   font-family:var(--font-mono); font-size:11px; font-weight:700; line-height:1;
-  color:#D4AF37; padding:1px 3px; border-radius:4px;
+  color:var(--gold-400); padding:1px 3px; border-radius:4px;
   background:rgba(4,10,6,.55);
   text-shadow:0 1px 3px rgba(0,0,0,.9);
   transition:color .4s ease;
 }
-.turn-secs--urgent { color:#FF3B2F; font-size:12px; }
+.turn-secs--urgent { color:var(--urgent-red); font-size:12px; }
 
 /* 信号交接：线走到最后已经几乎没有长度了，恰恰是最需要提醒的时刻反而最不
    显眼。所以在最后 5 秒把信号从"线"交给"卡片本身"——描边淡出的同时卡片开
    始泛红呼吸。仍然只有一个概念在表达时间，不是又叠一层动画。 */
 .is-timed-urgent .avatar-card {
+  /* var(--urgent-red) 是 #FF3B2F，这里要半透明版本，token 不带 alpha
+     变体，所以保留 rgba 字面量而不是硬套 var()。 */
   border-color:rgba(255,59,47,.55);
   animation:timeUrgentGlow .9s ease-in-out infinite;
 }

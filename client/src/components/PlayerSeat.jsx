@@ -6,7 +6,7 @@
 // never shown face-down pre-showdown (removed — they carried no information
 // and only ate into the tight center-strip space); they only appear at real
 // showdown.
-import { useThinkSeconds, useCountdownSeconds, useRingTiming } from '../hooks/useThinkSeconds';
+import { useThinkSeconds, useTurnClock } from '../hooks/useThinkSeconds';
 import Card from './Card';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
@@ -49,10 +49,13 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   const avClass = isMe ? 'av-gold' : AV[color % AV.length];
   // 有服务端下发的截止时刻就显示倒计时；没有（人机对战、或还没收到状态）就
   // 回退到原来那个正数计时，行为跟改动前一致。
-  const countdown = useCountdownSeconds(isAction ? turnEndsAt : null);
+  // 秒数和走线环以前是两个独立 hook，各自异步 resolve，回合刚开始那一两帧
+  // 会有一个先备好、另一个还没，期间误判成"非计时状态"从而闪出旧版 UI——
+  // 现在统一由 useTurnClock 一次性算出，不会再有这种半新半旧的过渡帧。
   const thinkSeconds = useThinkSeconds(isAction);
-  const ring = useRingTiming(isAction ? turnStartedAt : null, isAction ? turnEndsAt : null);
-  const timed = countdown != null && !!ring;
+  const clock = useTurnClock(isAction, turnStartedAt, turnEndsAt);
+  const timed = !!clock;
+  const countdown = clock?.secondsLeft ?? 0;
   const urgent = timed && countdown <= 5;
 
   const seatClass = [
@@ -82,17 +85,22 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             重连或点了延时之后都不会跳回满格。key 保证换回合时动画重播。 */}
         {timed && (
           <svg
-            key={ring.key}
+            key={clock.key}
             className={`turn-ring${urgent ? ' turn-ring--urgent' : ''}`}
             viewBox="0 0 56 60"
             preserveAspectRatio="none"
             aria-hidden="true"
           >
+            {/* 淡色底环画出完整轮廓，亮色描边在它上面走空——没有底环时，
+                走掉的那一段只是"卡片边缘"，看不出"已经走了多少"，两条环
+                叠在一起对比才够明显（真机截图确认过）。 */}
+            <rect className="turn-ring-track" x="1" y="1" width="54" height="58" rx="9" ry="9" />
             <rect
+              className="turn-ring-progress"
               x="1" y="1" width="54" height="58" rx="9" ry="9"
               style={{
-                animationDuration: `${ring.totalMs}ms`,
-                animationDelay: `-${ring.elapsedMs}ms`,
+                animationDuration: `${clock.totalMs}ms`,
+                animationDelay: `-${clock.elapsedMs}ms`,
               }}
             />
           </svg>

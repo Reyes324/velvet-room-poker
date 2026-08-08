@@ -5,59 +5,6 @@ import { useState, useEffect, useRef } from 'react';
 // this seat; ticks up once per second while it stays true. Different
 // clients may show slightly different values under network latency — that
 // is expected and fine, this is an atmosphere indicator, not a rule.
-// 回合倒计时（用户反馈 #7「页面没有倒计时」）。endsAt 是服务端下发的绝对时
-// 间戳，各客户端跟自己的 Date.now() 相减即可，不用来回问服务端。
-//
-// endsAt 为空时返回 null——调用方据此回退到上面那个正数计时。人机对战没有回
-// 合倒计时（只有一个真人，不存在"拖住别人"这回事），走的正是这条回退路径。
-//
-// Date.now() 只在回调里读：写在渲染期会违反 react-hooks 的纯度规则，写在
-// effect 体内同步 setState 又会触发级联渲染警告。首次取值走一个 0ms 的
-// timeout，同样属于回调。
-export function useCountdownSeconds(endsAt) {
-  // 把值和它所属的 endsAt 绑在一起存。渲染期只做一次比较（纯操作），
-  // setState 只发生在回调里——两条 react-hooks 规则都不碰。
-  //
-  // 绑定是必需的：不绑的话，新回合的头一两帧会渲染上一回合结束时那个 0，而
-  // 0 同时会触发"最后 5 秒"的红色，于是每个回合刚开始都闪一下红，正好和它
-  // 要表达的意思相反。
-  const [tick, setTick] = useState(null); // { endsAt, left } | null
-
-  useEffect(() => {
-    if (!endsAt) return;
-    const update = () => setTick({ endsAt, left: Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)) });
-    const first = setTimeout(update, 0);
-    const id = setInterval(update, 250);
-    return () => { clearTimeout(first); clearInterval(id); };
-  }, [endsAt]);
-
-  return endsAt && tick?.endsAt === endsAt ? tick.left : null;
-}
-
-// 环形进度需要的两个 CSS 动画参数：这一轮总时长，以及**已经过去多久**。
-// 后者做成负的 animation-delay，动画就会从正确的位置接着走——中途重连、
-// 或者点了延时之后，环都不会跳回满格。
-//
-// 只在 startedAt/endsAt 变化时算一次（回合级别），所以在渲染期读 Date.now()
-// 的问题不存在：它被关在 useMemo 之外的 effect 里。
-export function useRingTiming(startedAt, endsAt) {
-  // 跟 useCountdownSeconds 一样把值与其来源绑定，并且只在回调里 setState：
-  // 直接在 effect 体内同步 setState 会被 react-hooks 判为级联渲染。
-  const [timing, setTiming] = useState(null); // { key, totalMs, elapsedMs } | null
-
-  useEffect(() => {
-    if (!startedAt || !endsAt) return;
-    const id = setTimeout(() => setTiming({
-      key: `${startedAt}-${endsAt}`,
-      totalMs: Math.max(1, endsAt - startedAt),
-      elapsedMs: Math.max(0, Date.now() - startedAt),
-    }), 0);
-    return () => clearTimeout(id);
-  }, [startedAt, endsAt]);
-
-  return startedAt && endsAt && timing?.key === `${startedAt}-${endsAt}` ? timing : null;
-}
-
 export function useThinkSeconds(isAction) {
   const [seconds, setSeconds] = useState(0);
   const wasActiveRef = useRef(false);
@@ -71,4 +18,61 @@ export function useThinkSeconds(isAction) {
   }, [isAction]);
 
   return seconds;
+}
+
+// 回合倒计时 + 走线环的共同数据源（用户反馈 #7「页面没有倒计时」，以及后来
+// 加的走线描边）。startedAt/endsAt 是服务端下发的绝对时间戳。
+//
+// 这两样东西以前是两个独立 hook（各自一个 setTimeout(fn, 0) 起播），会在
+// 回合刚开始的那一两帧里各自独立 resolve：一个已经算出新值、另一个还没，
+// 期间 PlayerSeat 认为"还没进入计时状态"，于是旧版 UI（金色呼吸边框 +
+// 数字方块）先闪一帧，等两边都 resolve 完才切到新版走线环——这就是"新旧动画
+// 堆叠"的根因。
+//
+// 现在改成单一状态源，且换回合时用 React 官方推荐的"渲染期比较 key、不一致
+// 就立即 setState"模式（而不是等 effect/timeout）：state 在本次渲染流程内
+// 就跟着新的 startedAt/endsAt 一起更新完，不会有中途只有一半数据的过渡帧。
+// 之前避免在渲染期读 Date.now() 是怕破坏纯度——但这里只在 key 变化时读一次
+// （不是每次渲染都读），且只用于捕捉"这一回合开始时经过了多久"这个一次性
+// 基准值，属于 React 文档认可的"渲染期用 key 变化重置状态"写法，不会有多次
+// render 结果不一致的问题。
+function computeTurnClock(startedAt, endsAt) {
+  const now = Date.now();
+  return {
+    key: `${startedAt}-${endsAt}`,
+    totalMs: Math.max(1, endsAt - startedAt),
+    elapsedMs: Math.max(0, now - startedAt),
+    secondsLeft: Math.max(0, Math.ceil((endsAt - now) / 1000)),
+  };
+}
+
+// endsAt/startedAt 缺失（人机对战、或还没收到状态）时返回 null——调用方据此
+// 回退到 useThinkSeconds 那条正数计时路径，行为跟改动前一致。
+export function useTurnClock(isAction, startedAt, endsAt) {
+  const active = !!(isAction && startedAt && endsAt);
+  const key = active ? `${startedAt}-${endsAt}` : null;
+
+  const [clock, setClock] = useState(() => (active ? computeTurnClock(startedAt, endsAt) : null));
+  const clockKeyRef = useRef(clock?.key ?? null);
+
+  // 渲染期重置：key 变了就立刻算好新值再继续渲染，不留一帧空档。setState 在
+  // 渲染期调用是 React 认可的"根据 prop 变化重置状态"写法（不是在 effect
+  // 里做，避免多一轮 commit）——但下面的 useEffect 仍必须无条件调用，Hooks
+  // 的调用顺序不能因为这个分支而改变。
+  let value = clock;
+  if (clockKeyRef.current !== key) {
+    clockKeyRef.current = key;
+    value = active ? computeTurnClock(startedAt, endsAt) : null;
+    setClock(value);
+  }
+
+  // key 没变——同一回合内，只需要每 250ms 刷新一次剩余时间用于秒数显示，
+  // 走线环本身靠 CSS animation-delay 走时间，不依赖这个 interval。
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setClock(computeTurnClock(startedAt, endsAt)), 250);
+    return () => clearInterval(id);
+  }, [active, startedAt, endsAt]);
+
+  return value && value.key === key ? value : null;
 }

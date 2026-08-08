@@ -69,6 +69,11 @@
   --state-danger: #C0392B;
   --state-safe: #27AE60;
   --state-info: #2980B9;
+  /* Deliberately more saturated than --state-danger — that token reads as
+     "loss" in a static number (ledger/stats), this one is a moving alert
+     (last-5s turn ring + digit) that needs to read as urgent at a glance,
+     not just negative. Kept separate on purpose, not a duplicate. */
+  --urgent-red: #FF3B2F;
 
   /* Typography */
   --font-display: 'Cinzel', serif;

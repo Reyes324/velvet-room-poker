@@ -131,8 +131,10 @@ test('倒计时视觉：环形描边渲染且在走，不与旧的呼吸边框�
   ]);
   const observer = (await pA.locator(S.actionBar).isVisible()) ? pB : pA;
 
-  const ring = observer.locator('.turn-ring rect');
-  await expect(ring).toHaveCount(1, { timeout: 10000 });
+  // 底环（走完的轨迹）+ 走动的描边，两条都要在，才看得出"走了多少"
+  await expect(observer.locator('.turn-ring-track')).toHaveCount(1, { timeout: 10000 });
+  const ring = observer.locator('.turn-ring-progress');
+  await expect(ring).toHaveCount(1);
 
   // 环必须真的在走：隔一段时间取两次 stroke-dashoffset，第二次应当更大
   const read = () => ring.evaluate(el => parseFloat(getComputedStyle(el).strokeDashoffset));
