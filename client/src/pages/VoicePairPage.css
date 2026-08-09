@@ -68,3 +68,6 @@
 }
 
 .vp-report { margin-top: 16px; }
+
+.vp-relay-flag { color: #E9B44C; font-size: 11px; }
+.vp-rtt-hint { color: var(--text-muted); }

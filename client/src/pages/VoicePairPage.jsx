@@ -30,6 +30,17 @@ function randomCode() {
   return String(Math.floor(1000 + Math.random() * 9000));
 }
 
+// 把往返延迟翻译成一句人话。分档依据的是"对讲/边打牌边聊"这个用途，不是
+// 打电话的标准——按住说话、说完松开，对延迟的容忍度本来就比通话高一截。
+// 数字本身也留着，别只给结论。
+function rttVerdict(ms) {
+  if (ms < 80) return ' — 很好，基本感觉不到';
+  if (ms < 150) return ' — 不错，说话不别扭';
+  if (ms < 250) return ' — 能用，能感觉到一点延迟';
+  if (ms < 400) return ' — 明显有延迟，换一台更近的中继会改善';
+  return ' — 延迟很大，说明中继绕得太远';
+}
+
 // 从 URL 里取暗号——微信里把链接发给对方，对方点开就直接进同一个暗号，
 // 不用手输（手输 4 位数在微信里是实打实的流失点）。
 function codeFromUrl() {
@@ -50,6 +61,9 @@ export default function VoicePairPage() {
   const [remotePeak, setRemotePeak] = useState(0);
   const [copied, setCopied] = useState(false);
   const [route, setRoute] = useState(null); // 实际选中的连接路径（host/srflx/relay）
+  const [rttMs, setRttMs] = useState(null); // 当前往返延迟
+  const [rttPeak, setRttPeak] = useState(null); // 见过的最大值——卡顿是峰值造成的，不是均值
+  const [relayInfo, setRelayInfo] = useState(null); // 真正用上的那台中继
 
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -58,9 +72,11 @@ export default function VoicePairPage() {
   const detachSinkRef = useRef(null);
   const timeoutRef = useRef(null);
   const peerIdRef = useRef(null);
+  const statsTimerRef = useRef(null);
 
   const stopAll = useCallback(() => {
     clearTimeout(timeoutRef.current);
+    clearInterval(statsTimerRef.current);
     stopMetersRef.current.forEach(fn => { try { fn(); } catch { /* 已停 */ } });
     stopMetersRef.current = [];
     detachSinkRef.current?.();
@@ -79,6 +95,43 @@ export default function VoicePairPage() {
     stopAll();
   }, [stopAll]);
 
+  // 连上之后持续读连接统计。用轮询而不是连上那一刻读一次，有两个原因：
+  //
+  //  1. **延迟是本轮实测的核心问题**（用户第三轮反馈："是可以的，只是延时有点
+  //     长"）。延迟要看趋势和稳定性，单次采样说明不了问题。
+  //  2. 刚 connected 那一瞬间往往还没有可用的 RTT 样本，读一次经常是空的。
+  //
+  // 走中继时 RTT 主要由"到中继服务器的距离"决定，所以这个数字直接回答"换一台
+  // 更近的中继值不值得"——这是接下来要花钱与否的判断依据，不是好看的仪表盘。
+  const startStatsPolling = useCallback(pc => {
+    clearInterval(statsTimerRef.current);
+    const read = () => {
+      pc.getStats?.().then(stats => {
+        let selected = null;
+        stats.forEach(r => {
+          if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated !== false) selected = r;
+        });
+        if (!selected) return;
+        const local = stats.get?.(selected.localCandidateId);
+        const remote = stats.get?.(selected.remoteCandidateId);
+        if (local || remote) setRoute(`${local?.candidateType ?? '?'} ↔ ${remote?.candidateType ?? '?'}`);
+        // 走中继时把中继服务器地址显示出来——三台候选里到底用上了哪一台，
+        // 决定了"换一台更近的"该换谁。
+        if (local?.candidateType === 'relay' && local?.relatedAddress !== undefined) {
+          setRelayInfo(`${local.address ?? '?'}:${local.port ?? '?'}`);
+        }
+        const rtt = selected.currentRoundTripTime;
+        if (typeof rtt === 'number') {
+          const ms = Math.round(rtt * 1000);
+          setRttMs(ms);
+          setRttPeak(p => Math.max(p ?? 0, ms));
+        }
+      }).catch(() => { /* 拿不到统计不影响通话本身 */ });
+    };
+    read();
+    statsTimerRef.current = setInterval(read, 1000);
+  }, []);
+
   // 建 RTCPeerConnection 并把本地音轨推上去。发起方/接听方共用，区别只在
   // 谁先 createOffer——由服务端下发的 shouldInitiate 决定，不由客户端猜。
   const buildPc = useCallback((socket, remoteId) => {
@@ -95,19 +148,7 @@ export default function VoicePairPage() {
       if (s === 'connected' || s === 'completed') {
         clearTimeout(timeoutRef.current);
         setPhase('connected');
-        // 连上之后把真正选中的那条路径读出来——"到底是靠本地网络直连还是靠
-        // STUN 打通的"，这决定了朋友之间隔着不同网络能不能用，是这次实测最
-        // 想拿到的信息之一。
-        pc.getStats?.().then(stats => {
-          let selected = null;
-          stats.forEach(r => {
-            if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated !== false) selected = r;
-          });
-          if (!selected) return;
-          const local = stats.get?.(selected.localCandidateId);
-          const remote = stats.get?.(selected.remoteCandidateId);
-          if (local || remote) setRoute(`${local?.candidateType ?? '?'} ↔ ${remote?.candidateType ?? '?'}`);
-        }).catch(() => { /* 拿不到统计不影响结论 */ });
+        startStatsPolling(pc);
       } else if (s === 'failed') {
         clearTimeout(timeoutRef.current);
         setPhase('error');
@@ -131,7 +172,7 @@ export default function VoicePairPage() {
 
     localStreamRef.current.getAudioTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
     return pc;
-  }, []);
+  }, [startStatsPolling]);
 
   const start = useCallback(async () => {
     setError(null);
@@ -306,7 +347,20 @@ export default function VoicePairPage() {
         </div>
         {peerId && <div className="vp-line">对方：{peerId.slice(0, 6)}…</div>}
         {iceState && <div className="vp-line">连接状态：{iceState}</div>}
-        {route && <div className="vp-line">走的路径：{route}</div>}
+        {route && (
+          <div className="vp-line">
+            走的路径：{route}
+            {route.includes('relay') && <span className="vp-relay-flag">（经中继转发，会比直连慢）</span>}
+          </div>
+        )}
+        {relayInfo && <div className="vp-line">中继服务器：{relayInfo}</div>}
+        {rttMs !== null && (
+          <div className="vp-line">
+            往返延迟：<strong>{rttMs} ms</strong>
+            {rttPeak !== null && rttPeak !== rttMs && <>（峰值 {rttPeak} ms）</>}
+            <span className="vp-rtt-hint">{rttVerdict(rttMs)}</span>
+          </div>
+        )}
         {error && <div className="vp-line vc-warn">{error}</div>}
       </section>
 
@@ -342,6 +396,8 @@ export default function VoicePairPage() {
             `对端：${peerId ?? '无'}`,
             `ICE：${iceState ?? '未开始'}`,
             `路径：${route ?? '未知'}`,
+            `中继服务器：${relayInfo ?? '未走中继'}`,
+            `往返延迟：${rttMs !== null ? `${rttMs} ms（峰值 ${rttPeak} ms）` : '未测到'}`,
             `我的麦克风峰值：${localPeak.toFixed(3)}`,
             `对方声音峰值：${remotePeak.toFixed(3)}`,
             `错误：${error ?? '无'}`,

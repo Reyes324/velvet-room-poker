@@ -82,9 +82,37 @@ test.describe('双机语音实测页', () => {
     await b.page.locator('.vp-start').click();
     await expect(a.page.locator('.vp-phase')).toHaveText('已连接 ✓', { timeout: CONNECT_TIMEOUT });
 
-    // 本地环境走的是 host↔host，真机跨网络时应当出现 srflx。这里只断言这项
-    // **确实被读出来了**，不断言具体值——值本身是实测时要看的信息。
+    // 本地环境走的是 host↔host，真机跨网络时应当出现 srflx/relay。这里只断言
+    // 这项**确实被读出来了**，不断言具体值——值本身是实测时要看的信息。
     await expect(a.page.locator('.vp-line').filter({ hasText: '走的路径' })).toBeVisible({ timeout: CONNECT_TIMEOUT });
+
+    await a.ctx.close();
+    await b.ctx.close();
+  });
+
+  test('往返延迟测得出真实数字，而不是停在"未测到"', async ({ browser }) => {
+    // 延迟是第三轮真机反馈的核心问题（"是可以的，只是延时有点长"），而选哪种
+    // 中继方案要靠这个数字决定。所以这里要守住的是"它真的测出来了"——一个恒
+    // 为空的仪表比没有仪表更糟，会让人以为延迟没问题。
+    const code = nextCode();
+    const a = await openPair(browser, code);
+    const b = await openPair(browser, code);
+    await a.page.locator('.vp-start').click();
+    await b.page.locator('.vp-start').click();
+    await expect(a.page.locator('.vp-phase')).toHaveText('已连接 ✓', { timeout: CONNECT_TIMEOUT });
+
+    const rttLine = a.page.locator('.vp-line').filter({ hasText: '往返延迟' });
+    await expect(rttLine).toBeVisible({ timeout: CONNECT_TIMEOUT });
+    // 断言是个真数字（本机连接常见 0–5ms，所以不能要求 > 0），并且带上了那句
+    // 人话解读——只给毫秒数对非技术背景的人没有决策价值。
+    await expect.poll(
+      async () => /往返延迟：\d+\s*ms/.test(await rttLine.innerText()),
+      { timeout: CONNECT_TIMEOUT, message: '往返延迟始终没有测出数字' },
+    ).toBe(true);
+    await expect(rttLine).toContainText('—');
+
+    // 报告里也要带上，用户复制发回来时不能丢
+    await expect(a.page.locator('.vp-report')).toBeVisible();
 
     await a.ctx.close();
     await b.ctx.close();
