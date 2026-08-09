@@ -3,6 +3,7 @@ import './styles/global.css';
 import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
 import PvePage from './pages/PvePage';
+import VoiceCheckPage from './pages/VoiceCheckPage';
 import StatesGallery from './StatesGallery';
 import ServerResetModal from './components/ServerResetModal';
 import { getSocket } from './hooks/useSocket';
@@ -200,6 +201,13 @@ export default function App() {
   const statesParam = new URLSearchParams(window.location.search).get('states');
   if (statesParam !== null) {
     return <StatesGallery index={Number(statesParam) || 0} />;
+  }
+
+  // 麦克风自检页（语音对讲的探路步骤，见 design.md「语音对讲功能」）。放在
+  // 会话恢复之后、所有正常路由之前：它是一个不参与游戏状态的独立诊断页，
+  // 用户要能在微信里直接打开这个链接，不该被"要不要恢复上一局"的逻辑干扰。
+  if (window.location.pathname === '/voice-check') {
+    return <VoiceCheckPage />;
   }
 
   // 牌局没了的提示要盖在当前画面之上，所以每个分支都带上它——判定发生时
