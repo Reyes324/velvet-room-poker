@@ -23,6 +23,19 @@ const FEEDBACK_MAX_IMAGE_BASE64_LENGTH = 3_000_000; // ~2.25MB decoded; client c
 const FEEDBACK_MAX_IMAGES = 4;
 const FEEDBACK_MAX_IMAGES_TOTAL_BASE64_LENGTH = 6_000_000;
 
+// 语音对讲：双机连通性实测的信令中转（见
+// docs/superpowers/specs/2026-08-09-voice-intercom-design.md「实施顺序」第 2 步）。
+//
+// 服务器**只转发建连所需的那几句话**（SDP/ICE），语音本身走点对点，永远不经
+// 过这里——这正是整个方案能在 Render 免费档上白嫖的原因，别在这里加任何碰音
+// 频数据的东西。
+//
+// 探路阶段刻意封顶 2 人：先单独回答"两台设备到底连不连得上"，mesh 留到验证
+// 通过之后。封顶而不是放任，是为了让第三个人进来时得到一句明确的错误，而不是
+// 一个说不清的半连接状态。
+const VOICE_TEST_MAX_PEERS = 2;
+const voiceRoomKey = code => `voice:${code}`;
+
 function createServer({
   feedbackReporter = require('./feedbackReporter'),
   // 可注入，跟 feedbackReporter 是同一个"方便测试"的模式——否则验证"到点
@@ -886,6 +899,66 @@ function createServer({
     // 重构)——mirrors room:peek above: no side effects, doesn't touch
     // pveSessions/pveActiveSocket, safe to call before the client commits
     // to actually resuming.
+    // ─── 语音对讲信令（双机实测阶段）────────────────────────────────────────
+    // 这三个事件与游戏状态完全无关：不碰 rooms、不碰 myPlayerId，靠 socket.io
+    // 自己的 room 机制维护成员关系。之所以不复用牌桌房间号，是因为这一步要能
+    // 在**不开局**的情况下单独测连通性。
+
+    socket.on('voice:join', ({ code } = {}, callback) => {
+      const normalized = String(code ?? '').trim();
+      if (!/^\d{4}$/.test(normalized)) return callback?.({ error: '暗号要是 4 位数字' });
+
+      const key = voiceRoomKey(normalized);
+      // members 已经排除了自己，所以满员条件就是"另外那些人已经占满上限"——
+      // 这里写成 MAX - 1 会把**第二个**人就挡在外面（测试第一版实测到）。
+      const members = [...(io.sockets.adapter.rooms.get(key) ?? [])].filter(id => id !== socket.id);
+      if (members.length >= VOICE_TEST_MAX_PEERS) {
+        return callback?.({ error: '这个暗号已经有两个人在用了，换一个试试' });
+      }
+
+      // 换暗号时先退掉旧的，否则旧房间里的人会一直以为他还在
+      for (const room of socket.rooms) {
+        if (room.startsWith('voice:') && room !== key) {
+          socket.leave(room);
+          socket.to(room).emit('voice:peer-left', { id: socket.id });
+        }
+      }
+
+      socket.join(key);
+      socket.to(key).emit('voice:peer-joined', { id: socket.id });
+      // 谁先谁后由服务端一次性定死：**已经在房间里的人当接听方，后进来的当
+      // 发起方**。两边各自猜的话会同时发 offer（glare），是这类实现最常见的
+      // 卡死原因。
+      callback?.({ selfId: socket.id, peers: members, shouldInitiate: members.length > 0 });
+    });
+
+    // 转发建连信令。**必须校验目标在同一个语音房间**——否则任何人都能拿一个
+    // socket id 往任意连接上推消息，这是白送的越权面，加一行就能堵掉。
+    socket.on('voice:signal', ({ to, signal } = {}) => {
+      if (!to || !signal) return;
+      const shared = [...socket.rooms].some(
+        room => room.startsWith('voice:') && io.sockets.adapter.rooms.get(room)?.has(to),
+      );
+      if (!shared) return;
+      io.to(to).emit('voice:signal', { from: socket.id, signal });
+    });
+
+    socket.on('voice:leave', () => {
+      for (const room of [...socket.rooms]) {
+        if (!room.startsWith('voice:')) continue;
+        socket.leave(room);
+        socket.to(room).emit('voice:peer-left', { id: socket.id });
+      }
+    });
+
+    // 用 disconnecting 而不是 disconnect：disconnect 触发时 socket.rooms 已经
+    // 被清空了，那时候再想通知"他走了"已经不知道该往哪儿发。
+    socket.on('disconnecting', () => {
+      for (const room of socket.rooms) {
+        if (room.startsWith('voice:')) socket.to(room).emit('voice:peer-left', { id: socket.id });
+      }
+    });
+
     socket.on('pve:peek', ({ pveId }, callback) => {
       const session = pveId && pveSessions.get(pveId);
       if (!session) return callback?.({ exists: false });

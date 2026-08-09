@@ -1,0 +1,70 @@
+/* 双机实测页。跟自检页同一套朴素基调（复用 VoiceCheckPage.css 的 .vc-* ），
+   这里只加暗号卡片和状态区这几块自检页没有的东西。 */
+
+.vp-code-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--felt-600);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.vp-code-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.vp-code-input {
+  width: 100%;
+  background: rgba(0, 0, 0, .25);
+  border: 1px solid var(--gold-600);
+  border-radius: 8px;
+  color: var(--gold-200);
+  font-family: var(--font-display);
+  font-size: 32px;
+  letter-spacing: 8px;
+  text-align: center;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.vp-code-input:disabled { opacity: .6; }
+
+.vp-invite-url {
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+  margin-bottom: 8px;
+  /* 让人能长按选中手动复制——剪贴板 API 在微信里不是每次都成功 */
+  user-select: all;
+}
+
+.vp-start { margin-bottom: 16px; }
+
+.vp-status {
+  background: var(--surface-raised);
+  border: 1px solid var(--felt-600);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.vp-phase {
+  font-family: var(--font-display);
+  font-size: 16px;
+  margin-bottom: 6px;
+  color: var(--gold-300);
+}
+
+.vp-phase--connected { color: var(--state-safe); }
+.vp-phase--error { color: var(--state-danger); }
+
+.vp-line {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.vp-report { margin-top: 16px; }

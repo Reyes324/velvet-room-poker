@@ -1,0 +1,119 @@
+// 语音相关的公共件，被 /voice-check（单机自检）和 /voice-pair（双机实测）共用。
+//
+// 抽出来的理由不是"文件太长"，而是这两页对同一件事必须给出**同一个**答案：
+// 环境识别、麦克风报错文案、音量怎么算、远端流怎么挂——任何一处两边各存一份，
+// 都会出现"自检说能用、双机说不能用"这种自己打自己的结论，而这两页的全部价值
+// 就在于结论可信。
+
+// STUN 探测用。Google 那台在国内大概率不通，特意跟国内几台放在一起测——
+// "哪几台能用"本身就是后续实现要用的信息，不是顺带的。
+export const STUN_SERVERS = [
+  { url: 'stun:stun.qq.com:3478', label: '腾讯' },
+  { url: 'stun:stun.miwifi.com:3478', label: '小米' },
+  { url: 'stun:stun.l.google.com:19302', label: 'Google（国内多半不通）' },
+];
+
+export const STUN_TIMEOUT_MS = 6000;
+
+// 真实建连要用的 ICE 配置。只放已实测可达的那几台（真机第一轮：小米、Google
+// 通，腾讯超时），全都塞进去只会让协商多等几秒不可达的那台。
+export const ICE_SERVERS = STUN_SERVERS.map(s => ({ urls: s.url }));
+
+export function detectEnv() {
+  const ua = navigator.userAgent || '';
+  const wechatMatch = ua.match(/MicroMessenger\/([\d.]+)/i);
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/i.test(ua);
+  const iosVersion = ua.match(/OS (\d+)[._](\d+)/);
+  return {
+    ua,
+    isWechat: !!wechatMatch,
+    wechatVersion: wechatMatch?.[1] ?? null,
+    // 微信小程序里嵌的 webview 跟微信内置浏览器不是一回事，限制更多，
+    // 单独识别出来——否则结论会被混为一谈。
+    isMiniProgram: /miniProgram/i.test(ua),
+    isIOS,
+    isAndroid,
+    iosVersion: iosVersion ? `${iosVersion[1]}.${iosVersion[2]}` : null,
+    isX5: /MQQBrowser|TBS/i.test(ua),
+  };
+}
+
+export function envLabel(env) {
+  const parts = [];
+  if (env.isWechat) parts.push(`微信 ${env.wechatVersion ?? ''}`.trim());
+  if (env.isMiniProgram) parts.push('小程序 webview');
+  if (env.isIOS) parts.push(`iOS ${env.iosVersion ?? ''}`.trim());
+  if (env.isAndroid) parts.push('Android');
+  if (env.isX5) parts.push('X5/TBS 内核');
+  if (!env.isWechat) parts.push('非微信浏览器');
+  return parts.join(' · ') || '未知';
+}
+
+export function micErrorText(e) {
+  const name = e?.name ?? '未知错误';
+  const map = {
+    NotAllowedError: '被拒绝——你（或系统/微信）没有授予麦克风权限',
+    PermissionDeniedError: '被拒绝——没有授予麦克风权限',
+    NotFoundError: '找不到麦克风设备',
+    NotReadableError: '麦克风被其他 App 占用，或系统层面读不到',
+    SecurityError: '被安全策略拦截（通常是非 HTTPS）',
+    AbortError: '被中断',
+    TypeError: '接口调用方式不被支持——这个环境很可能根本没开放麦克风',
+  };
+  return `${name}：${map[name] ?? (e?.message || '没有更多信息')}`;
+}
+
+// 把远端流挂到一个 <audio> 上。
+//
+// `muted` 不是可选项而是两种截然不同的用途，调用方必须想清楚：
+//  - 自检页的自环流要 muted=true（自己的声音回放出来就是啸叫）；
+//  - 双机实测要 muted=false，因为**"听得见对方"才是这一步唯一的验收标准**。
+//
+// 另外这一步在 Chromium 上是必须的、不是可选的：远端流不挂到 <audio> 元素上，
+// 音频根本不会流动，接到 AudioContext 上量到的恒为静音（e2e 实测踩到过，
+// 不是推测）。
+export function attachSink(stream, { muted = true } = {}) {
+  const el = document.createElement('audio');
+  el.srcObject = stream;
+  el.muted = muted;
+  el.autoplay = true;
+  el.playsInline = true;
+  const played = el.play?.().catch(() => { /* 自动播放被拦也不影响拉流，忽略 */ });
+  return {
+    played,
+    detach: () => {
+      try { el.pause(); el.srcObject = null; } catch { /* 已释放 */ }
+    },
+  };
+}
+
+// 把一条流接到 AudioContext 上，持续回报音量（0–1）。返回停止函数。
+export function meterStream(stream, audioCtx, onLevel) {
+  const source = audioCtx.createMediaStreamSource(stream);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  source.connect(analyser);
+  const buf = new Uint8Array(analyser.fftSize);
+  let raf;
+  const tick = () => {
+    analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = (buf[i] - 128) / 128;
+      sum += v * v;
+    }
+    // ×4 只是把常规说话音量拉到条子上看得见的范围，不是标定值。
+    onLevel(Math.min(1, Math.sqrt(sum / buf.length) * 4));
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+  return () => {
+    cancelAnimationFrame(raf);
+    try { source.disconnect(); analyser.disconnect(); } catch { /* 已断开 */ }
+  };
+}
+
+// 音量条判定"有声音"的门槛。两页共用一个值——否则会出现同一段声音在一页算
+// 有、另一页算没有的荒唐结论。
+export const SOUND_THRESHOLD = 0.06;

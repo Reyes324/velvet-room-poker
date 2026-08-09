@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
 import PvePage from './pages/PvePage';
 import VoiceCheckPage from './pages/VoiceCheckPage';
+import VoicePairPage from './pages/VoicePairPage';
 import StatesGallery from './StatesGallery';
 import ServerResetModal from './components/ServerResetModal';
 import { getSocket } from './hooks/useSocket';
@@ -208,6 +209,12 @@ export default function App() {
   // 用户要能在微信里直接打开这个链接，不该被"要不要恢复上一局"的逻辑干扰。
   if (window.location.pathname === '/voice-check') {
     return <VoiceCheckPage />;
+  }
+
+  // 双机连通性实测页。同上，独立于游戏状态；而且它必须能被"微信里发个链接
+  // 对方点开"直接命中，所以要在会话恢复之后、正常路由之前拦下。
+  if (window.location.pathname === '/voice-pair') {
+    return <VoicePairPage />;
   }
 
   // 牌局没了的提示要盖在当前画面之上，所以每个分支都带上它——判定发生时

@@ -18,40 +18,16 @@
 // 否则"自检失败"会多出一个"是不是库本身的问题"的干扰项。
 import { useState, useEffect, useRef, useCallback } from 'react';
 import './VoiceCheckPage.css';
+import Meter from '../components/VoiceMeter';
+import {
+  STUN_SERVERS, STUN_TIMEOUT_MS, SOUND_THRESHOLD,
+  detectEnv, envLabel, micErrorText, attachSink, meterStream,
+} from '../utils/voice';
 
-// STUN 探测用。Google 那台在国内大概率不通，特意跟国内几台放在一起测——
-// "哪几台能用"本身就是后续实现要用的信息，不是顺带的。
-const STUN_SERVERS = [
-  { url: 'stun:stun.qq.com:3478', label: '腾讯' },
-  { url: 'stun:stun.miwifi.com:3478', label: '小米' },
-  { url: 'stun:stun.l.google.com:19302', label: 'Google（国内多半不通）' },
-];
-
-const STUN_TIMEOUT_MS = 6000;
 // 8 秒对本机自环通常绰绰有余，但 iOS/WKWebView 下 host 候选是 mDNS 混淆的
 // （`xxxx.local`），要先解析才能配对，慢机器上可能超过 8 秒。放宽到 15 秒，
 // 避免把"慢"误报成"不支持"——真机上已经吃过一次这个亏。
 const LOOPBACK_TIMEOUT_MS = 15000;
-
-function detectEnv() {
-  const ua = navigator.userAgent || '';
-  const wechatMatch = ua.match(/MicroMessenger\/([\d.]+)/i);
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isAndroid = /Android/i.test(ua);
-  const iosVersion = ua.match(/OS (\d+)[._](\d+)/);
-  return {
-    ua,
-    isWechat: !!wechatMatch,
-    wechatVersion: wechatMatch?.[1] ?? null,
-    // 微信小程序里嵌的 webview 跟微信内置浏览器不是一回事，限制更多，
-    // 单独识别出来——否则结论会被混为一谈。
-    isMiniProgram: /miniProgram/i.test(ua),
-    isIOS,
-    isAndroid,
-    iosVersion: iosVersion ? `${iosVersion[1]}.${iosVersion[2]}` : null,
-    isX5: /MQQBrowser|TBS/i.test(ua),
-  };
-}
 
 // 静态能力检查：不需要任何权限，页面一打开就能给结论。
 function staticChecks(env) {
@@ -102,20 +78,6 @@ function staticChecks(env) {
     });
   }
   return list;
-}
-
-function micErrorText(e) {
-  const name = e?.name ?? '未知错误';
-  const map = {
-    NotAllowedError: '被拒绝——你（或系统/微信）没有授予麦克风权限',
-    PermissionDeniedError: '被拒绝——没有授予麦克风权限',
-    NotFoundError: '找不到麦克风设备',
-    NotReadableError: '麦克风被其他 App 占用，或系统层面读不到',
-    SecurityError: '被安全策略拦截（通常是非 HTTPS）',
-    AbortError: '被中断',
-    TypeError: '接口调用方式不被支持——这个环境很可能根本没开放麦克风',
-  };
-  return `${name}：${map[name] ?? (e?.message || '没有更多信息')}`;
 }
 
 // 本机自环：同一个页面里建两条 RTCPeerConnection 互连，把麦克风轨道从
@@ -231,52 +193,6 @@ function probeStun({ url, label }) {
   });
 }
 
-// 远端流必须挂到一个 <audio> 元素上，音频才会真的开始流动——否则光把它接到
-// AudioContext 上量到的永远是静音。这是 Chromium 上确认过的行为（不是猜的：
-// 第一版没有这一步，e2e 实测远端音量条恒为 0，加上之后才有读数），Safari 上
-// 同样需要。静音是刻意的：自检页要是把麦克风声音外放出来会形成啸叫，判据交给
-// 音量条就够了。
-//
-// 正式的语音功能里也逃不掉这一步——每个远端流本来就要挂 <audio> 才能听见，
-// 只是那时候不能 muted。
-function attachSink(stream) {
-  const el = document.createElement('audio');
-  el.srcObject = stream;
-  el.muted = true;
-  el.autoplay = true;
-  el.playsInline = true;
-  el.play?.().catch(() => { /* 自动播放被拦也不影响拉流，忽略 */ });
-  return () => {
-    try { el.pause(); el.srcObject = null; } catch { /* 已释放 */ }
-  };
-}
-
-// 把一条流接到 AudioContext 上，持续回报音量（0–1）。返回停止函数。
-function meterStream(stream, audioCtx, onLevel) {
-  const source = audioCtx.createMediaStreamSource(stream);
-  const analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 512;
-  source.connect(analyser);
-  const buf = new Uint8Array(analyser.fftSize);
-  let raf;
-  const tick = () => {
-    analyser.getByteTimeDomainData(buf);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i++) {
-      const v = (buf[i] - 128) / 128;
-      sum += v * v;
-    }
-    // ×4 只是把常规说话音量拉到条子上看得见的范围，不是标定值。
-    onLevel(Math.min(1, Math.sqrt(sum / buf.length) * 4));
-    raf = requestAnimationFrame(tick);
-  };
-  tick();
-  return () => {
-    cancelAnimationFrame(raf);
-    try { source.disconnect(); analyser.disconnect(); } catch { /* 已断开 */ }
-  };
-}
-
 export default function VoiceCheckPage() {
   const [env] = useState(detectEnv);
   const [checks] = useState(() => staticChecks(detectEnv()));
@@ -366,7 +282,7 @@ export default function VoiceCheckPage() {
       loopRef.current = loop;
       setLoopState('ok');
       // 必须先挂 sink 再挂音量条，否则量到的是静音（见 attachSink 注释）。
-      detachSinkRef.current = attachSink(loop.remoteStream);
+      detachSinkRef.current = attachSink(loop.remoteStream).detach;
       const ctx = audioCtxRef.current;
       if (ctx) {
         try {
@@ -525,35 +441,6 @@ export default function VoiceCheckPage() {
   );
 }
 
-function Meter({ title, hint, level, peak }) {
-  return (
-    <div className="vc-meter">
-      <div className="vc-meter-title">{title}</div>
-      <div className="vc-meter-bar">
-        <div className="vc-meter-fill" style={{ width: `${Math.round(level * 100)}%` }} />
-        <div className="vc-meter-peak" style={{ left: `${Math.round(peak * 100)}%` }} />
-      </div>
-      <div className="vc-meter-hint">
-        {hint}
-        {peak > 0.06
-          ? <strong className="vc-ok-text vc-meter-flag">已经检测到声音 ✓</strong>
-          : <strong className="vc-warn vc-meter-flag">还没检测到声音</strong>}
-      </div>
-    </div>
-  );
-}
-
-function envLabel(env) {
-  const parts = [];
-  if (env.isWechat) parts.push(`微信 ${env.wechatVersion ?? ''}`.trim());
-  if (env.isMiniProgram) parts.push('小程序 webview');
-  if (env.isIOS) parts.push(`iOS ${env.iosVersion ?? ''}`.trim());
-  if (env.isAndroid) parts.push('Android');
-  if (env.isX5) parts.push('X5/TBS 内核');
-  if (!env.isWechat) parts.push('非微信浏览器');
-  return parts.join(' · ') || '未知';
-}
-
 // 结论刻意分档，有两条不肯让步的地方：
 //
 //  1. "能用"这一档要求**远端音量条真的动过**。只凭"权限拿到了"就下结论，
@@ -590,7 +477,7 @@ function overallVerdict({ checks, micState, loopState, localPeak, remotePeak, st
       ),
     };
   }
-  if (remotePeak > 0.06) {
+  if (remotePeak > SOUND_THRESHOLD) {
     if (stunState !== 'done') {
       return { kind: 'warn', title: '麦克风和连接都没问题，正在测网络…', body: '声音已经成功穿过一条真实的点对点连接。还剩最后一项公网穿透测试（第④条），跑完才是完整结论。' };
     }
@@ -617,7 +504,7 @@ function overallVerdict({ checks, micState, loopState, localPeak, remotePeak, st
         + (staticOk ? '' : ' 不过上面有环境检查项没过，把结果发回来我看一下。'),
     };
   }
-  if (localPeak > 0.06) {
+  if (localPeak > SOUND_THRESHOLD) {
     return { kind: 'warn', title: '还差一步：请对着手机多说几句', body: '麦克风已经收到声音了，但"穿过连接回来的声音"还没检测到。再说几句话看看第③条会不会动；如果一直不动，说明连接虽然建起来了但音频没真的通过。' };
   }
   return { kind: 'warn', title: '还差一步：还没听到你说话', body: '权限拿到了，但麦克风一直没收到声音。请确认没有静音、对着手机说几句话。如果条子始终不动，就是"权限给了但收不到声音"这种情况——这正是要查出来的问题。' };
@@ -636,9 +523,9 @@ function buildReport({ env, checks, micState, micError, trackInfo, localPeak, lo
   lines.push('[实际测试]');
   lines.push(`  麦克风权限：${{ idle: '未测试', requesting: '进行中', ok: 'OK', error: `NG ${micError}` }[micState]}`);
   if (trackInfo) lines.push(`  设备：${trackInfo.label}｜muted=${trackInfo.muted}｜state=${trackInfo.state}`);
-  lines.push(`  麦克风收到声音峰值：${localPeak.toFixed(3)}${localPeak > 0.06 ? '（有声音）' : '（没检测到声音）'}`);
+  lines.push(`  麦克风收到声音峰值：${localPeak.toFixed(3)}${localPeak > SOUND_THRESHOLD ? '（有声音）' : '（没检测到声音）'}`);
   lines.push(`  点对点连接：${{ idle: '未测试', running: '进行中', ok: 'OK', error: `NG ${loopError}` }[loopState]}`);
-  lines.push(`  穿过连接回来的声音峰值：${remotePeak.toFixed(3)}${remotePeak > 0.06 ? '（有声音）' : '（没检测到声音）'}`);
+  lines.push(`  穿过连接回来的声音峰值：${remotePeak.toFixed(3)}${remotePeak > SOUND_THRESHOLD ? '（有声音）' : '（没检测到声音）'}`);
   lines.push('');
   lines.push('[STUN 公网穿透]');
   if (stunResults.length === 0) lines.push('  未测试');
