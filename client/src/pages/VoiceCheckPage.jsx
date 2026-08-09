@@ -28,7 +28,10 @@ const STUN_SERVERS = [
 ];
 
 const STUN_TIMEOUT_MS = 6000;
-const LOOPBACK_TIMEOUT_MS = 8000;
+// 8 秒对本机自环通常绰绰有余，但 iOS/WKWebView 下 host 候选是 mDNS 混淆的
+// （`xxxx.local`），要先解析才能配对，慢机器上可能超过 8 秒。放宽到 15 秒，
+// 避免把"慢"误报成"不支持"——真机上已经吃过一次这个亏。
+const LOOPBACK_TIMEOUT_MS = 15000;
 
 function detectEnv() {
   const ua = navigator.userAgent || '';
@@ -146,13 +149,32 @@ function runLoopback(stream) {
       }
     };
 
+    // 候选地址统计。超时时最有价值的证据就是"到底收没收到候选、是什么类型"：
+    // iOS/WKWebView 会把 host 候选写成 mDNS 的 `xxxx.local`，如果对端解析不了
+    // 就永远配不上对——这跟"WebRTC 被阉割"是完全不同的两回事，报告里必须能
+    // 区分开，否则拿到结果也判断不了。
+    const cands = { total: 0, host: 0, mdns: 0, srflx: 0 };
+    const noteCandidate = c => {
+      cands.total += 1;
+      if (/ typ host /.test(c.candidate)) cands.host += 1;
+      if (/\.local[ :]/.test(c.candidate)) cands.mdns += 1;
+      if (/ typ srflx /.test(c.candidate)) cands.srflx += 1;
+    };
+
     timer = setTimeout(() => {
+      // 先取状态再 cleanup()——cleanup() 会 close() 掉连接，把 iceConnectionState
+      // 冲成 'closed'，等于把唯一有诊断价值的证据抹掉（真机第一次实测就是栽在
+      // 这里：报告里永远显示 closed，看不出卡在 checking 还是压根没开始）。
+      const diag = `远端流：${remoteStream ? '有' : '无'}`
+        + `，ICE：${pc1?.iceConnectionState ?? '未知'}/${pc2?.iceConnectionState ?? '未知'}`
+        + `，收集：${pc1?.iceGatheringState ?? '未知'}`
+        + `，候选：${cands.total}（host ${cands.host}／mDNS ${cands.mdns}／srflx ${cands.srflx}）`;
       cleanup();
-      reject(new Error(`${LOOPBACK_TIMEOUT_MS / 1000} 秒内没连起来（远端流：${remoteStream ? '有' : '无'}，连接状态：${pc1?.iceConnectionState ?? '未知'}）`));
+      reject(new Error(`${LOOPBACK_TIMEOUT_MS / 1000} 秒内没连起来（${diag}）`));
     }, LOOPBACK_TIMEOUT_MS);
 
-    pc1.onicecandidate = e => { if (e.candidate) pc2.addIceCandidate(e.candidate).catch(() => {}); };
-    pc2.onicecandidate = e => { if (e.candidate) pc1.addIceCandidate(e.candidate).catch(() => {}); };
+    pc1.onicecandidate = e => { if (e.candidate) { noteCandidate(e.candidate); pc2.addIceCandidate(e.candidate).catch(() => {}); } };
+    pc2.onicecandidate = e => { if (e.candidate) { noteCandidate(e.candidate); pc1.addIceCandidate(e.candidate).catch(() => {}); } };
     pc2.ontrack = e => {
       remoteStream = e.streams?.[0] ?? new MediaStream([e.track]);
       settleIfReady();
@@ -546,7 +568,27 @@ function overallVerdict({ checks, micState, loopState, localPeak, remotePeak, st
     return { kind: 'bad', title: '结论：这个环境用不了语音', body: '连麦克风权限都拿不到。可以试试用「在浏览器中打开」跳到系统浏览器再测一次，对比结果。' };
   }
   if (loopState === 'error') {
-    return { kind: 'bad', title: '结论：麦克风能用，但点对点连接建不起来', body: '这个环境的 WebRTC 有问题，语音对讲做不了。同样建议用系统浏览器再测一次对比。' };
+    // 本机自环失败**不等于**这个环境做不了语音，两者之间没有那么强的因果：
+    // 自环要求同一个页面里的两条连接互相配对，而 iOS/WKWebView 的 host 候选
+    // 是 mDNS 混淆的，解析不了就自环失败——但真实的两台设备之间走的是 STUN
+    // 拿到的公网地址，压根不依赖这条路径。所以这里只报"测不出来"，不下死刑；
+    // 反过来 STUN 可达恰恰是真实场景更相关的正面证据，要说出来。
+    const reachable = stunResults.filter(r => r.ok);
+    return {
+      kind: 'warn',
+      title: '结论：麦克风没问题，但点对点这一项测不出来',
+      body: (
+        <>
+          麦克风是好的。本机自环没连起来，但这
+          <strong>不能直接判定这个环境做不了语音</strong>
+          ——自环是"同一个页面自己跟自己连"，在 iOS 上有它自己的坑，跟"两台手机之间能不能连"不是一回事。
+          {reachable.length > 0
+            ? `而更接近真实场景的公网穿透测试有 ${reachable.length} 台可达（${reachable.map(r => r.label).join('、')}），这反而是个正面信号。`
+            : '而公网穿透一台都不可达，这一项更值得担心。'}
+          要下定论只能用两台真手机互相连一次。把结果发回来我判断。
+        </>
+      ),
+    };
   }
   if (remotePeak > 0.06) {
     if (stunState !== 'done') {
