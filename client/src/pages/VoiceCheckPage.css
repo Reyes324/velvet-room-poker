@@ -1,0 +1,211 @@
+/* 麦克风自检页。刻意朴素——这是诊断工具，不是产品界面，可读性优先于观感。 */
+
+.vc-page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 20px 16px 60px;
+  color: var(--text-primary);
+}
+
+.vc-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  color: var(--gold-300);
+  margin-bottom: 8px;
+}
+
+.vc-sub {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.vc-env {
+  background: var(--surface-raised);
+  border: 1px solid var(--felt-600);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 20px;
+}
+
+.vc-env-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.vc-env-row span { color: var(--text-muted); }
+.vc-env-row strong { color: var(--gold-200); text-align: right; word-break: break-word; }
+
+.vc-note {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--felt-600);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.vc-note--warn { color: #E9B44C; }
+
+.vc-section { margin-bottom: 26px; }
+
+.vc-h2 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--gold-400);
+  margin-bottom: 10px;
+}
+
+.vc-check {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-raised);
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.vc-check-icon { grid-row: span 2; font-weight: 700; line-height: 1.5; }
+.vc-check--ok .vc-check-icon { color: var(--state-safe); }
+.vc-check--bad .vc-check-icon { color: var(--state-danger); }
+.vc-check-label { color: var(--text-primary); }
+.vc-check-detail { font-size: 12px; color: var(--text-muted); word-break: break-word; }
+
+.vc-btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--gold-500), var(--gold-700));
+  color: #24170A;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+.vc-btn:disabled { opacity: .55; }
+
+.vc-btn--ghost {
+  background: none;
+  border: 1px solid var(--gold-600);
+  color: var(--gold-300);
+  font-size: 14px;
+  padding: 10px;
+}
+
+.vc-result {
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  border-left: 3px solid transparent;
+  background: var(--surface-raised);
+}
+
+.vc-result--ok { border-left-color: var(--state-safe); }
+.vc-result--bad { border-left-color: var(--state-danger); }
+.vc-result-detail { font-size: 12px; color: var(--text-muted); margin-top: 4px; word-break: break-word; }
+
+.vc-warn { color: #E9B44C; }
+.vc-ok-text { color: var(--state-safe); }
+
+.vc-meter {
+  background: var(--surface-raised);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.vc-meter-title { font-size: 14px; color: var(--gold-200); margin-bottom: 8px; }
+
+.vc-meter-bar {
+  position: relative;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--felt-900);
+  overflow: hidden;
+  border: 1px solid var(--felt-600);
+}
+
+.vc-meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--state-safe), var(--gold-400));
+  /* 只补掉逐帧抖动，不做"平滑"——条子必须跟说话同步，延迟会让人误判成没反应 */
+  transition: width 60ms linear;
+}
+
+/* 峰值刻线：说一句话就留个印，避免"我说了但没看到条动"的误判 */
+.vc-meter-peak {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--gold-100);
+}
+
+.vc-meter-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+.vc-meter-flag { margin-left: 6px; }
+
+.vc-loop, .vc-stun {
+  background: var(--surface-raised);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.vc-loop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  color: var(--gold-200);
+  margin-bottom: 8px;
+}
+
+.vc-tag {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--felt-800);
+  color: var(--text-muted);
+}
+
+.vc-tag--ok { background: rgba(39,174,96,.2); color: var(--state-safe); }
+.vc-tag--error { background: rgba(192,57,43,.2); color: var(--state-danger); }
+.vc-tag--running { background: rgba(41,128,185,.2); color: #7FB8E0; }
+
+.vc-stun-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5; }
+
+.vc-verdict {
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 26px;
+  border: 1px solid transparent;
+}
+
+.vc-verdict--ok { background: rgba(39,174,96,.12); border-color: var(--state-safe); }
+.vc-verdict--bad { background: rgba(192,57,43,.12); border-color: var(--state-danger); }
+.vc-verdict--warn { background: rgba(233,180,76,.12); border-color: #E9B44C; }
+
+.vc-verdict-title { font-family: var(--font-display); font-size: 16px; margin-bottom: 6px; }
+.vc-verdict-body { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+
+.vc-report {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--felt-900);
+  border: 1px solid var(--felt-600);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
