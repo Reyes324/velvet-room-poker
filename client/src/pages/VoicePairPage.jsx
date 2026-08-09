@@ -111,7 +111,11 @@ export default function VoicePairPage() {
       } else if (s === 'failed') {
         clearTimeout(timeoutRef.current);
         setPhase('error');
-        setError('ICE 协商失败——两台设备之间没能打通');
+        // 真机第二轮实测确认过这条失败的实际含义：同网络能通、跨网络（4G↔WiFi）
+        // 不通。所以这里不能只说"没打通"就完事——那句话对用户毫无信息量，也没法
+        // 指导下一步。把最可能的原因和一个可执行的对照实验一起给出来。
+        setError('两台设备之间没能打通。最常见的原因是两边不在同一个网络（比如一台用流量、一台用 WiFi）——'
+          + '可以让两台连同一个 WiFi 再试一次做对照。');
       }
     };
     pc.ontrack = e => {

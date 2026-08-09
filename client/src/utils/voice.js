@@ -15,9 +15,28 @@ export const STUN_SERVERS = [
 
 export const STUN_TIMEOUT_MS = 6000;
 
-// 真实建连要用的 ICE 配置。只放已实测可达的那几台（真机第一轮：小米、Google
-// 通，腾讯超时），全都塞进去只会让协商多等几秒不可达的那台。
-export const ICE_SERVERS = STUN_SERVERS.map(s => ({ urls: s.url }));
+// TURN 中继。加这一层的理由见设计文档「双机实测第二轮」：真机实测下**同一网络
+// 能通、跨网络（4G ↔ WiFi）连不上**，而"各在各家各用各的网络"恰恰是这个产品的
+// 主场景——原先"跨网络失败是极少数情况、不值得加中继"的判断被证伪了。
+//
+// STUN 只是帮两端**发现**自己的公网地址，打不通时无能为力；TURN 是真的把音频
+// **转发**一遍，所以它能兜住 STUN 兜不住的情况，代价是消耗中继方的带宽。
+//
+// 这里先用公开的免费 TURN 取证，**不代表最终方案**：免费额度和境内可达性都是
+// 变量，要等用户跨网络复测的结果出来再谈免费额度够不够、要不要付费或自建。
+// 443/TCP 那条特意留着——限制严格的网络里往往只有它过得去。
+export const TURN_SERVERS = [
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject', label: 'OpenRelay 80' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject', label: 'OpenRelay 443' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject', label: 'OpenRelay 443/TCP' },
+];
+
+// 真实建连要用的 ICE 配置：STUN 优先（直连成本最低、音质最好），打不通时
+// 浏览器自己会退到 TURN 中继——两者不是二选一，是同一次协商里的先后顺序。
+export const ICE_SERVERS = [
+  ...STUN_SERVERS.map(s => ({ urls: s.url })),
+  ...TURN_SERVERS.map(({ label, ...cfg }) => cfg), // eslint-disable-line no-unused-vars
+];
 
 export function detectEnv() {
   const ua = navigator.userAgent || '';

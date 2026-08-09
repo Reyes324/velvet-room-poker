@@ -65,12 +65,19 @@ test.describe('麦克风自检页', () => {
     // 能用"，证明不了两台设备之间连得上。
     await expect(page.locator('.vc-stun .vc-tag')).toHaveText('完成', { timeout: 20000 });
 
-    // 这里刻意**按实际结果分支**，而不是无脑断言全绿：STUN 可达性取决于跑
+    // 这里刻意**按实际结果分支**，而不是无脑断言全绿：STUN/TURN 可达性取决于跑
     // 测试的网络（沙箱/CI 常常出不去 UDP），写死"必须全绿"会变成一条跟着
     // 网络环境随机红的测试。真正要守住的不变式是"结论如实反映测出来的东西"。
-    const stunOkCount = await page.locator('.vc-stun .vc-check--ok').count();
-    if (stunOkCount > 0) {
+    //
+    // 三分支对应真机实测教给我们的三种处境：中继可用 → 跨网络有兜底，能做；
+    // 只有直连可用 → 同网络能用、跨网络没着落（真机第二轮实测到的正是这一档）；
+    // 都不可用 → 网络这关整个没过。
+    const directOk = await page.locator('.vc-stun-group--direct .vc-check--ok').count();
+    const relayOk = await page.locator('.vc-stun-group--relay .vc-check--ok').count();
+    if (relayOk > 0) {
       await expect(page.locator('.vc-verdict--ok')).toContainText('可以做语音对讲');
+    } else if (directOk > 0) {
+      await expect(page.locator('.vc-verdict--warn')).toContainText('跨网络还没着落');
     } else {
       await expect(page.locator('.vc-verdict--warn')).toContainText('网络这一关没过');
     }
@@ -90,6 +97,10 @@ test.describe('麦克风自检页', () => {
     const report = page.locator('.vc-report');
     await expect(report).toContainText('翡翠厅 麦克风自检结果');
     await expect(report).toContainText('麦克风权限：OK');
+    // 直连和中继必须分开列——用户把报告发回来时，"直连不行"和"连中继都不行"
+    // 对应完全不同的下一步，混在一起等于没测。
+    await expect(report).toContainText('[STUN 直连穿透]');
+    await expect(report).toContainText('[TURN 中继（跨网络时的兜底）]');
     // 峰值必须是真实测出来的数字，不能停在 0.000——否则用户把报告发回来
     // 我也判断不了任何东西。
     await expect.poll(

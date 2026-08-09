@@ -20,9 +20,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import './VoiceCheckPage.css';
 import Meter from '../components/VoiceMeter';
 import {
-  STUN_SERVERS, STUN_TIMEOUT_MS, SOUND_THRESHOLD,
+  STUN_SERVERS, STUN_TIMEOUT_MS, TURN_SERVERS, SOUND_THRESHOLD,
   detectEnv, envLabel, micErrorText, attachSink, meterStream,
 } from '../utils/voice';
+
+// TURN 比 STUN 慢：要先认证、再分配一个中继地址，而不是回一句"你的公网地址是
+// 多少"。用 STUN 的 6 秒会把可用的中继误报成不可达。
+const TURN_TIMEOUT_MS = 12000;
 
 // 8 秒对本机自环通常绰绰有余，但 iOS/WKWebView 下 host 候选是 mDNS 混淆的
 // （`xxxx.local`），要先解析才能配对，慢机器上可能超过 8 秒。放宽到 15 秒，
@@ -160,9 +164,16 @@ function runLoopback(stream) {
   });
 }
 
-// 单台 STUN 探测：能不能拿到 srflx（公网映射地址）候选。拿得到说明这台
-// STUN 在当前网络下可达，点对点直连有戏；拿不到就是不可达或被墙。
-function probeStun({ url, label }) {
+// 单台 ICE 服务器探测：能不能拿到指定类型的候选。
+//
+//  - STUN 看 `srflx`（公网映射地址）：拿得到说明这台 STUN 可达，直连**有戏**。
+//  - TURN 看 `relay`（中继地址）：拿得到说明这台中继可用，直连打不通时**有救**。
+//
+// 两者是同一段逻辑、只差想要的候选类型，所以合成一个函数——分成两份写，迟早
+// 会出现一边修了另一边没修。TURN 探测比 STUN 慢（要先认证再分配中继地址），
+// 单独给一个更宽的超时。
+function probeIce({ urls, label, username, credential, want = 'srflx', timeoutMs = STUN_TIMEOUT_MS }) {
+  const url = urls;
   return new Promise(resolve => {
     let pc, timer, done = false;
     const finish = (ok, reason) => {
@@ -170,18 +181,24 @@ function probeStun({ url, label }) {
       done = true;
       clearTimeout(timer);
       try { pc?.close(); } catch { /* 已关闭 */ }
-      resolve({ url, label, ok, reason });
+      resolve({ url, label, ok, reason, want });
     };
+    const wantLabel = want === 'relay' ? '中继地址' : '公网地址';
     try {
-      pc = new RTCPeerConnection({ iceServers: [{ urls: url }] });
+      pc = new RTCPeerConnection({
+        iceServers: [username ? { urls, username, credential } : { urls }],
+        // 只留中继候选，避免本机 host 候选把结果搅浑——探 TURN 时我们要问的
+        // 恰恰是"绕开直连还能不能走通"。
+        ...(want === 'relay' ? { iceTransportPolicy: 'relay' } : {}),
+      });
     } catch (e) {
       return finish(false, `创建失败：${e.message}`);
     }
-    timer = setTimeout(() => finish(false, '超时，没拿到公网地址'), STUN_TIMEOUT_MS);
+    timer = setTimeout(() => finish(false, `超时，没拿到${wantLabel}`), timeoutMs);
     pc.onicecandidate = e => {
-      if (!e.candidate) return finish(false, '收集结束，没有公网候选');
-      if (e.candidate.type === 'srflx' || / typ srflx /.test(e.candidate.candidate)) {
-        finish(true, '拿到公网地址');
+      if (!e.candidate) return finish(false, `收集结束，没有${wantLabel}`);
+      if (e.candidate.type === want || new RegExp(` typ ${want} `).test(e.candidate.candidate)) {
+        finish(true, `拿到${wantLabel}`);
       }
     };
     try {
@@ -297,9 +314,16 @@ export default function VoiceCheckPage() {
       setLoopError(e.message);
     }
 
-    // STUN 探测。放最后：它耗时最长，而且失败不影响前面两项的结论。
+    // STUN / TURN 探测。放最后：耗时最长，而且失败不影响前面两项的结论。
+    //
+    // TURN 与 STUN 一起测，因为真机第二轮实测已经证明**跨网络时 STUN 不够**
+    // （同网络通、4G↔WiFi 不通）。"这台设备能不能用上中继"从此和"能不能拿到
+    // 公网地址"一样是必答项，不是可选的加分项。
     setStunState('running');
-    const results = await Promise.all(STUN_SERVERS.map(probeStun));
+    const results = await Promise.all([
+      ...STUN_SERVERS.map(s => probeIce({ urls: s.url, label: s.label, want: 'srflx' })),
+      ...TURN_SERVERS.map(t => probeIce({ ...t, want: 'relay', timeoutMs: TURN_TIMEOUT_MS })),
+    ]);
     setStunResults(results);
     setStunState('done');
   }
@@ -404,19 +428,32 @@ export default function VoiceCheckPage() {
 
             <div className="vc-stun">
               <div className="vc-loop-head">
-                <span>④ 公网穿透测试（STUN）</span>
+                <span>④ 网络穿透测试（STUN 直连 / TURN 中继）</span>
                 <span className={`vc-tag vc-tag--${stunState === 'done' ? 'ok' : stunState}`}>
                   {stunState === 'running' ? '测试中…' : stunState === 'done' ? '完成' : '等待'}
                 </span>
               </div>
               <div className="vc-stun-hint">
-                真人之间要连上，需要至少一台服务器可达。这一步只测网络，跟麦克风无关。
+                这一步只测网络，跟麦克风无关。<strong>STUN</strong> 管的是两台设备能不能直连；
+                <strong>TURN</strong> 是直连打不通时的中转。真机实测已经证明
+                <strong>跨网络（一台流量、一台 WiFi）光靠 STUN 连不上</strong>
+                ，所以 TURN 这几行现在和上面几行一样是必答项。
               </div>
-              {stunResults.map(r => (
-                <div key={r.url} className={`vc-check vc-check--${r.ok ? 'ok' : 'bad'}`}>
-                  <span className="vc-check-icon">{r.ok ? '✓' : '✕'}</span>
-                  <span className="vc-check-label">{r.label}</span>
-                  <span className="vc-check-detail">{r.reason}</span>
+              {/* 直连和中继分成两组：混在一起看不出"是直连没戏还是连中继都没戏"，
+                  而这两者对应完全不同的下一步。分组也让测试能分别断言。 */}
+              {[
+                { key: 'direct', title: '直连（STUN）', rows: stunResults.filter(r => r.want !== 'relay') },
+                { key: 'relay', title: '中继（TURN）— 跨网络时的兜底', rows: stunResults.filter(r => r.want === 'relay') },
+              ].filter(g => g.rows.length > 0).map(g => (
+                <div key={g.key} className={`vc-stun-group vc-stun-group--${g.key}`}>
+                  <div className="vc-stun-group-title">{g.title}</div>
+                  {g.rows.map(r => (
+                    <div key={r.url} className={`vc-check vc-check--${r.ok ? 'ok' : 'bad'}`}>
+                      <span className="vc-check-icon">{r.ok ? '✓' : '✕'}</span>
+                      <span className="vc-check-label">{r.label}</span>
+                      <span className="vc-check-detail">{r.reason}</span>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -497,10 +534,29 @@ function overallVerdict({ checks, micState, loopState, localPeak, remotePeak, st
         ),
       };
     }
+    // 直连可达 ≠ 跨网络可用。真机第二轮实测已经证明：同网络能通、4G↔WiFi 不通，
+    // 而"各在各家用各自的网络"才是这个产品的主场景。所以中继一台都不可达时
+    // **不给"可以做"这个结论**——那正是会把人引到错误结论上去的那一步。
+    const relayOk = stunResults.filter(r => r.want === 'relay' && r.ok);
+    if (relayOk.length === 0) {
+      return {
+        kind: 'warn',
+        title: '结论：同一个网络下能用，跨网络还没着落',
+        body: (
+          <>
+            麦克风、WebRTC、直连穿透都正常。但
+            <strong>没有一台中继（TURN）可达</strong>
+            ——真机实测已经证明两台设备不在同一个网络时（比如一台用流量、一台用 WiFi）光靠直连是连不上的，
+            而朋友各在各家打牌恰恰就是这种情况。把结果发回来，这一项要单独解决。
+          </>
+        ),
+      };
+    }
     return {
       kind: 'ok',
       title: '结论：这个环境可以做语音对讲',
-      body: `麦克风收得到声音，点对点连接也真的把声音传回来了，公网穿透有 ${reachable.length} 台服务器可达（${reachable.map(r => r.label).join('、')}）。`
+      body: `麦克风收得到声音，点对点连接也真的把声音传回来了，直连穿透 ${reachable.length - relayOk.length} 台可达，`
+        + `中继有 ${relayOk.length} 台可用（${relayOk.map(r => r.label).join('、')}）——跨网络时有兜底。`
         + (staticOk ? '' : ' 不过上面有环境检查项没过，把结果发回来我看一下。'),
     };
   }
@@ -527,8 +583,16 @@ function buildReport({ env, checks, micState, micError, trackInfo, localPeak, lo
   lines.push(`  点对点连接：${{ idle: '未测试', running: '进行中', ok: 'OK', error: `NG ${loopError}` }[loopState]}`);
   lines.push(`  穿过连接回来的声音峰值：${remotePeak.toFixed(3)}${remotePeak > SOUND_THRESHOLD ? '（有声音）' : '（没检测到声音）'}`);
   lines.push('');
-  lines.push('[STUN 公网穿透]');
-  if (stunResults.length === 0) lines.push('  未测试');
-  stunResults.forEach(r => lines.push(`  ${r.ok ? 'OK ' : 'NG '} ${r.label} ${r.url} — ${r.reason}`));
+  // 直连和中继分开列。混在一起看不出"是直连没戏还是连中继都没戏"，而这两者
+  // 对应完全不同的下一步（前者加中继就能救，后者得换中继服务商或自建）。
+  const stun = stunResults.filter(r => r.want !== 'relay');
+  const turn = stunResults.filter(r => r.want === 'relay');
+  lines.push('[STUN 直连穿透]');
+  if (stun.length === 0) lines.push('  未测试');
+  stun.forEach(r => lines.push(`  ${r.ok ? 'OK ' : 'NG '} ${r.label} ${r.url} — ${r.reason}`));
+  lines.push('');
+  lines.push('[TURN 中继（跨网络时的兜底）]');
+  if (turn.length === 0) lines.push('  未测试');
+  turn.forEach(r => lines.push(`  ${r.ok ? 'OK ' : 'NG '} ${r.label} ${r.url} — ${r.reason}`));
   return lines.join('\n');
 }
