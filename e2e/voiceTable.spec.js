@@ -23,7 +23,6 @@ const S = {
   roomCode: '.room-code',
   startBtn: '.lobby-btn',
   gameStage: '.game-stage',
-  voiceToggle: '.voice-toggle-btn',
   pttBtn: '.ptt-btn',
   seat: '.seat',
   seatName: '.seat-name',
@@ -55,20 +54,11 @@ function seatOf(page, name) {
   return page.locator(S.seat).filter({ has: page.locator(S.seatName, { hasText: name }) });
 }
 
-/** 只在第一次调用时点开语音——之后同一个人不能再点第二次，那会把已经
- * 打开的语音重新点关（是这个按钮的正常开关语义，不是 bug）。后面几个人
- * 陆续加入时，前面已经开着语音的人不用、也不该再点一次，只需要等自己的
- * 连接数涨上去，见下面的 waitForPeerCount。 */
-// dispatchEvent('click') 而不是 Playwright 的 .click()——这套沙箱环境下
-// 后者对这个按钮偶发会真的触发两次原生 click 事件（isTrusted:true，间隔
-// 约 270ms，用 e.detail/e.timeStamp 实测确认过，不是猜的），把"开"跟着的
-// "关"错当成用户连点两下。这是自动化工具在这套环境下的已知抖动，不是产
-// 品代码或真实用户点击会出现的模式——所以修的地方是测试怎么点击，不是给
-// 按钮加一个会连带挡住合理快速切换的防抖（本机 WebRTC 建连极快，"开完立
-// 刻关"这种间隔不到 200ms 的操作在真实使用里同样合法，防抖反而会误伤）。
+/** 语音默认对所有人自动开启（2026-08-10 UX 修正后不再有手动开关），进牌
+ * 桌后 useVoiceMesh 会自己接入 mesh——这里只需要等"说话"按钮出现，代表
+ * 自动 enable() 已经跑完，不用再手动点任何按钮。 */
 async function openVoice(page) {
-  await page.locator(S.voiceToggle).dispatchEvent('click');
-  await expect(page.locator(S.voiceToggle)).toHaveClass(/voice-toggle-btn--on/, { timeout: 5000 });
+  await expect(page.locator(S.pttBtn)).toBeVisible({ timeout: 5000 });
 }
 
 /** 等某一页真的连上了期望数量的对端（真实 ICE 状态，不是只看信令 join
@@ -101,18 +91,16 @@ test.describe('语音对讲接入实际牌桌', () => {
     await expect(b.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
     await expect(c.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
 
-    // 逐个开语音——跟服务端约定一致，后加入的人对每个已在场的人发 offer，
-    // 所以顺序开是有意义的：Alice 先开时房间里没别人，Bob 开时只有
-    // Alice，Carol 开时要跟 Alice、Bob 两条都建上。
+    // 语音默认自动接入（2026-08-10 UX 修正后不再手动逐个开），三个人进桌
+    // 的先后顺序不再由测试控制，只等最终状态：每个人都跟另外两个建上连
+    // 接。服务端仍然是"后加入的人对每个已在场的人发 offer"这套约定，只是
+    // 现在触发时机是组件挂载，不是用户点击。
     await openVoice(a);
-    await waitForPeerCount(a, 0);
     await openVoice(b);
-    await waitForPeerCount(b, 1);
-    await waitForPeerCount(a, 1);
     await openVoice(c);
-    await waitForPeerCount(c, 2);
     await waitForPeerCount(a, 2);
     await waitForPeerCount(b, 2);
+    await waitForPeerCount(c, 2);
 
     await ctxA.close();
     await ctxB.close();
@@ -135,14 +123,11 @@ test.describe('语音对讲接入实际牌桌', () => {
     await expect(c.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
 
     await openVoice(a);
-    await waitForPeerCount(a, 0);
     await openVoice(b);
-    await waitForPeerCount(b, 1);
-    await waitForPeerCount(a, 1);
     await openVoice(c);
-    await waitForPeerCount(c, 2);
     await waitForPeerCount(a, 2);
     await waitForPeerCount(b, 2);
+    await waitForPeerCount(c, 2);
 
     // Alice 按住说话——她自己屏幕上也该立刻亮起（本地状态，不用等广播），
     // 且 Bob/Carol 屏幕上 Alice 那个座位也该亮起（经服务端转发的广播）。
@@ -167,7 +152,11 @@ test.describe('语音对讲接入实际牌桌', () => {
     await ctxC.close();
   });
 
-  test('关闭语音后连接清理干净，对方收到离开通知', async ({ browser }) => {
+  test('离开牌桌后连接清理干净，对方收到离开通知', async ({ browser }) => {
+    // 2026-08-10 UX 修正后语音没有手动开关了（默认全员自动接入），"退出
+    // 语音"这件事现在只能通过离开牌桌触发——对应 useVoiceMesh 卸载时的
+    // 清理副作用（closeAllPcs + 停麦克风轨道 + voice:mesh-leave）。用关掉
+    // 页面模拟真实的"离开"，而不是再去点一个已经不存在的按钮。
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
     const a = await ctxA.newPage();
@@ -179,14 +168,12 @@ test.describe('语音对讲接入实际牌桌', () => {
     await expect(b.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
 
     await openVoice(a);
-    await waitForPeerCount(a, 0);
     await openVoice(b);
-    await waitForPeerCount(b, 1);
     await waitForPeerCount(a, 1);
+    await waitForPeerCount(b, 1);
 
-    // Bob 关闭语音
-    await b.locator(S.voiceToggle).dispatchEvent('click');
-    await expect(b.locator(S.voiceToggle)).not.toHaveClass(/voice-toggle-btn--on/);
+    // Bob 离开（关掉页面/context）——模拟真实的"退出牌桌"
+    await ctxB.close();
 
     // Alice 这边这条连接该被清理掉——不再出现在 pcs 表里
     await expect(async () => {
@@ -195,7 +182,6 @@ test.describe('语音对讲接入实际牌桌', () => {
     }).toPass({ timeout: 5000 });
 
     await ctxA.close();
-    await ctxB.close();
   });
 
   test('两桌互相隔离：不同房间的语音互相听不见对方说话', async ({ browser }) => {
@@ -219,15 +205,13 @@ test.describe('语音对讲接入实际牌桌', () => {
     await expect(y.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
 
     await openVoice(a);
-    await waitForPeerCount(a, 0);
     await openVoice(b);
-    await waitForPeerCount(b, 1);
-    await waitForPeerCount(a, 1);
     await openVoice(x);
-    await waitForPeerCount(x, 0);
     await openVoice(y);
-    await waitForPeerCount(y, 1);
+    await waitForPeerCount(a, 1);
+    await waitForPeerCount(b, 1);
     await waitForPeerCount(x, 1);
+    await waitForPeerCount(y, 1);
 
     await a.locator(S.pttBtn).dispatchEvent('pointerdown');
     await expect(seatOf(b, 'Alice').locator('.speak-glow')).toBeVisible({ timeout: 3000 });

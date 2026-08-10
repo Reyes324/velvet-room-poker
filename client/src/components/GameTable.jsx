@@ -181,7 +181,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, voiceEnabled = false, voiceConnecting = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, onToggleVoice, onStartTalking, onStopTalking }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -498,22 +498,14 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
   return (
     <div className={`game-stage game-stage--table${dense ? ' game-stage--dense' : ''}`}>
+      {/* 顶部原来常驻的筹码数字去掉了——筹码在座位卡自己的 footer 上已经有
+          一份，顶部重复显示没有必要（用户反馈，2026-08-10）。"听"这一侧
+          默认全员开启，没有独立开关（见 useVoiceMesh 的自动 enable 效
+          果），说话状态改成直接叠在座位头像发光上（见下方 PlayerSeat 的
+          speak-ripple），顶部不再需要单独的语音指示。 */}
       <div className="top-bar">
         <div className="menu-btn" onClick={() => setShowMenu(true)}>≡</div>
         {countdownText && <div className="timer-countdown">⏱ {countdownText}</div>}
-        {/* 开/关语音 mesh 信令——只决定"能不能互相听见"，不涉及麦克风权限。
-            麦克风权限单独在第一次按住"说话"时才申请（微信硬约束 + 已定的
-            产品决策），跟这个开关是两件事。 */}
-        <button
-          type="button"
-          className={`voice-toggle-btn${voiceEnabled ? ' voice-toggle-btn--on' : ''}${voiceConnecting ? ' voice-toggle-btn--busy' : ''}`}
-          onClick={onToggleVoice}
-          disabled={voiceConnecting}
-          aria-label={voiceEnabled ? '关闭语音' : '开启语音'}
-        >
-          {voiceConnecting ? '…' : (voiceEnabled ? '🎙️' : '🔇')}
-        </button>
-        <div className="bankroll">¥{(amPlaying ? me.chips : myChips).toLocaleString()}</div>
       </div>
       {voiceMicError && (
         <div className="toast toast--danger voice-error-toast">{voiceMicError}</div>
@@ -666,6 +658,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             turnEndsAt={turnClock?.playerId === me.id ? turnClock.endsAt : null}
             turnStartedAt={turnClock?.playerId === me.id ? turnClock.startedAt : null}
             isSpeaking={voiceTalking || !!speakingPlayerIds?.has(me.id)}
+            getVoiceVolume={getVoiceVolume}
           />
         </div>
       )}
@@ -708,6 +701,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               revealedCards={revealedPlayers[p.id]?.holeCards ?? null}
               bestCardRaws={hasBestCards ? bestCardRaws : null}
               isSpeaking={!!speakingPlayerIds?.has(p.id)}
+              getVoiceVolume={getVoiceVolume}
             />
           </div>
         );

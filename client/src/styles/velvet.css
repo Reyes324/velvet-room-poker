@@ -253,6 +253,29 @@
   0%,100% { opacity:.75; transform:scale(1); }
   50%     { opacity:1; transform:scale(1.05); }
 }
+
+/* 音量波纹：.speak-glow 只回答"触发了语音没有"（离散、固定强度的呼吸）；
+   这一层回答"现在声音有多大"（连续量）。--speak-intensity 由 PlayerSeat
+   的 rAF 循环直接写在这个节点的 inline style 上（0..1，不经过 React），
+   两条独立环用同一个变量但不同 delay，读起来像声呐一圈圈往外传，而不是
+   一个环单调地变大变小。用 ::before/::after 而不是再加两个 DOM 节点——
+   纯视觉、不携带语义，没有必要占用可访问树。
+   意为“未设置时按 0 处理”的 var(--speak-intensity, 0)——避免元素刚挂载、
+   rAF 还没跑第一帧时 calc() 里出现未定义变量导致的样式抖动。 */
+.speak-ripple { position:absolute; inset:-4px; border-radius:12px; pointer-events:none; z-index:1; --speak-intensity:0; }
+.speak-ripple::before,
+.speak-ripple::after {
+  content:''; position:absolute; inset:0; border-radius:inherit;
+  border:1.5px solid rgba(39,174,96, calc(0.3 + var(--speak-intensity) * 0.6));
+  opacity:calc(0.4 + var(--speak-intensity) * 0.4);
+  transform:scale(calc(1 + var(--speak-intensity) * 0.7));
+  animation:speakRippleOut 1.15s cubic-bezier(.25,.7,.4,1) infinite;
+}
+.speak-ripple::after { animation-delay:.55s; }
+@keyframes speakRippleOut {
+  0%   { transform:scale(calc(1 + var(--speak-intensity) * 0.35)); opacity:calc(0.45 + var(--speak-intensity) * 0.4); }
+  100% { transform:scale(calc(1.5 + var(--speak-intensity) * 1.4)); opacity:0; }
+}
 /* 角标放左上——右上角已经被 turn-secs 占用，底部是 stack-chip-footer。 */
 .speak-badge {
   position:absolute; top:-4px; left:-4px; z-index:4;
@@ -419,14 +442,10 @@
    more opaque background/border so they read as a distinct chip sitting on
    the felt rather than blending into it. */
 .menu-btn { width:44px; height:44px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; color:#D4AF37; cursor:pointer; }
+/* 牌桌顶部不再用这个（换成了下面的语音说话指示条），但 Lobby.jsx 的筹码
+   显示仍在用同一个 class，样式留着。 */
 .bankroll { background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.36); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
 
-/* 跟 .menu-btn 同尺寸/同形状，颜色换成语音功能自己的绿色系（跟座位上的
-   说话发光同一色系，读作"语音相关"的统一标记）——关闭态是暗淡的灰绿，开
-   启态才亮起来，一眼能分辨当前是不是在广播给别人。 */
-.voice-toggle-btn { width:44px; height:44px; background:rgba(120,140,130,.14); border:1px solid rgba(120,140,130,.28); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; cursor:pointer; transition:background .25s ease, border-color .25s ease; }
-.voice-toggle-btn--on { background:rgba(39,174,96,.20); border-color:rgba(39,174,96,.55); box-shadow:0 0 10px rgba(39,174,96,.25); }
-.voice-toggle-btn--busy { opacity:.6; pointer-events:none; }
 
 /* 悬浮在屏幕右侧中部，刻意不放进底部 action-bar——那里是下注/弃牌操作
    区，按住说话长期占一只手会跟出牌冲突（设计文档已记录的风险，真机验证

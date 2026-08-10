@@ -6,6 +6,7 @@
 // never shown face-down pre-showdown (removed — they carried no information
 // and only ate into the tight center-strip space); they only appear at real
 // showdown.
+import { useEffect, useRef } from 'react';
 import { useThinkSeconds, useTurnClock } from '../hooks/useThinkSeconds';
 import Card from './Card';
 
@@ -41,7 +42,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -57,6 +58,24 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   const timed = !!clock;
   const countdown = clock?.secondsLeft ?? 0;
   const urgent = timed && countdown <= 5;
+
+  // 说话波纹的强度（0..1）来自 useVoiceMesh 的实时音量表，故意不通过 props
+  // 传数值再让 React 重渲染——那张表每帧都在变，真做成 props/state 会在整
+  // 段说话期间持续触发这个组件（以及它的 turn-ring/svg 子树）重渲染。改成
+  // rAF 里直接读、直接写 DOM 节点的 CSS 变量，React 完全不知道这件事发生
+  // 过，只有 isSpeaking 这个离散的开关走一次正常渲染。
+  const rippleRef = useRef(null);
+  useEffect(() => {
+    if (!isSpeaking || !getVoiceVolume) return;
+    let raf;
+    const tick = () => {
+      const vol = getVoiceVolume(player.id);
+      rippleRef.current?.style.setProperty('--speak-intensity', vol.toFixed(3));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [isSpeaking, getVoiceVolume, player.id]);
 
   const seatClass = [
     'seat',
@@ -85,6 +104,11 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             （--state-safe）跟回合倒计时/获胜光效的金色区分开，脉冲比
             is-active 的呼吸更快更亮，两者可以同时出现互不覆盖。 */}
         {isSpeaking && <div className="speak-glow" aria-hidden="true" />}
+        {/* 波纹环：发光本身只表示"触发了语音"（离散状态），波纹的扩散幅度
+            实时跟音量走（连续量），两者叠在一起才是"在说话+说多大声"。
+            --speak-intensity 由上面的 rAF 循环直接写在这个节点上，不经过
+            React state。 */}
+        {isSpeaking && <div ref={rippleRef} className="speak-ripple" aria-hidden="true" />}
         {isSpeaking && <div className="speak-badge" aria-hidden="true">🎤</div>}
         {/* 回合倒计时：沿卡片轮廓走线的描边，满环起始、匀速走空。取代了原来
             那个盖住整张脸的数字方块——那个方块跟 is-active 的金色呼吸边框、

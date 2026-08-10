@@ -28,19 +28,84 @@ export function useVoiceMesh({ socket, emit, playerId }) {
   const enabledRef = useRef(false);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
+  // 实时音量（0..1），playerId -> 强度，自己和对方共用同一张表。刻意不进
+  // React state——这是每帧都在变的数据，真做成 state 会在说话的整个过程
+  // 里持续触发整棵树重渲染。改成 ref + 命令式 getVolume()，由用到它的组
+  // 件自己在 rAF 里读、直接改 DOM 的 CSS 变量，State 只负责"在不在说话"
+  // 这个离散事实（已有的 speakingPlayerIds），音量这个连续量完全绕开 React。
+  const volumesRef = useRef(new Map());
+  const analysersRef = useRef(new Map()); // playerId -> { analyser, data }
+  const audioCtxRef = useRef(null);
+
+  const getAudioCtx = useCallback(() => {
+    if (!audioCtxRef.current) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      audioCtxRef.current = new Ctx();
+    }
+    return audioCtxRef.current;
+  }, []);
+
+  // source 接到 analyser 上但不接 destination——这条支路只用来量音量，接
+  // 到 destination 会导致同一路音频被播放两次。
+  const attachAnalyser = useCallback((pid, stream) => {
+    try {
+      const ctx = getAudioCtx();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.6;
+      source.connect(analyser);
+      analysersRef.current.set(pid, { analyser, data: new Uint8Array(analyser.fftSize), source });
+    } catch { /* 不支持 AnalyserNode 时静默降级——只是没有波纹强度，说话发光本身不受影响 */ }
+  }, [getAudioCtx]);
+
+  const detachAnalyser = useCallback(pid => {
+    const entry = analysersRef.current.get(pid);
+    if (!entry) return;
+    try { entry.source.disconnect(); } catch { /* 已断开 */ }
+    analysersRef.current.delete(pid);
+    volumesRef.current.delete(pid);
+  }, []);
+
+  // 单个共享 rAF 循环，覆盖所有当前接了 analyser 的 playerId（自己 + 每个
+  // 已连上的对方），比每路各开一个循环省事也省性能。
+  useEffect(() => {
+    let raf;
+    const tick = () => {
+      for (const [pid, { analyser, data }] of analysersRef.current) {
+        analyser.getByteTimeDomainData(data);
+        let sumSq = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128;
+          sumSq += v * v;
+        }
+        const rms = Math.sqrt(sumSq / data.length);
+        // 人声正常说话的 RMS 大概在 0.02~0.15 这个量级，乘个系数把它拉到
+        // 视觉上有感的 0~1 区间，属于视觉标定不是精确的分贝换算。
+        volumesRef.current.set(pid, Math.min(1, rms * 6));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const getVolume = useCallback(pid => volumesRef.current.get(pid) ?? 0, []);
+
   const closePc = useCallback(socketId => {
     const entry = pcsRef.current.get(socketId);
     if (!entry) return;
     try { entry.pc.__audioEl?.pause(); } catch { /* 已释放 */ }
     try { entry.pc.close(); } catch { /* 已关闭 */ }
     pcsRef.current.delete(socketId);
+    detachAnalyser(entry.playerId);
     setSpeakingPlayerIds(prev => {
       if (!prev.has(entry.playerId)) return prev;
       const next = new Set(prev);
       next.delete(entry.playerId);
       return next;
     });
-  }, []);
+  }, [detachAnalyser]);
 
   const closeAllPcs = useCallback(() => {
     for (const socketId of [...pcsRef.current.keys()]) closePc(socketId);
@@ -70,6 +135,7 @@ export function useVoiceMesh({ socket, emit, playerId }) {
       el.playsInline = true;
       el.play?.().catch(() => { /* 自动播放被拦不影响拉流 */ });
       pc.__audioEl = el;
+      attachAnalyser(remotePlayerId, stream);
     };
     pc.onnegotiationneeded = async () => {
       try {
@@ -93,7 +159,7 @@ export function useVoiceMesh({ socket, emit, playerId }) {
       window.__voiceMeshPcs = pcsRef.current;
     }
     return pc;
-  }, [emit, closePc]);
+  }, [emit, closePc, attachAnalyser]);
 
   const offerTo = useCallback((remoteSocketId, remotePlayerId) => {
     const pc = buildPc(remoteSocketId, remotePlayerId, false); // 我是发起方 → impolite
@@ -115,22 +181,18 @@ export function useVoiceMesh({ socket, emit, playerId }) {
     });
   }, [socket, playerId, offerTo]);
 
-  const disable = useCallback(() => {
-    emit('voice:mesh-leave');
-    closeAllPcs();
-    // 彻底停掉麦克风轨道而不只是 enabled=false——不然浏览器的"麦克风使用
-    // 中"指示灯会在用户已经把语音关掉之后继续亮着。下次再开语音说话，
-    // 会在按下的那次点击手势里重新申请，符合权限只在按下时申请这条约束。
-    localStreamRef.current?.getAudioTracks().forEach(t => t.stop());
-    localStreamRef.current = null;
-    setEnabled(false);
-    setTalking(false);
-    setSpeakingPlayerIds(new Set());
-  }, [emit, closeAllPcs]);
-
-  const toggle = useCallback(() => {
-    if (enabled) disable(); else enable();
-  }, [enabled, enable, disable]);
+  // 默认所有人自动接入语音网络（只是"能听"，不涉及麦克风权限）——不再需
+  // 要手动点开关才能收到别人的声音。麦克风权限仍然只在第一次按住"说话"
+  // 时才申请，这条硬约束不变，这里只是去掉了"听"这一侧的额外开关。
+  useEffect(() => {
+    if (!socket || !playerId) return;
+    // setTimeout(0) 而不是直接调用：enable() 内部同步 setState，直接在
+    // effect body 里调会触发级联渲染（lint 会拦），推迟到下一个 tick 等价
+    // 于常规的"挂载后触发一次副作用"，行为不变。
+    const timer = setTimeout(enable, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, playerId]);
 
   const startTalking = useCallback(async () => {
     if (!enabled) return;
@@ -149,12 +211,15 @@ export function useVoiceMesh({ socket, emit, playerId }) {
         pc.__transceiver.direction = 'sendrecv';
         pc.__transceiver.sender.replaceTrack(track);
       }
+      // 自己的说话波纹强度跟对方共用同一张 volumesRef 表，key 用自己的
+      // playerId——PlayerSeat 读音量时不用区分"这是我自己还是对方"。
+      attachAnalyser(playerId, localStreamRef.current);
     } else {
       localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = true; });
     }
     setTalking(true);
     emit('voice:speaking', { playerId, speaking: true });
-  }, [enabled, emit, playerId]);
+  }, [enabled, emit, playerId, attachAnalyser]);
 
   const stopTalking = useCallback(() => {
     localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
@@ -237,8 +302,9 @@ export function useVoiceMesh({ socket, emit, playerId }) {
     closeAllPcs();
     localStreamRef.current?.getAudioTracks().forEach(t => t.stop());
     if (enabledRef.current) emit('voice:mesh-leave');
+    audioCtxRef.current?.close().catch(() => { /* 已关闭/不支持 */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { enabled, connecting, talking, speakingPlayerIds, micError, toggle, startTalking, stopTalking };
+  return { enabled, connecting, talking, speakingPlayerIds, micError, startTalking, stopTalking, getVolume };
 }
