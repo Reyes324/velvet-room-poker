@@ -1901,3 +1901,15 @@ if (active.length < 2) {
 
 - **多人同时说话怎么处理**：完全不处理，是真实世界"大家一起开口会糊在一起"的效果——每条对等连接各自的 `<audio>` 元素独立播放，多路同时播放时由浏览器自然混音，没有抢麦/优先级/自动降音逻辑。这不是遗漏，是当前决策 #2（`decision list` 里"不做常开麦克风，避免多人同时说话时的回声/串音"那条）的延伸：按住说话本身已经把"是否发声"交给人自己判断，产品上不打算再加一层机器仲裁。如果真机测试发现"完全听不清"是个真实痛点，再回头考虑要不要做音量自动压制（duck），本轮不做。
 - **换 TURN 服务商（比如 Cloudflare）的影响范围**：所有 TURN/STUN 配置集中在 `client/src/utils/voice.js` 的 `TURN_SERVERS`/`ICE_SERVERS`，`useVoiceMesh.js` 等调用方只 `import` 这份配置，不关心具体服务商，纯换服务器地址/凭证是这一个文件的改动。**但如果目标是 Cloudflare 具体这家**，凭证机制不一样——现在 Metered/OpenRelay 是写死一对用户名密码，Cloudflare 要求走它的 API 现签发最长 48 小时有效的临时凭证，不能像现在这样硬编码在前端，需要加一段后端逻辑（服务器调 Cloudflare API 换取临时凭证再发给客户端）。这段后端工作正好能顺带解决「已知遗留问题」里提过的"TURN 密码硬编码在公开仓库"这条风险，两件事可以合并处理，不是纯前端配置替换。
+
+## 暂停/继续功能（用户反馈，2026-08-11，实现完成）
+
+完整设计过程见 `docs/superpowers/specs/2026-08-11-pause-resume-design.md`（brainstorming 产出），实施计划见 `docs/superpowers/plans/2026-08-11-pause-resume.md`。这里只记实现完成后的落地要点，不重复展开决策过程。
+
+**核心难点**：项目已有的"计时游戏"暂停机制（`awaitingTimerDecision`）刻意只在两手之间的边界生效，绝不打断进行中的一手。这次的暂停功能不能照搬这个简化——用户明确要求必须能立刻冻结当前正在进行的回合倒计时。解法是给 `Room` 加 `paused`/`pauseRemainingMs`/`pausedActionPlayerId` 三个字段，暂停时记下当前行动人的剩余毫秒数并清掉计时器，恢复时用记下来的剩余时间重新调用既有的 `startTurnClock`，没有新建任何计时基础设施。
+
+**最容易被忽略、回头看代码最需要解释"为什么"的一处改动**：`server/index.js` 的 `maybeArmTurnClock` 函数顶部加了一行 `if (room.paused) { room.clearTurnClock(); return; }`。这个函数被 `broadcastRoom`（几乎所有 socket 事件处理完之后都会调用的单一广播出口）无条件调用——如果不加这道短路，暂停后任何一次广播（哪怕只是别人重连、别人的动作气泡更新）都会把刚刚清掉的计时器重新点起来，暂停等于白做。这条不是 `room:pause` handler 自己能保证的，必须动这个既有的、被高频调用的函数本身。
+
+**实现中抓到的真 bug（不是猜的，是写 e2e 测出来的）**：暂停会让 `room.turnClock` 变成 `null`，客户端的 `PlayerSeat.jsx` 原本把"没有 `turnEndsAt`"统一当成"人机对战场景，用本地正数计时兜底"（`think-overlay`），暂停后会误触发这条兜底分支——数字看起来还在自己往上跳，跟"已经冻结"这件事直接矛盾。修法是给 `PlayerSeat` 加 `paused` prop，暂停时两种倒计时显示（环形/正数兜底）都不渲染，牌桌中央已有的暂停遮罩足够说明状态。
+
+**验收数据**：服务端单测新增 10 条全过（`RoomManager.test.js` 3 条纯逻辑单测 + `pauseResume.test.js` 7 条 socket 级集成测试）；e2e `pauseResume.spec.js` 2 条全过，其中一条是真实渲染断言（不是只信服务端状态）——暂停后倒计时数字/操作栏确实从 DOM 里消失、等待期间没有变化，继续后才重新出现并开始跳动；`turnTimeout.spec.js` 既有 3 条无回归；服务端全量 375 条仅 1 条既有 flaky（`integration.test.js` 一条断连测试，单独重跑通过）；构建通过；eslint 与基线持平（39/30，零新增）。
