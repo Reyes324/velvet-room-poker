@@ -870,8 +870,22 @@ function createServer({
         socket.emit('game:state', room.getStateForPlayer(playerId));
         if (room.lastShowdown) socket.emit('game:showdown', room.lastShowdown);
         socket.emit('game:settlement-progress', room.getSettlementProgress());
-        // Clear the settlement timer since this player reconnected
-        clearSettlementTimer(room);
+        // NOTE: deliberately does NOT touch the settlement timer. This used
+        // to call clearSettlementTimer(room) here, left over from when
+        // armSettlementTimer only ever armed a 10-minute safety timeout for
+        // a *disconnected* eligible player (see git history, "remove
+        // auto-advance on settlement-wait disconnect") — clearing made
+        // sense there because a reconnect removed the reason the timer
+        // existed. Since the "多个玩家的时候…太慢了" rewrite, armSettlementTimer
+        // is instead the ONE unconditional auto-advance timer for the whole
+        // display window, armed once in handleActionResult right after
+        // beginSettlementWait — nothing should cancel it early. But
+        // room:sync fires on every RoomPage mount, not just real
+        // reconnects — including a brand-new player's own client navigating
+        // to the room right after room:join — so the stale clear call was
+        // silently killing the only auto-advance mechanism for the rest of
+        // the display window whenever anyone's client (re)mounted mid-wait
+        // (GitHub issue #16).
       } else if (room.game) {
         broadcastRoom(room);
       } else {

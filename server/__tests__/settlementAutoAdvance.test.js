@@ -113,4 +113,30 @@ describe('结算自动推进（用户反馈 #10）', () => {
     // 快路径必须真的比展示时长快，否则"都点了就立即继续"名存实亡
     expect(Date.now() - t0).toBeLessThan(DISPLAY_MS);
   });
+
+  // GitHub issue #16：牌局已经开始，有新人进房间后，结算弹窗的倒计时自动
+  // 推进就失灵了，变成要求每个人都手动点"我知道了"。
+  //
+  // 新玩家 room:join 成功后，客户端会导航到 RoomPage，其 mount 时的
+  // useEffect 会立刻 emit 一次 'room:sync'（不止用于重连——mount 本身就
+  // 会触发，见 RoomPage.jsx 里的注释"Re-sync on every (re)connect, not
+  // just mount"）。这个 room:sync 落进 index.js 里"重连时清理结算兜底定
+  // 时器"的分支（因为此时 room.isAwaitingSettlementAck() && room.game 都
+  // 成立），把刚刚 armSettlementTimer 立好的定时器 clearSettlementTimer
+  // 掉，但没有重新 arm——不管这个 socket 是不是真的"重连"。于是全场唯一
+  // 的自动推进机制被静默关闭，只能靠所有人手动点确认了。
+  it('结算等待期间有新玩家加入（触发一次 room:sync）不应关掉自动推进', async () => {
+    const { c1, code, room } = await playToSettlement();
+    expect(room.isAwaitingSettlementAck()).toBe(true);
+
+    // 新玩家加入，随后其客户端会照 RoomPage 的真实行为在 mount 时 sync 一次
+    const c3 = await connect();
+    const joined3 = waitFor(c3, 'room:joined');
+    c3.emit('room:join', { code, playerId: 'p3', playerName: 'Carol' });
+    await joined3;
+    c3.emit('room:sync', { playerId: 'p3' });
+
+    const advanced = await waitUntil(() => room.isAwaitingSettlementAck() === false);
+    expect(advanced).toBe(true);
+  });
 });
