@@ -52,16 +52,18 @@
    identification work — reads faster at a glance than two small corners). */
 .c-tl { position: absolute; top: 4px; left: 5px; display: flex; flex-direction: column; align-items: center; line-height: 1; gap: 2px; }
 .c-tl .cr { font-family: var(--font-card); font-size: 15px; font-weight: 700; letter-spacing: -.3px; line-height: 1; }
-.c-tl .cs { font-size: 11px; line-height: 1; }
+/* 数字下面这个小花色符号，用户反馈偏小（2026-08-11），几档都调大了一圈
+   （大约 +25~30%），跟上面的数字字号更接近，不再是个几乎看不清的小点。 */
+.c-tl .cs { font-size: 14px; line-height: 1; }
 .c-xs .c-tl { top: 2px; left: 2px; gap: 0; }
 .c-xs .c-tl .cr { font-size: 11px; }
-.c-xs .c-tl .cs { font-size: 8px; }
+.c-xs .c-tl .cs { font-size: 10px; }
 .c-sm .c-tl .cr { font-size: 15px; }
-.c-sm .c-tl .cs { font-size: 11px; }
+.c-sm .c-tl .cs { font-size: 14px; }
 .c-md .c-tl .cr { font-size: 20px; }
-.c-md .c-tl .cs { font-size: 15px; }
+.c-md .c-tl .cs { font-size: 19px; }
 .c-lg .c-tl .cr { font-size: 23px; }
-.c-lg .c-tl .cs { font-size: 17px; }
+.c-lg .c-tl .cs { font-size: 22px; }
 
 /* Center suit pip — the dominant visual, not a subtle accent. Anchored
    toward the bottom-right rather than dead-center: dead-center left the
@@ -118,7 +120,9 @@
    community with it) down by roughly HALF its own value, not the full
    amount; tuned against real measured output, not computed by hand. */
 .pot { display:flex; flex-direction:column; align-items:center; gap:2px; margin-top: 50px; }
-.street-tag { font-family:var(--font-mono); font-size:9px; color:#C9A94A; letter-spacing:4px; text-transform:uppercase; opacity:.9; }
+/* 阶段文字（"翻牌前"/"翻牌圈"...）曾经显示在这上面用的 .street-tag，用户
+   反馈是废话删掉了（2026-08-11），这条规则跟着一起删——桌面上有几张公共
+   牌本来就能看出当前是哪个阶段，不需要用文字重复说一遍。 */
 .pot-label { font-family:var(--font-mono); font-size:7px; color:#AE986C; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
 .pot-amt { font-family:var(--font-amount); font-size:24px; font-weight:700; color:#E8C24A; letter-spacing:.2px; text-shadow:0 0 20px rgba(212,175,55,.45), 0 2px 8px rgba(0,0,0,.6); line-height:1.05; }
 

@@ -24,11 +24,6 @@ const SHOWDOWN_REVEAL_HOLD_MS = 1200;
 // 拖多久，跟上面揭牌用的时长保持一致的节奏感。
 const ACTION_BUBBLE_CLEAR_HOLD_MS = 1200;
 
-const PHASE_LABEL = {
-  waiting: '等待开始', preflop: '翻牌前', flop: '翻牌圈',
-  turn: '转牌圈', river: '河牌圈', showdown: '摊牌',
-};
-
 function colorForId(id) {
   let h = 0;
   for (const ch of String(id)) h = (h + ch.charCodeAt(0)) % 8;
@@ -531,7 +526,18 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           果），说话状态改成直接叠在座位头像发光上（见下方 PlayerSeat 的
           speak-ripple），顶部不再需要单独的语音指示。 */}
       <div className="top-bar">
-        <div className="menu-btn" onClick={() => setShowMenu(true)}>≡</div>
+        {/* 三个点竖排（kebab menu）替代原来的 ≡（hamburger）——面包屑图标
+            在国内用户群体里不是个熟悉的符号，用户反馈"不习惯"（2026-08-11）。
+            用真的 SVG 画三个圆点，不用 unicode 字符（⋮ 在不同字体下粗
+            细/间距不受控，跟牌桌其余全 SVG 画的图形不一致，这条跟麦克风
+            图标改 SVG 是同一个理由）。 */}
+        <div className="menu-btn" onClick={() => setShowMenu(true)} aria-label="菜单" role="button">
+          <svg viewBox="0 0 6 20" width="5" height="18" aria-hidden="true">
+            <circle cx="3" cy="3" r="2.4" fill="currentColor" />
+            <circle cx="3" cy="10" r="2.4" fill="currentColor" />
+            <circle cx="3" cy="17" r="2.4" fill="currentColor" />
+          </svg>
+        </div>
         {countdownText && <div className="timer-countdown">⏱ {countdownText}</div>}
       </div>
       {voiceMicError && (
@@ -634,7 +640,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       <div className="table-oval">
       <div className="table-oval-content">
         <Pot
-          street={PHASE_LABEL[gameState.phase] ?? gameState.phase}
           amount={displayedPot}
           burst={justShowdown}
           handNameLabel={handNameLabels.length > 0 ? handNameLabels.join(' / ') : null}

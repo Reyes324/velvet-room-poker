@@ -189,8 +189,6 @@
   color: var(--text-muted); letter-spacing: .2em;
 }
 
-/* phase label moved to pot area as .street-tag (top bar kept minimal) */
-
 /* ── Oval table ── */
 .table-oval {
   position: relative;
@@ -265,7 +263,7 @@
   display: flex; gap: var(--sp-2); align-items: center;
 }
 
-/* Pot styles now live in shared velvet.css (.pot/.street-tag/.pot-label/.pot-amt) via <Pot> */
+/* Pot styles now live in shared velvet.css (.pot/.pot-label/.pot-amt) via <Pot> */
 
 .current-bet {
   font-family: var(--font-mono); font-size: 11px;
