@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useActionLock } from '../hooks/useActionLock';
+import { useVoiceMesh } from '../hooks/useVoiceMesh';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
@@ -215,6 +216,8 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   const isHost = roomState?.hostId === playerId;
   const inGame = roomState?.status === 'playing' && gameState;
 
+  const voice = useVoiceMesh({ socket, emit, playerId });
+
   // Whoever's turn it currently is, cross-referenced against roomState's
   // connection flags (gameState doesn't carry `connected` — that lives on
   // the room-level player list, see server/RoomManager.js getLobbyState).
@@ -301,6 +304,14 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         turnClock={roomState?.turnClock ?? null}
         myTimeBankMs={roomState?.players?.find(p => p.id === playerId)?.timeBankMs ?? 0}
         onExtendTurn={() => emit('game:extend-turn', { playerId })}
+        voiceEnabled={voice.enabled}
+        voiceConnecting={voice.connecting}
+        voiceTalking={voice.talking}
+        voiceMicError={voice.micError}
+        speakingPlayerIds={voice.speakingPlayerIds}
+        onToggleVoice={voice.toggle}
+        onStartTalking={voice.startTalking}
+        onStopTalking={voice.stopTalking}
       />
       {roomState?.awaitingTimerDecision && isHost && (
         <TimerDecisionModal

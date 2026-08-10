@@ -22,13 +22,18 @@ export const STUN_TIMEOUT_MS = 6000;
 // STUN 只是帮两端**发现**自己的公网地址，打不通时无能为力；TURN 是真的把音频
 // **转发**一遍，所以它能兜住 STUN 兜不住的情况，代价是消耗中继方的带宽。
 //
-// 这里先用公开的免费 TURN 取证，**不代表最终方案**：免费额度和境内可达性都是
-// 变量，要等用户跨网络复测的结果出来再谈免费额度够不够、要不要付费或自建。
-// 443/TCP 那条特意留着——限制严格的网络里往往只有它过得去。
+// 2026-08-10：OpenRelay（openrelayproject/openrelayproject）停摆，换成 Metered
+// 专属账号。原因见设计文档「跨网络实测：OpenRelay 故障」——那组账密是全网教程
+// 共用的公开测试凭证，被真机实测（协议层 Allocate 请求超时无响应，用 coturn 的
+// turnutils_uclient 验证，不是靠读文档下结论）证实已失效。这里换的是自己账号下
+// 专属铸造的凭证（500MB/月免费、无需绑卡），已用同样的工具验证过协议层真的能
+// 建连收发数据（0 丢包）。80/443、UDP/TCP 都留着——限制严格的网络里往往只有
+// 某一条能过。
 export const TURN_SERVERS = [
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject', label: 'OpenRelay 80' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject', label: 'OpenRelay 443' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject', label: 'OpenRelay 443/TCP' },
+  { urls: 'turn:global.relay.metered.ca:80', username: 'cb43a5318f5f4fc6ae0d6a78', credential: 'z7M6Al/3AJdkGhxH', label: 'Metered 80' },
+  { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'cb43a5318f5f4fc6ae0d6a78', credential: 'z7M6Al/3AJdkGhxH', label: 'Metered 80/TCP' },
+  { urls: 'turn:global.relay.metered.ca:443', username: 'cb43a5318f5f4fc6ae0d6a78', credential: 'z7M6Al/3AJdkGhxH', label: 'Metered 443' },
+  { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'cb43a5318f5f4fc6ae0d6a78', credential: 'z7M6Al/3AJdkGhxH', label: 'Metered 443/TLS' },
 ];
 
 // 真实建连要用的 ICE 配置：STUN 优先（直连成本最低、音质最好），打不通时

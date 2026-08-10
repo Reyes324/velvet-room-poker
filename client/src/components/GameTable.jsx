@@ -181,7 +181,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, voiceEnabled = false, voiceConnecting = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, onToggleVoice, onStartTalking, onStopTalking }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -501,8 +501,36 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       <div className="top-bar">
         <div className="menu-btn" onClick={() => setShowMenu(true)}>≡</div>
         {countdownText && <div className="timer-countdown">⏱ {countdownText}</div>}
+        {/* 开/关语音 mesh 信令——只决定"能不能互相听见"，不涉及麦克风权限。
+            麦克风权限单独在第一次按住"说话"时才申请（微信硬约束 + 已定的
+            产品决策），跟这个开关是两件事。 */}
+        <button
+          type="button"
+          className={`voice-toggle-btn${voiceEnabled ? ' voice-toggle-btn--on' : ''}${voiceConnecting ? ' voice-toggle-btn--busy' : ''}`}
+          onClick={onToggleVoice}
+          disabled={voiceConnecting}
+          aria-label={voiceEnabled ? '关闭语音' : '开启语音'}
+        >
+          {voiceConnecting ? '…' : (voiceEnabled ? '🎙️' : '🔇')}
+        </button>
         <div className="bankroll">¥{(amPlaying ? me.chips : myChips).toLocaleString()}</div>
       </div>
+      {voiceMicError && (
+        <div className="toast toast--danger voice-error-toast">{voiceMicError}</div>
+      )}
+      {voiceEnabled && (
+        <div
+          className={`ptt-btn${voiceTalking ? ' ptt-btn--talking' : ''}`}
+          onPointerDown={e => { e.preventDefault(); onStartTalking?.(); }}
+          onPointerUp={onStopTalking}
+          onPointerLeave={onStopTalking}
+          onPointerCancel={onStopTalking}
+          role="button"
+          aria-label="按住说话"
+        >
+          {voiceTalking ? '🎤' : '按住说话'}
+        </div>
+      )}
       {showMenu && (
         <div className="modal-overlay" onClick={() => setShowMenu(false)}>
           <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
@@ -637,6 +665,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             poked={pokedSeat?.targetId === me.id}
             turnEndsAt={turnClock?.playerId === me.id ? turnClock.endsAt : null}
             turnStartedAt={turnClock?.playerId === me.id ? turnClock.startedAt : null}
+            isSpeaking={voiceTalking || !!speakingPlayerIds?.has(me.id)}
           />
         </div>
       )}
@@ -678,6 +707,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               turnStartedAt={turnClock?.playerId === p.id ? turnClock.startedAt : null}
               revealedCards={revealedPlayers[p.id]?.holeCards ?? null}
               bestCardRaws={hasBestCards ? bestCardRaws : null}
+              isSpeaking={!!speakingPlayerIds?.has(p.id)}
             />
           </div>
         );

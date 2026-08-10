@@ -36,6 +36,12 @@ const FEEDBACK_MAX_IMAGES_TOTAL_BASE64_LENGTH = 6_000_000;
 const VOICE_TEST_MAX_PEERS = 2;
 const voiceRoomKey = code => `voice:${code}`;
 
+// 正式接入牌桌的语音 mesh（见 index 下方「语音对讲信令」一节）。跟牌桌人数
+// 上限保持一致，而不是复用 VOICE_TEST_MAX_PEERS——那是探路阶段专门封顶到 2
+// 人的产物，跟正式功能的规模无关。
+const VOICE_MESH_MAX_PEERS = 8;
+const voiceMeshKey = code => `voice-mesh:${code}`;
+
 function createServer({
   feedbackReporter = require('./feedbackReporter'),
   // 可注入，跟 feedbackReporter 是同一个"方便测试"的模式——否则验证"到点
@@ -951,11 +957,79 @@ function createServer({
       }
     });
 
+    // ─── 语音对讲信令（正式接入牌桌，2026-08-10）──────────────────────────
+    // 复用游戏房间号做语音 mesh 的边界：玩家已经因为在牌桌里而在 room.code
+    // 这个 socket.io 房间，不需要上面探路阶段那种单独"暗号"发现流程。另开
+    // voice-mesh:${roomCode} 房间，只装"已开语音的人"，跟承载游戏广播的
+    // room.code 分开，避免信令推给没开语音的人。音频数据依然不经过这
+    // 里——这几个事件只转发 SDP/ICE，跟上面 voice:* 探路事件、跟游戏状态
+    // 都互不影响。
+    socket.on('voice:mesh-join', ({ playerId } = {}, callback) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return callback?.({ error: '不在任何房间里' });
+
+      const key = voiceMeshKey(room.code);
+      const members = [...(io.sockets.adapter.rooms.get(key) ?? [])].filter(id => id !== socket.id);
+      if (members.length >= VOICE_MESH_MAX_PEERS) {
+        return callback?.({ error: '语音房间已满' });
+      }
+
+      socket.data.voicePlayerId = playerId;
+      socket.join(key);
+      // 已在场的每一位都要收到通知——新成员对每个已在场的人主动发 offer，
+      // 已在场的只应答，跟探路阶段"后进来的当发起方"是同一条规则，扩到 N
+      // 人只是循环次数变了，协议本身没变，不存在双方同时发 offer 的竞态。
+      socket.to(key).emit('voice:mesh-peer-joined', { socketId: socket.id, playerId });
+
+      const peers = members
+        .map(id => ({ socketId: id, playerId: io.sockets.sockets.get(id)?.data?.voicePlayerId ?? null }))
+        .filter(p => p.playerId);
+      callback?.({ selfId: socket.id, peers });
+    });
+
+    // 必须校验发信人真的走过 mesh-join、且目标在同一个语音房间——否则任何
+    // 人拿一个 socket id 就能往任意连接推消息，是白送的越权面。
+    socket.on('voice:mesh-signal', ({ to, signal } = {}) => {
+      if (!to || !signal) return;
+      const fromPlayerId = socket.data.voicePlayerId;
+      if (!fromPlayerId) return;
+      const shared = [...socket.rooms].some(
+        room => room.startsWith('voice-mesh:') && io.sockets.adapter.rooms.get(room)?.has(to),
+      );
+      if (!shared) return;
+      io.to(to).emit('voice:mesh-signal', { from: socket.id, fromPlayerId, signal });
+    });
+
+    // "正在说话"由按下/松开说话按钮直接驱动广播，不靠对远端音量做分析——
+    // 项目已经定了按住说话（非常开麦、非语音激活），按下这个动作本身就是
+    // 最可靠的信号，不依赖 ICE 是否协商完成、也不受中继延迟/抖动影响。
+    // 服务端只做同房间转发，不判断真假。
+    socket.on('voice:speaking', ({ playerId, speaking } = {}) => {
+      const fromPlayerId = socket.data.voicePlayerId;
+      if (!fromPlayerId || fromPlayerId !== playerId) return;
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return;
+      socket.to(voiceMeshKey(room.code)).emit('voice:speaking', { playerId, speaking: !!speaking });
+    });
+
+    socket.on('voice:mesh-leave', () => {
+      for (const room of [...socket.rooms]) {
+        if (!room.startsWith('voice-mesh:')) continue;
+        socket.leave(room);
+        socket.to(room).emit('voice:mesh-peer-left', { socketId: socket.id, playerId: socket.data.voicePlayerId });
+      }
+      socket.data.voicePlayerId = null;
+    });
+
     // 用 disconnecting 而不是 disconnect：disconnect 触发时 socket.rooms 已经
     // 被清空了，那时候再想通知"他走了"已经不知道该往哪儿发。
     socket.on('disconnecting', () => {
       for (const room of socket.rooms) {
-        if (room.startsWith('voice:')) socket.to(room).emit('voice:peer-left', { id: socket.id });
+        if (room.startsWith('voice-mesh:')) {
+          socket.to(room).emit('voice:mesh-peer-left', { socketId: socket.id, playerId: socket.data.voicePlayerId });
+        } else if (room.startsWith('voice:')) {
+          socket.to(room).emit('voice:peer-left', { id: socket.id });
+        }
       }
     });
 

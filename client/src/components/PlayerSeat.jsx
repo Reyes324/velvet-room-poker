@@ -41,7 +41,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -78,6 +78,14 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         {badge && <span className="pos-badge">{badge}</span>}
       </div>
       <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>
+        {/* 说话中指示：独立于 avatar-card 自身 border/box-shadow 的叠加层
+            （做法跟下面的 turn-ring 一样是并列的兄弟节点），刻意不占用那两
+            个属性——is-active/is-timed/is-allin/is-winner 都在用它们，抢占
+            的话谁盖过谁全看样式表书写顺序，是脆弱的巧合而不是设计。绿色
+            （--state-safe）跟回合倒计时/获胜光效的金色区分开，脉冲比
+            is-active 的呼吸更快更亮，两者可以同时出现互不覆盖。 */}
+        {isSpeaking && <div className="speak-glow" aria-hidden="true" />}
+        {isSpeaking && <div className="speak-badge" aria-hidden="true">🎤</div>}
         {/* 回合倒计时：沿卡片轮廓走线的描边，满环起始、匀速走空。取代了原来
             那个盖住整张脸的数字方块——那个方块跟 is-active 的金色呼吸边框、
             以及动作气泡三者同时变化，信息全糊在一起。
