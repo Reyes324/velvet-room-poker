@@ -379,6 +379,11 @@ function createServer({
   }
 
   function maybeArmTurnClock(room) {
+    // 暂停时绝不能重新起表——broadcastRoom 每次都会调用这个函数，暂停后
+    // 如果不短路，下一次任意广播都会把刚清掉的计时器重新点起来，暂停等
+    // 于白做。清空残留的 turnClock（正常情况下 room:pause handler 已经清
+    // 过了，这里是防御性的二次保证）之后直接返回，不碰 turnTimers。
+    if (room.paused) { room.clearTurnClock(); return; }
     const existing = turnTimers.get(room.code);
     // isAwaitingAction() 而不是裸的 getActionPlayerId()：一手结束后牌局对象
     // 仍在、actionIndex 也还停在最后行动的人身上，只信后者会让倒计时对着一
@@ -637,6 +642,55 @@ function createServer({
       // 定时器要按新的截止时刻重新排期，否则时间加了但到点动作照旧在原时刻
       // 触发——这正是"加了时间却还是被弃牌"那类最难查的 bug。
       scheduleTurnExpiry(room, playerId, result.endsAt);
+      broadcastRoom(room);
+    });
+
+    // 暂停/继续（用户反馈，2026-08-11）：任意坐位玩家都能触发，立刻冻结
+    // 当前回合的行动倒计时。room.paused 是唯一权威状态，两次几乎同时的
+    // 调用天然安全——先到的生效，后到的因为状态已经翻转而在下面的 guard
+    // 处变成空操作。设计文档：
+    // docs/superpowers/specs/2026-08-11-pause-resume-design.md
+    socket.on('room:pause', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      if (room.paused) return; // 已经暂停，空操作——竞态安全的关键
+      if (!room.players.some(p => p.id === playerId && !p.left)) return; // 只有坐位玩家能触发
+
+      if (room.isAwaitingAction()) {
+        room.pauseRemainingMs = Math.max(0, room.turnClock.endsAt - Date.now());
+        room.pausedActionPlayerId = room.getActionPlayerId();
+      }
+      room.paused = true;
+      clearTurnTimer(room);
+      room.clearTurnClock();
+      broadcastRoom(room);
+    });
+
+    socket.on('room:resume', ({ playerId }) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      if (!room.paused) return; // 没在暂停，空操作
+      if (!room.players.some(p => p.id === playerId && !p.left)) return;
+
+      room.paused = false;
+      const samePlayerSameTurn =
+        room.pausedActionPlayerId &&
+        room.isAwaitingAction() &&
+        room.getActionPlayerId() === room.pausedActionPlayerId;
+
+      if (samePlayerSameTurn) {
+        // 复用 startTurnClock，只是把固定的 TURN_BASE_MS 换成暂停前记
+        // 下来的剩余时间——引擎这边不用改一行。
+        const { endsAt } = room.startTurnClock(room.pausedActionPlayerId, room.pauseRemainingMs);
+        scheduleTurnExpiry(room, room.pausedActionPlayerId, endsAt);
+      }
+      // samePlayerSameTurn 为假的情况（理论上不会发生，暂停期间所有行动
+      // 都被挡）交给下面 broadcastRoom 里的 maybeArmTurnClock 兜底——它
+      // 现在已经不会被 room.paused 短路了（刚设成 false），会按正常逻辑
+      // 重新评估该不该起表。
+
+      room.pauseRemainingMs = null;
+      room.pausedActionPlayerId = null;
       broadcastRoom(room);
     });
 
