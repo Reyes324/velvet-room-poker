@@ -176,7 +176,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -539,7 +539,35 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           </svg>
         </div>
         {countdownText && <div className="timer-countdown">⏱ {countdownText}</div>}
+        {/* 暂停/继续（用户反馈，2026-08-11）：只有坐位玩家（amPlaying）能
+            触发，旁观者看不到这个按钮。图标用真的 SVG 画（跟其余全部图标
+            按钮统一），不是 emoji/unicode 字符。 */}
+        {amPlaying && (
+          <div
+            className={`pause-btn${paused ? ' pause-btn--active' : ''}`}
+            onClick={paused ? onResume : onPause}
+            aria-label={paused ? '继续对局' : '暂停对局'}
+            role="button"
+          >
+            {paused ? (
+              <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+                <path d="M6 4 L16 10 L6 16 Z" fill="currentColor" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+                <rect x="5" y="4" width="4" height="12" rx="1" fill="currentColor" />
+                <rect x="11" y="4" width="4" height="12" rx="1" fill="currentColor" />
+              </svg>
+            )}
+          </div>
+        )}
       </div>
+      {paused && (
+        <div className="pause-overlay">
+          <div className="pause-overlay__text">已暂停</div>
+          <div className="pause-overlay__btn" onClick={onResume}>继续</div>
+        </div>
+      )}
       {voiceMicError && (
         <div className="toast toast--danger voice-error-toast">{voiceMicError}</div>
       )}
@@ -783,7 +811,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
       {amPlaying
         ? (myTurn
-            ? <ActionBar gameState={gameState} myId={myId} onAction={onAction} disabled={actionDisabled} timeBankMs={myTimeBankMs} onExtendTurn={onExtendTurn} />
+            ? <ActionBar gameState={gameState} myId={myId} onAction={onAction} disabled={actionDisabled || paused} timeBankMs={myTimeBankMs} onExtendTurn={onExtendTurn} />
             : <div className="waiting-bar"><div className="waiting-text">{isShowdown ? '正在比牌…' : '等待其他玩家行动…'}</div></div>)
         : (myChips > 0
             ? <div className="waiting-bar"><div className="waiting-text">旁观中，下一手自动入座</div></div>

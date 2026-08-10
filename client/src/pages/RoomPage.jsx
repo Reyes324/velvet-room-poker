@@ -304,6 +304,9 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         turnClock={roomState?.turnClock ?? null}
         myTimeBankMs={roomState?.players?.find(p => p.id === playerId)?.timeBankMs ?? 0}
         onExtendTurn={() => emit('game:extend-turn', { playerId })}
+        paused={roomState?.paused ?? false}
+        onPause={() => emit('room:pause', { playerId })}
+        onResume={() => emit('room:resume', { playerId })}
         voiceEnabled={voice.enabled}
         voiceTalking={voice.talking}
         voiceMicError={voice.micError}
