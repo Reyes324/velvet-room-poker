@@ -42,7 +42,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, timeBankMs = 0, onExtendTurn = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -147,14 +147,38 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         <div className="avatar-photo">
           {player.name[0].toUpperCase()}
           {/* 数字缩成右上角标，不再盖脸。没有倒计时（人机对战）时退回原来的
-              正数计时显示，行为与改动前一致。 */}
-          {isAction && (
+              正数计时显示，行为与改动前一致。
+              暂停时（paused）两种都不显示——暂停会把 turnEndsAt 清成 null，
+              如果不特判会掉进"没有倒计时"分支，显示成还在自己走的
+              think-overlay 正数计时，看起来像时间根本没冻结，跟"暂停"这
+              件事本身矛盾（真机/e2e 实测抓到的问题，2026-08-11，不是猜
+              的）。牌桌中央已经有暂停遮罩说明状态，这里保持空白就够了。 */}
+          {isAction && !paused && (
             timed
               ? <div className={`turn-secs${urgent ? ' turn-secs--urgent' : ''}`}>{countdown}</div>
               : <div className="think-overlay">{thinkSeconds}s</div>
           )}
         </div>
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
+        {/* 「+15 秒」延时挪到自己头像卡片右下角——原来跟弃牌/跟注/加注挤
+            在同一条操作栏里，视觉权重跟真正的牌桌动作一样重，但它压根不是
+            一个牌桌动作，只是给自己多要一点时间（用户反馈，2026-08-11）。
+            角标位置避开另外三个已占的角：左上是 speak-badge，右上（头像
+            照片内）是 turn-secs，名字行右侧是 pos-badge——右下角是唯一还
+            空着的角，跟 speak-badge 用同一种"半覆盖卡片圆角"手法（负
+            margin 露出一半在卡片外）保持一致。储备池每手 30 秒、扣完为
+            止，用完就不再显示，而不是留一个点了没反应的死按钮（同一条
+            timeBankMs>0 判断，只是从 ActionBar 挪到这里）。 */}
+        {isMe && isAction && timeBankMs > 0 && (
+          <button
+            type="button"
+            className="extend-badge"
+            onClick={e => { e.stopPropagation(); onExtendTurn?.(); }}
+            aria-label="延长15秒"
+          >
+            +15s
+          </button>
+        )}
       </div>
 
       {bubble && (
