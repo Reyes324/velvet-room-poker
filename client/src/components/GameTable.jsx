@@ -271,12 +271,36 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled && !isShowdown;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
-  // 说话按钮以前是浮在屏幕右边、跟玩家自己座位对齐高度的独立芯片——9 人
-  // 满座时那个位置正好压在最后一个对手的座位上（用户反馈，2026-08-11）。
-  // 右边缘浮动这个机制本身就不随人数缩放，改成挪进底部这一整条操作栏，
-  // 跟弃牌/跟注/加注同一排、占据原来"+15s"的视觉位置——不管几人桌，操
-  // 作栏宽度都会自适应，不会再压到任何座位。因此不再需要量座位真实
-  // DOM 位置这一整套（heroSlotRef/pttTop）。
+  // 说话按钮要跟玩家自己的座位在同一条水平线上——但座位的实际屏幕位置是
+  // 一套参考画布坐标（heroSeatPos）经过 tableScaleX/Y 缩放算出来的，缩放
+  // 系数还是个 ~250ms 的 JS 缓动值，手算一遍这套坐标系去反推按钮位置既
+  // 脆弱又容易在窗口比例变化时跟着错位。改成直接量它俩真实渲染出来的
+  // DOM 位置——量出来的永远是对的，不用管中间那套坐标系怎么算。依赖里
+  // 带上 heroSeatPos/dense/tableScale：任何一个可能挪动座位的量发生变化
+  // 都要重新量一次，而不是只信 ResizeObserver（它只管尺寸变化，管不了纯
+  // 位置/transform 变化）。
+  //
+  // 2026-08-11 当天试过挪进底部操作栏（解决 9 人满座时压住最后一个对手
+  // 座位的问题），用户看完实际效果后又要求换回这个悬浮版本——9 人满座
+  // 那个问题暂时接受，回头再另外想办法解决，不在这次改动范围内。
+  const heroSlotRef = useRef(null);
+  const [pttTop, setPttTop] = useState(null);
+  useEffect(() => {
+    const heroEl = heroSlotRef.current;
+    if (!heroEl) return;
+    const measure = () => {
+      const stageEl = heroEl.closest('.game-stage');
+      if (!stageEl) return;
+      const heroRect = heroEl.getBoundingClientRect();
+      const stageRect = stageEl.getBoundingClientRect();
+      setPttTop(heroRect.top - stageRect.top + heroRect.height / 2);
+    };
+    const raf = requestAnimationFrame(measure); // 等这一帧的 transform 真正生效再量
+    const ro = new ResizeObserver(measure);
+    ro.observe(heroEl);
+    window.addEventListener('resize', measure);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, [tableScaleX, tableScaleY, heroSeatPos.x, heroSeatPos.y, dense]);
 
   // ── Animation refs (track prev state to compute what's newly visible) ──────
   const prevShowdownRef = useRef(null);
@@ -551,6 +575,28 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       {voiceMicError && (
         <div className="toast toast--danger voice-error-toast">{voiceMicError}</div>
       )}
+      {voiceEnabled && (
+        <div
+          className={`ptt-btn${voiceTalking ? ' ptt-btn--talking' : ''}`}
+          style={pttTop != null ? { top: `${pttTop}px` } : undefined}
+          onPointerDown={e => { e.preventDefault(); onStartTalking?.(); }}
+          onPointerUp={onStopTalking}
+          onPointerLeave={onStopTalking}
+          onPointerCancel={onStopTalking}
+          role="button"
+          aria-label="按住说话"
+        >
+          {/* 一个真的麦克风图标，不是 emoji——emoji 在不同系统上渲染差异
+              大（形状、粗细、有没有描边都不受控），跟牌桌其余全部用 SVG/
+              CSS 画出来的图形（turn-ring、扑克牌花色）风格不一致。 */}
+          <svg className="ptt-btn__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor" />
+            <path d="M6 11a6 6 0 0 0 12 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M12 17v4M9 21h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+          <span className="ptt-btn__label">{voiceTalking ? '说话中' : '按住说话'}</span>
+        </div>
+      )}
       {showMenu && (
         <div className="modal-overlay" onClick={() => setShowMenu(false)}>
           <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
@@ -670,6 +716,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
       {amPlaying && (
         <div
+          ref={heroSlotRef}
           className="player-slot player-slot--hero"
           style={{ left: `${heroSeatPos.x}px`, top: `${heroSeatPos.y}px` }}
         >
@@ -687,8 +734,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             isSpeaking={voiceTalking || !!speakingPlayerIds?.has(me.id)}
             getVoiceVolume={getVoiceVolume}
             paused={paused}
-            timeBankMs={myTimeBankMs}
-            onExtendTurn={onExtendTurn}
           />
         </div>
       )}
@@ -770,52 +815,16 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       </div>
       </div>
 
-      {/* 麦克风按钮以前是浮在屏幕右边、跟 ActionBar/waiting-bar 谁在显示无
-          关的独立元素；9 人满座时它固定挂在右边缘正好压住最后一个对手的
-          座位（用户反馈，2026-08-11）。现在挪进这条底部操作栏——占据原来
-          "+15s" 按钮的视觉位置，排在"加注"右边。语音是否有权限（voiceEnabled）
-          从来跟"是否轮到我"（myTurn）无关——一手牌里 90% 的时间是别人在行
-          动，玩家仍然要能随时说话，所以这里刻意让 .bottom-bar 成为
-          ActionBar/waiting-bar 共同的父级：不管里面渲染哪一个，麦克风按钮
-          都作为同级兄弟节点始终存在，只受 voiceEnabled 这一个开关控制，
-          不嵌进 ActionBar 自己的条件渲染里（那样每次轮到别人行动、
-          ActionBar 换成 waiting-bar 时，麦克风会跟着一起消失，语音功能等
-          于在一手牌里大部分时间都失效）。 */}
-      <div className="bottom-bar">
-        {amPlaying
-          ? (myTurn
-              ? <ActionBar gameState={gameState} myId={myId} onAction={onAction} disabled={actionDisabled || paused} />
-              : <div className="waiting-bar"><div className="waiting-text">{isShowdown ? '正在比牌…' : '等待其他玩家行动…'}</div></div>)
-          : (myChips > 0
-              ? <div className="waiting-bar"><div className="waiting-text">旁观中，下一手自动入座</div></div>
-              : <div className="waiting-bar waiting-bar--spectate">
-                  <div className="waiting-text">旁观中</div>
-                  <div className="spectate-rebuy-btn" onClick={onRebuy}>+借一底</div>
-                </div>)}
-        {voiceEnabled && (
-          <div
-            className={`ptt-btn${voiceTalking ? ' ptt-btn--talking' : ''}`}
-            onPointerDown={e => { e.preventDefault(); onStartTalking?.(); }}
-            onPointerUp={onStopTalking}
-            onPointerLeave={onStopTalking}
-            onPointerCancel={onStopTalking}
-            role="button"
-            aria-label="按住说话"
-          >
-            {/* 一个真的麦克风图标，不是 emoji——emoji 在不同系统上渲染差异
-                大（形状、粗细、有没有描边都不受控），跟牌桌其余全部用 SVG/
-                CSS 画出来的图形（turn-ring、扑克牌花色）风格不一致。图标
-                本身和说话中的绿色脉冲视觉语言保持不变，这次只是把外层容
-                器从浮动芯片改成跟这一排其它按钮同高的行内按钮。 */}
-            <svg className="ptt-btn__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor" />
-              <path d="M6 11a6 6 0 0 0 12 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              <path d="M12 17v4M9 21h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            <span className="ptt-btn__label">{voiceTalking ? '说话中' : '说话'}</span>
-          </div>
-        )}
-      </div>
+      {amPlaying
+        ? (myTurn
+            ? <ActionBar gameState={gameState} myId={myId} onAction={onAction} disabled={actionDisabled || paused} timeBankMs={myTimeBankMs} onExtendTurn={onExtendTurn} />
+            : <div className="waiting-bar"><div className="waiting-text">{isShowdown ? '正在比牌…' : '等待其他玩家行动…'}</div></div>)
+        : (myChips > 0
+            ? <div className="waiting-bar"><div className="waiting-text">旁观中，下一手自动入座</div></div>
+            : <div className="waiting-bar waiting-bar--spectate">
+                <div className="waiting-text">旁观中</div>
+                <div className="spectate-rebuy-btn" onClick={onRebuy}>+借一底</div>
+              </div>)}
     </div>
   );
 }

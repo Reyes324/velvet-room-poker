@@ -55,7 +55,7 @@ function VerticalSlider({ min, max, step, value, onChange }) {
 
 // Progressive disclosure: default 3 buttons (fold / call|check / raise▸);
 // tapping raise expands a sizing panel. Styled by shared velvet.css.
-export default function ActionBar({ gameState, myId, onAction, disabled }) {
+export default function ActionBar({ gameState, myId, onAction, disabled, timeBankMs = 0, onExtendTurn }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(null);
 
@@ -133,6 +133,14 @@ export default function ActionBar({ gameState, myId, onAction, disabled }) {
             ? <button className="btn b-check b-h52" onClick={() => act('check')}>过牌</button>
             : <button className="btn b-call b-h52" onClick={() => act('call')}>跟注 ¥{toCall.toLocaleString()}</button>}
           <button className="btn b-raise-trigger b-h52" onClick={openRaise}>加注 ▸</button>
+          {/* 「+15 秒」延时。储备池每手 30 秒、扣完为止——用户最初的方案是
+              无上限续杯，那会把"一个人拖住全桌"原样带回来（见 design.md）。
+              用完就不再显示，而不是留一个点了没反应的死按钮。 */}
+          {timeBankMs > 0 && (
+            <button className="btn b-extend b-h52" onClick={() => onExtendTurn?.()}>
+              +15s
+            </button>
+          )}
         </div>
       ) : (
         <div className="ab-raise open">

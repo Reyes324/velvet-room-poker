@@ -42,7 +42,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, timeBankMs = 0, onExtendTurn = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -160,25 +160,6 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           )}
         </div>
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
-        {/* 「+15 秒」延时挪到自己头像卡片右下角——原来跟弃牌/跟注/加注挤
-            在同一条操作栏里，视觉权重跟真正的牌桌动作一样重，但它压根不是
-            一个牌桌动作，只是给自己多要一点时间（用户反馈，2026-08-11）。
-            角标位置避开另外三个已占的角：左上是 speak-badge，右上（头像
-            照片内）是 turn-secs，名字行右侧是 pos-badge——右下角是唯一还
-            空着的角，跟 speak-badge 用同一种"半覆盖卡片圆角"手法（负
-            margin 露出一半在卡片外）保持一致。储备池每手 30 秒、扣完为
-            止，用完就不再显示，而不是留一个点了没反应的死按钮（同一条
-            timeBankMs>0 判断，只是从 ActionBar 挪到这里）。 */}
-        {isMe && isAction && timeBankMs > 0 && (
-          <button
-            type="button"
-            className="extend-badge"
-            onClick={e => { e.stopPropagation(); onExtendTurn?.(); }}
-            aria-label="延长15秒"
-          >
-            +15s
-          </button>
-        )}
       </div>
 
       {bubble && (

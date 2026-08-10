@@ -293,23 +293,6 @@
   0%   { transform:scale(1); opacity:calc(0.55 + var(--speak-intensity) * 0.45); }
   100% { transform:scale(calc(1.6 + var(--speak-intensity) * 1.3)); opacity:0; }
 }
-/* 「+15 秒」延时角标：从操作栏挪到自己头像卡片，放右下角——左上是
-   speak-badge，右上（头像照片内）是 turn-secs，名字行右侧是 pos-badge，
-   右下角是唯一还空着的角。跟 speak-badge 用同一种"负 margin 半覆盖卡片
-   圆角"手法，但做成实际可点的按钮（speak-badge 只是纯展示）。故意做得
-   小而低调（用户原话"简单、轻量、不用太重的小按钮"）——不是牌桌动作，
-   只是给自己多要一点时间，不该跟弃牌/跟注/加注抢视觉权重，这也是它当
-   初被搬离操作栏的原因。 */
-.extend-badge {
-  position:absolute; bottom:-6px; right:-6px; z-index:4;
-  height:16px; padding:0 5px; border-radius:8px;
-  background:rgba(120,140,190,.85); color:#EAF0FC;
-  border:1px solid rgba(120,140,190,.9);
-  font-family:var(--font-mono); font-size:9px; font-weight:700; line-height:14px;
-  box-shadow:0 1px 3px rgba(0,0,0,.6);
-  cursor:pointer; user-select:none; -webkit-user-select:none;
-}
-.extend-badge:active { background:rgba(120,140,190,1); }
 /* 角标放左上——右上角已经被 turn-secs 占用，底部是 stack-chip-footer。 */
 .speak-badge {
   position:absolute; top:-4px; left:-4px; z-index:4;
@@ -522,51 +505,44 @@
    位置由另一套会随窗口比例缓动变化的坐标系算出来，两边没有绑在一起）。
    .game-stage 本身是 position:relative 且铺满真实视口宽高，用它当定位
    基准，而不是内部按固定设计画布缩放的 .table-canvas。 */
-/* 底部操作栏的公共容器——ActionBar（轮到自己时）和 .waiting-bar（轮到别
-   人时）二选一渲染在这里面，麦克风按钮则作为它俩共同的兄弟节点、不受
-   myTurn 影响地始终存在（只受 voiceEnabled 控制），这样不管当前显示的
-   是哪一个，麦克风都留在同一个位置——语音是全程能用的功能，不能因为轮
-   到别人行动就消失（用户反馈，2026-08-11：这是这次改动里唯一不能回归
-   的点）。ActionBar/.waiting-bar 自身已经是 flex:0 0 auto 且带了自己的
-   底部安全区 padding，这里只需要横向把麦克风摆在它右边、纵向撑满一致
-   即可，不用重复处理 safe-area。 */
-.bottom-bar { display:flex; align-items:flex-start; gap:8px; flex:0 0 auto; background:linear-gradient(to top,var(--surface-base) 68%,transparent); }
-.bottom-bar .action-bar,
-.bottom-bar .waiting-bar { flex:1 1 auto; min-width:0; background:none; }
-/* 麦克风按钮：以前是浮在屏幕右边缘、跟自己座位对齐高度的独立芯片
-   （58×72）——9 人满座时这个固定位置正好压住最后一个对手的座位（用户反
-   馈，2026-08-11）。现在挪进底部操作栏，占据原来"+15s"按钮的视觉位置，
-   排在"加注"右边，尺寸/圆角跟着行里其它按钮的语言走（.b-h52 的 46px 高
-   度、pill 圆角），不再是牌桌上唯一一个孤零零的独立造型元素。图标和说
-   话中的绿色脉冲视觉语言原样保留，只是外层容器从浮动芯片改成跟这一排
-   其它按钮同高的行内按钮。 */
+/* 圆角矩形芯片，跟 .menu-btn/.avatar-card 用同一套形状语言（12~16px 圆
+   角），不再是牌桌上唯一一个孤零零的正圆——那是用户反馈"太突兀"的根源
+   （2026-08-11）。触摸目标仍然刻意做大（58×72），比系统建议的 44px 最小
+   触摸尺寸留足余量，"精致"体现在图标/圆角/配色上，不是靠缩小点击区域。
+   2026-08-11 当天晚些时候试过挪进底部操作栏（为了解决 9 人满座时压住
+   最后一个对手座位的问题），用户看完实际效果后要求换回这个悬浮版本，
+   9 人满座那个问题接受暂时存在，回头另外解决。 */
 .ptt-btn {
-  flex:0 0 auto; align-self:flex-end;
-  margin-right:14px;
-  margin-bottom:calc(12px + env(safe-area-inset-bottom,0px));
-  height:46px; padding:0 14px; border-radius:26px;
+  position:absolute; right:14px; top:50%; transform:translateY(-50%);
+  width:58px; height:72px; border-radius:16px;
   background:linear-gradient(180deg, rgba(212,175,55,.22), rgba(212,175,55,.10));
-  border:1px solid rgba(212,175,55,.42);
+  border:1.5px solid rgba(212,175,55,.42);
   color:var(--gold-200);
-  display:flex; flex-direction:row; align-items:center; justify-content:center; gap:6px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
   cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:none;
   z-index:20; box-shadow:0 4px 16px rgba(0,0,0,.5);
   transition:background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
-.ptt-btn__icon { width:20px; height:20px; }
+.ptt-btn__icon { width:22px; height:22px; }
 .ptt-btn__label {
-  font-family:var(--font-body); font-size:12px; font-weight:700; letter-spacing:.2px;
+  font-family:var(--font-body); font-size:10px; font-weight:700; letter-spacing:.2px;
   white-space:nowrap;
 }
 .ptt-btn--talking {
   background:linear-gradient(180deg, rgba(39,174,96,.9), rgba(39,174,96,.72));
   border-color:#27AE60; color:#EAFBF0;
+  transform:translateY(-50%) scale(1.06);
   box-shadow:0 0 0 6px rgba(39,174,96,.24), 0 0 24px rgba(39,174,96,.55);
+  /* 专用的 pttPulse，不能复用 .speak-glow 那个 speakPulse——那组 keyframe
+     的 transform 只写了 scale()，没带上这个按钮赖以垂直居中的
+     translateY(-50%)。CSS 动画的 transform 是整体替换、不是叠加，用在这
+     个按钮上会导致每次呼吸动画播放时都把居中位移吃掉，看起来像按下说话
+     就"往下掉一截"（真实 bug，不是错觉，用户反馈抓出来的，2026-08-11）。 */
   animation:pttPulse .7s ease-in-out infinite;
 }
 @keyframes pttPulse {
-  0%,100% { transform:scale(1.03); }
-  50%     { transform:scale(1.08); }
+  0%,100% { transform:translateY(-50%) scale(1.06); }
+  50%     { transform:translateY(-50%) scale(1.12); }
 }
 /* 跟顶部常规 toast 用同一套底色/圆角，但往下错开一整个 toast 的高度，
    避免语音报错和别的 toast（比如断线提示）同时出现时叠在同一行看不清。 */
