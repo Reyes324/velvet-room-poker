@@ -64,13 +64,20 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   // 段说话期间持续触发这个组件（以及它的 turn-ring/svg 子树）重渲染。改成
   // rAF 里直接读、直接写 DOM 节点的 CSS 变量，React 完全不知道这件事发生
   // 过，只有 isSpeaking 这个离散的开关走一次正常渲染。
+  // 节流到约 12fps（~80ms 一次）——波纹是缓慢扩散的效果，肉眼分辨不出跟
+  // 60fps 的差别，但把 JS 写 style 的频率降下来能明显减轻它和 CSS 自身
+  // keyframe 动画抢重绘造成的卡顿（这条是真机反馈之后加的，之前是每帧都写）。
   const rippleRef = useRef(null);
   useEffect(() => {
     if (!isSpeaking || !getVoiceVolume) return;
     let raf;
-    const tick = () => {
-      const vol = getVoiceVolume(player.id);
-      rippleRef.current?.style.setProperty('--speak-intensity', vol.toFixed(3));
+    let lastWrite = 0;
+    const tick = now => {
+      if (now - lastWrite >= 80) {
+        lastWrite = now;
+        const vol = getVoiceVolume(player.id);
+        rippleRef.current?.style.setProperty('--speak-intensity', vol.toFixed(3));
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

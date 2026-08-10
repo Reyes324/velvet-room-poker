@@ -520,7 +520,15 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           role="button"
           aria-label="按住说话"
         >
-          {voiceTalking ? '🎤' : '按住说话'}
+          {/* 一个真的麦克风图标，不是 emoji——emoji 在不同系统上渲染差异
+              大（形状、粗细、有没有描边都不受控），跟牌桌其余全部用 SVG/
+              CSS 画出来的图形（turn-ring、扑克牌花色）风格不一致。 */}
+          <svg className="ptt-btn__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor" />
+            <path d="M6 11a6 6 0 0 0 12 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M12 17v4M9 21h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+          <span className="ptt-btn__label">{voiceTalking ? '说话中' : '按住说话'}</span>
         </div>
       )}
       {showMenu && (
