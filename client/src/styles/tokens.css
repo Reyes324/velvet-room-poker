@@ -22,24 +22,27 @@
      比稿里的"柔化森林绿"方向），同时把 900→200 之间的亮度跨度压小——質
      感改靠下面 .table-oval-felt/.table-felt 新增的绒面颗粒纹理来表现，
      不再靠强对比的径向高光制造立体感。 */
-  /* 深青绿方向（用户看完方案对比后改选这个，而不是最初选的柔化森林绿，
-     2026-08-11）——色相往蓝绿偏，跟金色 UI 元素对比度更高级，同样保持
-     低对比度的 ramp（避免径向渐变中心到边缘跳变太大读成"泛白"）。 */
-  --felt-900: #14211F;
-  --felt-800: #182924;
-  --felt-700: #1E332C;
-  --felt-600: #243E35;
-  --felt-500: #2A4A40;
-  --felt-400: #31564B;
-  --felt-300: #396456;
-  --felt-200: #457566;
+  /* 深青绿方向试过之后又改回来了（用户反馈 2026-08-11 当天晚些时候：
+     深青绿"感觉不对"，还是最初选的柔化森林绿方向更好）。回退到当天早些
+     时候的柔化森林绿 ramp——色相回到绿，同样保持低对比度的压缩跨度
+     （避免径向渐变中心到边缘跳变太大读成"泛白"）。 */
+  --felt-900: #16241C;
+  --felt-800: #1B2C21;
+  --felt-700: #213627;
+  --felt-600: #28422F;
+  --felt-500: #2F4D37;
+  --felt-400: #37593F;
+  --felt-300: #3F6547;
+  --felt-200: #487552;
 
   /* 绒面颗粒纹理——用 SVG feTurbulence 现生成的噪点图，纯代码、不引入图
-     片资源，跟 .table-felt/.table-oval-felt 的渐变叠一层 overlay 混合，
-     制造真实绒布的颗粒感（用户反馈"想要毛茸茸质感"，2026-08-11）。强度
-     刻意调得克制（feColorMatrix 最后一位 alpha 0.09），只加这一层，不
-     叠加其他效果。 */
-  --felt-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.09 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+     片资源，跟 .table-felt/.table-oval-felt/.game-stage--table 的渐变叠
+     一层 overlay 混合，制造真实绒布的颗粒感（用户反馈"想要毛茸茸质
+     感"，2026-08-11）。alpha 从 0.09 降到 0.045（用户反馈"颗粒太多
+     了"，同一天晚些时候）——纹理还在，但收敛成隐约可见而不是明显的噪点。
+     只保留这一层，牌桌背景上原有的额外交叉纹理/独立噪点层/暖光高光层
+     已经整体拿掉，见 .game-stage--table 的注释。 */
+  --felt-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.045 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 
   /* Gold */
   --gold-900: #3D2800;

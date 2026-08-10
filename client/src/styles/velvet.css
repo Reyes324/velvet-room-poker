@@ -935,22 +935,28 @@
 
 /* 用户追问（2026-07-28）：桌布边框能不能去掉、纹理是不是该布满全屏。
    之前那轮只是让 .game-stage 的纯色背景跟桌布同色系，桌布本身的编织纹理
-   （下面这几层 repeating-gradient/噪点/暖光/金边）依然只画在 .table-canvas
-   上——那是一块固定参考分辨率（TABLE_REF_W/TABLE_REF_H）、靠 transform:
-   scale 拉伸去适配 .table-zone 的画布，专门用来做座位坐标数学，不能直接
-   拉伸盖住顶栏/操作栏区域（拉伸会破坏座位定位）。改法：把整套纹理原样搬
-   到 .game-stage--table 这个真正铺满整个屏幕、不参与缩放的层上——纹理本
-   身用的是可平铺的 repeating-gradient/repeat 噪点图 + 百分比定位的径向渐
-   变，天然不依赖固定尺寸，直接用在全屏容器上不会变形。.table-canvas 自
-   己的 background/box-shadow（那圈金色内嵌边框）整个去掉，只保留定位作
-   用，视觉上只剩这一层连续到顶栏/操作栏底下的桌布，不再有独立的"画框"。 */
+   依然只画在 .table-canvas 上——那是一块固定参考分辨率（TABLE_REF_W/
+   TABLE_REF_H）、靠 transform: scale 拉伸去适配 .table-zone 的画布，专门
+   用来做座位坐标数学，不能直接拉伸盖住顶栏/操作栏区域（拉伸会破坏座位定
+   位）。改法：把桌布背景搬到 .game-stage--table 这个真正铺满整个屏幕、
+   不参与缩放的层上。.table-canvas 自己的 background/box-shadow（那圈金
+   色内嵌边框）整个去掉，只保留定位作用，视觉上只剩这一层连续到顶栏/操作
+   栏底下的桌布，不再有独立的"画框"。
+   用户复查后追问（2026-08-11）："原本是不是也有很多其他图案效果？"——
+   确实有：当时这里叠了 5 层——两组不同角度的 repeating-linear-gradient
+   编织交叉纹理、一层独立的 feTurbulence 噪点图（跟 tokens.css 里
+   --felt-grain 是两套不同的噪点，重复）、一层暖金色径向高光（模拟"桌灯
+   打光"），外加最底下的基础径向渐变。全部拿掉，只留基础径向渐变 + 下面
+   这行 --felt-grain overlay（跟 .table-felt/.table-oval-felt 用同一套
+   颗粒纹理，强度已降到 0.045），桌布现在读成干净的纯色+浅颗粒，没有额外
+   图案/高光。金色内嵌边框环（.table-oval-felt 的 border/box-shadow）不
+   算"图案"，那是桌子物理边缘的处理，保留不动。 */
 .game-stage--table {
   background:
-    repeating-linear-gradient(115deg, rgba(255,255,255,.07) 0px, rgba(255,255,255,.07) 1px, transparent 1px, transparent 4px),
-    repeating-linear-gradient(25deg, rgba(255,255,255,.05) 0px, rgba(255,255,255,.05) 1px, transparent 1px, transparent 4px),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)' opacity='0.12'/%3E%3C/svg%3E") repeat,
-    radial-gradient(ellipse at 50% 32%, rgba(212,175,55,.09) 0%, transparent 45%),
+    var(--felt-grain),
     radial-gradient(ellipse at 50% 38%, var(--felt-300) 0%, var(--felt-400) 32%, var(--felt-600) 68%, var(--felt-800) 100%);
+  background-blend-mode: overlay, normal;
+  background-size: 140px 140px, cover;
 }
 
 .table-zone { position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
