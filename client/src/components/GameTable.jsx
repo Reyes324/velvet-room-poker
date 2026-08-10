@@ -276,6 +276,33 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled && !isShowdown;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
+  // 说话按钮要跟玩家自己的座位在同一条水平线上——但座位的实际屏幕位置是
+  // 一套参考画布坐标（heroSeatPos）经过 tableScaleX/Y 缩放算出来的，缩放
+  // 系数还是个 ~250ms 的 JS 缓动值，手算一遍这套坐标系去反推按钮位置既
+  // 脆弱又容易在窗口比例变化时跟着错位。改成直接量它俩真实渲染出来的
+  // DOM 位置——量出来的永远是对的，不用管中间那套坐标系怎么算。依赖里
+  // 带上 heroSeatPos/dense/tableScale：任何一个可能挪动座位的量发生变化
+  // 都要重新量一次，而不是只信 ResizeObserver（它只管尺寸变化，管不了纯
+  // 位置/transform 变化）。
+  const heroSlotRef = useRef(null);
+  const [pttTop, setPttTop] = useState(null);
+  useEffect(() => {
+    const heroEl = heroSlotRef.current;
+    if (!heroEl) return;
+    const measure = () => {
+      const stageEl = heroEl.closest('.game-stage');
+      if (!stageEl) return;
+      const heroRect = heroEl.getBoundingClientRect();
+      const stageRect = stageEl.getBoundingClientRect();
+      setPttTop(heroRect.top - stageRect.top + heroRect.height / 2);
+    };
+    const raf = requestAnimationFrame(measure); // 等这一帧的 transform 真正生效再量
+    const ro = new ResizeObserver(measure);
+    ro.observe(heroEl);
+    window.addEventListener('resize', measure);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, [tableScaleX, tableScaleY, heroSeatPos.x, heroSeatPos.y, dense]);
+
   // ── Animation refs (track prev state to compute what's newly visible) ──────
   const prevShowdownRef = useRef(null);
 
@@ -513,6 +540,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       {voiceEnabled && (
         <div
           className={`ptt-btn${voiceTalking ? ' ptt-btn--talking' : ''}`}
+          style={pttTop != null ? { top: `${pttTop}px` } : undefined}
           onPointerDown={e => { e.preventDefault(); onStartTalking?.(); }}
           onPointerUp={onStopTalking}
           onPointerLeave={onStopTalking}
@@ -651,6 +679,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
       {amPlaying && (
         <div
+          ref={heroSlotRef}
           className="player-slot player-slot--hero"
           style={{ left: `${heroSeatPos.x}px`, top: `${heroSeatPos.y}px` }}
         >

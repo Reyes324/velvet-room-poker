@@ -260,10 +260,10 @@
    到约 12fps——见 PlayerSeat.jsx，波纹本身是缓慢扩散的效果，肉眼分辨不出
    12fps 和 60fps 的差别，但把 JS 写 style 的频率从 60 次/秒降到 12 次/秒
    能明显减轻和 CSS 自身动画引擎抢重绘导致的卡顿）。
-   圆形而不是跟随头像卡片的圆角矩形——之前直接 inherit 头像的 10px 圆角，
-   放大后棱角越来越明显，读成"方框在变大"而不是水波纹（用户反馈，
-   2026-08-11）。头像卡片本身宽高接近正方形，border-radius:50% 出来的圆
-   跟卡片基本贴合，不需要额外量像素。
+   跟头像卡片同一个圆角矩形形状（`border-radius:inherit`，头像是 10px 圆
+   角）——之前试过改成纯圆形（border-radius:50%），用户反馈"独立的圆形
+   有点奇怪"，改回跟随头像本身的形状更统一（2026-08-11 两轮反馈来回定
+   下来的）。
    只动 transform（scale）和 opacity，不再动 border 宽度/颜色——border 变
    化会触发重绘，transform/opacity 是合成器就能做的，这也是卡顿的另一半
    原因。环本身颜色/线宽固定，音量只决定环该长多大、多快消失。
@@ -272,10 +272,10 @@
    纯视觉、不携带语义，没有必要占用可访问树。
    意为"未设置时按 0 处理"的 var(--speak-intensity, 0)——避免元素刚挂载、
    rAF 还没跑第一帧时 calc() 里出现未定义变量导致的样式抖动。 */
-.speak-ripple { position:absolute; inset:-4px; border-radius:50%; pointer-events:none; z-index:1; --speak-intensity:0; }
+.speak-ripple { position:absolute; inset:-4px; border-radius:12px; pointer-events:none; z-index:1; --speak-intensity:0; }
 .speak-ripple::before,
 .speak-ripple::after {
-  content:''; position:absolute; inset:0; border-radius:50%;
+  content:''; position:absolute; inset:0; border-radius:inherit;
   border:2.5px solid #27AE60;
   box-shadow:0 0 10px 1px rgba(39,174,96,.5);
   opacity:0;
@@ -457,10 +457,15 @@
 .bankroll { background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.36); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
 
 
-/* 悬浮在屏幕右侧中部，刻意不放进底部 action-bar——那里是下注/弃牌操作
-   区，按住说话长期占一只手会跟出牌冲突（设计文档已记录的风险，真机验证
-   前先这样规避）。.game-stage 本身是 position:relative 且铺满真实视口宽
-   高，用它当定位基准，而不是内部按固定设计画布缩放的 .table-canvas。 */
+/* 悬浮在屏幕右侧，刻意不放进底部 action-bar——那里是下注/弃牌操作区，按
+   住说话长期占一只手会跟出牌冲突（设计文档已记录的风险，真机验证前先这
+   样规避）。`top:50%` 只是没量出真实位置之前的兜底——正常情况下
+   GameTable.jsx 会量出玩家自己座位（.player-slot--hero）的真实屏幕位置，
+   通过内联 style 把 top 覆盖成跟座位同一条水平线（用户明确要求两者对
+   齐，2026-08-11；之前固定在屏幕纵向 50% 跟座位对不上，因为座位的实际
+   位置由另一套会随窗口比例缓动变化的坐标系算出来，两边没有绑在一起）。
+   .game-stage 本身是 position:relative 且铺满真实视口宽高，用它当定位
+   基准，而不是内部按固定设计画布缩放的 .table-canvas。 */
 /* 圆角矩形芯片，跟 .menu-btn/.avatar-card 用同一套形状语言（12~16px 圆
    角），不再是牌桌上唯一一个孤零零的正圆——那是用户反馈"太突兀"的根源
    （2026-08-11）。触摸目标仍然刻意做大（58×72），比系统建议的 44px 最小
@@ -484,9 +489,17 @@
 .ptt-btn--talking {
   background:linear-gradient(180deg, rgba(39,174,96,.9), rgba(39,174,96,.72));
   border-color:#27AE60; color:#EAFBF0;
-  transform:translateY(-50%) scale(1.06);
   box-shadow:0 0 0 6px rgba(39,174,96,.24), 0 0 24px rgba(39,174,96,.55);
-  animation:speakPulse .7s ease-in-out infinite;
+  /* 专用的 pttPulse，不能复用 .speak-glow 那个 speakPulse——那组 keyframe
+     的 transform 只写了 scale()，没带上这个按钮赖以垂直居中的
+     translateY(-50%)。CSS 动画的 transform 是整体替换、不是叠加，用在这
+     个按钮上会导致每次呼吸动画播放时都把居中位移吃掉，看起来像按下说话
+     就"往下掉一截"（真实 bug，不是错觉，用户反馈抓出来的，2026-08-11）。 */
+  animation:pttPulse .7s ease-in-out infinite;
+}
+@keyframes pttPulse {
+  0%,100% { transform:translateY(-50%) scale(1.06); }
+  50%     { transform:translateY(-50%) scale(1.12); }
 }
 /* 跟顶部常规 toast 用同一套底色/圆角，但往下错开一整个 toast 的高度，
    避免语音报错和别的 toast（比如断线提示）同时出现时叠在同一行看不清。 */
