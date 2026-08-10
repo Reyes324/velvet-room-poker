@@ -549,6 +549,97 @@ test.describe('S3：筹码归零与借一底', () => {
     await ctx1.close();
     await ctx2.close();
   });
+
+  test('三人局：归零方选"旁观留下"后，牌局对剩余两人继续，归零方应立刻转为旁观视图（不再显示为参与者）', async ({ browser }) => {
+    test.setTimeout(60000);
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const ctx3 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+    const p3 = await ctx3.newPage();
+
+    const jsErrors = [];
+    for (const p of [p1, p2, p3]) p.on('pageerror', e => jsErrors.push(e.message));
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await joinRoom(p3, 'Carol', code);
+    await startGame(p1);
+
+    // 让其中两个人全下互相摊牌，第三个人弃牌全程不动筹码——这样归零那一手
+    // 结束后，牌桌上仍有 2 个有筹码的人，房间不会因为"总人数不够"直接散
+    // 回大厅，才能真正测到"归零方选旁观后，牌局对其余两人继续"这条路径
+    // （跟上面 2 人局的用例刻意不同：2 人局一旦有人归零就只剩 1 个有筹码
+    // 的人，不满足 nextRound() 的 active.length>=2，房间必然回大厅，永远
+    // 走不到这里要测的分支）。
+    const pages = [p1, p2, p3];
+    let allInPlayer = null;
+    let callPlayer = null;
+    let foldPlayer = null;
+    for (let round = 0; round < 6 && !foldPlayer; round++) {
+      await Promise.race(pages.map(p => p.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }).catch(() => {})));
+      let current = null;
+      for (const p of pages) {
+        if (await p.locator(S.actionBar).isVisible().catch(() => false)) { current = p; break; }
+      }
+      if (!current) break;
+      if (!allInPlayer) {
+        allInPlayer = current;
+        await current.locator(S.raiseBtn).click();
+        await current.locator('.b-allin').click();
+      } else if (!callPlayer && current !== allInPlayer) {
+        callPlayer = current;
+        await current.locator(S.callBtn).click();
+      } else if (current !== allInPlayer && current !== callPlayer) {
+        foldPlayer = current;
+        await current.locator(S.foldBtn).click();
+      }
+      await current.waitForTimeout(300);
+    }
+
+    expect(allInPlayer).toBeTruthy();
+    expect(callPlayer).toBeTruthy();
+
+    // 摊牌 → 结算，三人都点"我知道了"
+    await expect(p1.locator(S.settlement)).toBeVisible({ timeout: 10000 });
+    for (const p of pages) {
+      if (await p.locator(S.settlement).isVisible().catch(() => false)) {
+        await p.getByText('我知道了').click();
+      }
+    }
+
+    // 找到归零方——只有 allInPlayer/callPlayer 两人之一会归零（同注全下，
+    // 输的那个归零；赢的那个筹码翻倍；一直弃牌的第三人筹码不变）。
+    let zeroPage = null;
+    for (const p of [allInPlayer, callPlayer]) {
+      const busted = await p.locator('.modal-title:has-text("筹码已用完")').isVisible({ timeout: 10000 }).catch(() => false);
+      if (busted) { zeroPage = p; break; }
+    }
+    expect(zeroPage, '应有一方全下落败归零').toBeTruthy();
+
+    // 关键操作：选"旁观留下"而不是"+借一底"——这条路径此前没有 e2e 覆盖过
+    // （已有的 S3 用例只测了"+借一底"分支）。
+    await zeroPage.locator('.modal-btn:has-text("旁观留下")').click();
+
+    // 暂停解除后，房间里还有 2 个有筹码的人，牌局应该直接对他们继续，不经
+    // 过大厅——归零方自己的页面应该立刻从"参与者视图"（会显示 hero 手牌/
+    // 操作栏）切换成旁观视图（waiting-bar--spectate，没有 action-bar，也
+    // 没有属于自己的 hero 手牌区）。
+    await expect(zeroPage.locator('.modal-overlay')).toHaveCount(0, { timeout: 8000 });
+    await expect(zeroPage.locator(S.gameStage)).toBeVisible();
+    await expect(zeroPage.locator('.waiting-bar--spectate')).toBeVisible({ timeout: 8000 });
+    await expect(zeroPage.locator(S.actionBar)).toHaveCount(0);
+    await expect(zeroPage.locator('.hero-section')).toHaveCount(0);
+
+    await zeroPage.screenshot({ path: 'test-results/bust-spectate-view.png' });
+
+    expect(jsErrors).toEqual([]);
+
+    await ctx1.close();
+    await ctx2.close();
+    await ctx3.close();
+  });
 });
 
 // ─── S6：对手全下后不应再被要求继续行动 ───────────────────────────────────────

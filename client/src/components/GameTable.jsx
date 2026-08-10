@@ -300,7 +300,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     ro.observe(heroEl);
     window.addEventListener('resize', measure);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('resize', measure); };
-  }, [tableScaleX, tableScaleY, heroSeatPos.x, heroSeatPos.y, dense]);
+  }, [tableScaleX, tableScaleY, heroSeatPos?.x, heroSeatPos?.y, dense]);
 
   // ── Animation refs (track prev state to compute what's newly visible) ──────
   const prevShowdownRef = useRef(null);
