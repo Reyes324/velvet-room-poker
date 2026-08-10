@@ -205,27 +205,9 @@
 }
 .home-pve-seat-btn:active { background: rgba(212,175,55,.18); border-color: rgba(212,175,55,.4); }
 
-/* Small, deliberately unobtrusive — top-right corner, well clear of the
-   centered card and .home-pve-link at the bottom. See HomePage.jsx's own
-   comment on why this exists (iOS home-screen "app" mode has no built-in
-   reload). */
-.home-refresh-link {
-  position: absolute;
-  top: max(env(safe-area-inset-top, 0px), var(--sp-4));
-  right: var(--sp-4);
-  z-index: 1;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: var(--text-secondary);
-  opacity: .6;
-  cursor: pointer;
-}
-.home-refresh-link:active { opacity: .3; }
-
-/* 跟 .home-refresh-link 同一视觉层级（左上角对称位置），任何界面状态下
-   都能点到——见 HomePage.jsx 里这个元素自己的注释。 */
+/* 首页原来这里还有 .home-refresh-link（刷新）和 .home-changelog-link（最
+   近更新）两个入口，跟这个左上角同一视觉层级——用户反馈太碎，只留反馈
+   入口，另外两个连同各自的 CSS 一起删掉了（2026-08-11）。 */
 .home-feedback-link {
   position: absolute;
   top: max(env(safe-area-inset-top, 0px), var(--sp-4));
@@ -237,19 +219,6 @@
   cursor: pointer;
 }
 .home-feedback-link:active { opacity: .6; }
-
-/* 最近更新入口——跟 .home-feedback-link 同一左侧竖栈，在其下方。 */
-.home-changelog-link {
-  position: absolute;
-  top: calc(max(env(safe-area-inset-top, 0px), var(--sp-4)) + 22px);
-  left: var(--sp-4);
-  z-index: 1;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.home-changelog-link:active { opacity: .6; }
 
 .btn-primary {
   flex: 1;

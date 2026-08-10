@@ -532,10 +532,10 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             细/间距不受控，跟牌桌其余全 SVG 画的图形不一致，这条跟麦克风
             图标改 SVG 是同一个理由）。 */}
         <div className="menu-btn" onClick={() => setShowMenu(true)} aria-label="菜单" role="button">
-          <svg viewBox="0 0 6 20" width="5" height="18" aria-hidden="true">
+          <svg viewBox="0 0 20 6" width="18" height="5" aria-hidden="true">
             <circle cx="3" cy="3" r="2.4" fill="currentColor" />
-            <circle cx="3" cy="10" r="2.4" fill="currentColor" />
-            <circle cx="3" cy="17" r="2.4" fill="currentColor" />
+            <circle cx="10" cy="3" r="2.4" fill="currentColor" />
+            <circle cx="17" cy="3" r="2.4" fill="currentColor" />
           </svg>
         </div>
         {countdownText && <div className="timer-countdown">⏱ {countdownText}</div>}

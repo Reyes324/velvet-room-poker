@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import FeedbackModal from '../components/FeedbackModal';
-import ChangelogModal from '../components/ChangelogModal';
 import './HomePage.css';
 
 function genId() {
@@ -21,7 +20,6 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   // 有会话时是 { type: 'room', code } 或 { type: 'pve', handNumber, seatCount }。
   const [resumeCard, setResumeCard] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [showChangelog, setShowChangelog] = useState(false);
 
   useEffect(() => {
     if (initialCode) {
@@ -238,22 +236,14 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
         // 多电脑同桌，不再只有单挑）。
         <div className="home-pve-link" onClick={() => setMode('pve')}>人机对战</div>
       )}
-      {/* 用户反馈（2026-07-31）：加到 iOS 主屏幕的书签是"独立 App"模式打开的
-          （见 index.html 的 apple-mobile-web-app-capable），没有 Safari 那套
-          地址栏/下拉刷新——切到后台再切回来，系统很多时候只是把原来那个
-          网页视图原样唤醒，不会重新请求，停留在上次冷启动时加载的版本。
-          用户不知道怎么"刷新"，这里给一个明确的手动入口。放在最外层、不受
-          mode 影响，任何界面状态下都能点到。GameTable 里游戏进行中也有一个
-          对应的菜单项，同一个诉求。 */}
-      <div className="home-refresh-link" onClick={() => window.location.reload()}>刷新</div>
       {/* 问题反馈入口——用户反馈（2026-08-02）"要不要在网页上提供反馈入
-          口"，跟 home-refresh-link 同一视觉层级，不受 mode 影响，任何界面
-          状态下都能点到。 */}
+          口"，不受 mode 影响，任何界面状态下都能点到。首页原来这里还有
+          "刷新"和"最近更新"两个入口，用户反馈太碎、只留这一个（2026-08-11）
+          ——"刷新"那条本来是给 iOS 主屏幕书签模式下网页视图不自动唤醒重新
+          请求这个问题兜底的，GameTable 游戏进行中的菜单里还留着同样的入
+          口，不影响那条诉求；"最近更新"直接去掉，不再提供别的入口。 */}
       <div className="home-feedback-link" onClick={() => setShowFeedback(true)}>问题反馈</div>
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
-      {/* 最近更新入口——跟 home-feedback-link 同一左侧竖栈，在其下方。 */}
-      <div className="home-changelog-link" onClick={() => setShowChangelog(true)}>最近更新</div>
-      {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
     </div>
   );
 }
