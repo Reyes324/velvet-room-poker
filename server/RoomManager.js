@@ -65,6 +65,16 @@ class Room {
     // 默认 25s/20s 心跳，手机锁屏/切后台会误判）在这里没有任何作用，只会多
     // 一个可能出错的输入。见 design.md 同名章节。
     this.turnClock = null;
+    // 暂停/继续（用户反馈，2026-08-11）：room.paused 是唯一权威状态，所有
+    // 涉及暂停的入口都先检查它——两个人几乎同时点暂停/继续时，先到的生
+    // 效，后到的因为状态已经翻转而自然变成空操作，不需要额外加锁。
+    // pauseRemainingMs/pausedActionPlayerId 只在"暂停时正好有人在行动"这
+    // 种情况下有值，用来在恢复时把倒计时接回暂停前的剩余时间——如果暂停
+    // 发生在两手之间/结算等待期，这两个字段保持 null，恢复时走正常的下
+    // 一手流程，不需要特殊处理。
+    this.paused = false;
+    this.pauseRemainingMs = null;
+    this.pausedActionPlayerId = null;
   }
 
   touch() {
@@ -481,6 +491,7 @@ class Room {
   }
 
   playerAction(playerId, action, amount) {
+    if (this.paused) return { error: '已暂停' };
     if (!this.game) return { error: '游戏未开始' };
     switch (action) {
       case 'fold':  return this.game.fold(playerId);
@@ -508,6 +519,7 @@ class Room {
       // 当前回合的倒计时。公开信息——每个人都该看到轮到谁、还剩多久，不只是
       // 行动方自己。endsAt 是绝对时间戳，客户端自行与本地时间相减。
       turnClock: this.turnClock,
+      paused: this.paused,
       gameTimerEndsAt: this.gameTimerEndsAt,
       awaitingTimerDecision: this.awaitingTimerDecision,
     };

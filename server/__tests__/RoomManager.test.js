@@ -791,3 +791,37 @@ describe('RoomManager — 断线玩家的行动兜底', () => {
     expect(result.error).toBeUndefined();
   });
 });
+
+describe('RoomManager — 暂停期间拒绝行动', () => {
+  it('paused=true 时 playerAction 返回错误，不改变牌局状态', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.startGame();
+    const actorId = room.getActionPlayerId();
+
+    room.paused = true;
+    const result = room.playerAction(actorId, 'fold');
+
+    expect(result.error).toBe('已暂停');
+    // 牌局没有真的翻掉——行动方还是原来那个人。
+    expect(room.getActionPlayerId()).toBe(actorId);
+  });
+
+  it('paused=false（默认）时 playerAction 正常放行', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.startGame();
+    expect(room.paused).toBe(false);
+
+    const actorId = room.getActionPlayerId();
+    const result = room.playerAction(actorId, 'fold');
+    expect(result.error).toBeUndefined();
+  });
+
+  it('getLobbyState() 暴露 paused 字段', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(room.getLobbyState().paused).toBe(false);
+    room.paused = true;
+    expect(room.getLobbyState().paused).toBe(true);
+  });
+});
