@@ -48,7 +48,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, pokeEmoji = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false, isHost = false, onFoldForDisconnected = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, pokeEmoji = null, pokeFromName = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false, isHost = false, onFoldForDisconnected = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -223,6 +223,12 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
 
       {pokePickerOpen && (
         <div ref={pokePickerRef} className="poke-picker" style={bubbleStyle(bubbleSide)} onClick={e => e.stopPropagation()}>
+          {/* 纯"拍一拍"（不带表情）——表情选择器加进来之后，原来"点头像直接
+              拍一下"这个最快路径不能丢，不是所有人每次都想停下来挑表情
+              （用户反馈，2026-08-11）。放在表情最前面，一个手掌图标，跟后
+              面的表情视觉上明显是"同一排里的一个选项"，不是弹窗外的另一
+              个入口。 */}
+          <button type="button" className="poke-picker-emoji poke-picker-plain" onClick={() => sendPoke()} aria-label="拍一拍（不带表情）">✋</button>
           {POKE_EMOJI.map(e => (
             <button key={e} type="button" className="poke-picker-emoji" onClick={() => sendPoke(e)}>{e}</button>
           ))}
@@ -238,7 +244,12 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           {bubble.text}
         </div>
       )}
-      {poked && <div className="action-bubble poke-bubble" style={bubbleStyle(bubbleSide)}>拍了拍{pokeEmoji ? ` ${pokeEmoji}` : ''}</div>}
+      {/* 谁拍的要写出来——之前只显示"拍了拍"，同桌好几个人都在拍，看不出
+          是谁拍的自己（用户反馈，2026-08-11）。样式也不再复用 .action-
+          bubble——那套是给下注/弃牌这类严肃的牌局动作用的暗金配色，拍一
+          拍是社交性质的调侃动作，用户反馈"跟下注气泡太像"，改成独立的
+          .poke-bubble 暖色系样式，不再继承 .action-bubble。 */}
+      {poked && <div className="poke-bubble" style={bubbleStyle(bubbleSide)}>{pokeFromName ? `${pokeFromName} ` : ''}拍了拍{pokeEmoji ? ` ${pokeEmoji}` : ''}</div>}
 
       {/* GameEngine.getStateForPlayer masks other seats' cards as [null, null]
           (same length as a real 2-card hand) whenever the viewer themselves

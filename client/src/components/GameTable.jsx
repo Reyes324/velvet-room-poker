@@ -824,6 +824,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             bubble={visibleBubble(me.id)}
             poked={pokedSeat?.targetId === me.id}
             pokeEmoji={pokedSeat?.targetId === me.id ? pokedSeat.emoji : null}
+            pokeFromName={pokedSeat?.targetId === me.id ? pokedSeat.fromName : null}
             turnEndsAt={turnClock?.playerId === me.id ? turnClock.endsAt : null}
             turnStartedAt={turnClock?.playerId === me.id ? turnClock.startedAt : null}
             isSpeaking={voiceTalking || !!speakingPlayerIds?.has(me.id)}
@@ -870,6 +871,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               onPoke={emoji => onPoke?.(p.id, emoji)}
               poked={pokedSeat?.targetId === p.id}
               pokeEmoji={pokedSeat?.targetId === p.id ? pokedSeat.emoji : null}
+              pokeFromName={pokedSeat?.targetId === p.id ? pokedSeat.fromName : null}
               turnEndsAt={turnClock?.playerId === p.id ? turnClock.endsAt : null}
               turnStartedAt={turnClock?.playerId === p.id ? turnClock.startedAt : null}
               revealedCards={revealedPlayers[p.id]?.holeCards ?? null}

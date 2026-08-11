@@ -419,18 +419,44 @@
   100% { opacity:1; scale:1; translate:0 0; }
 }
 
-/* poke bubble — unlike the now-persistent .action-bubble, this instance must
-   still fade itself out visually, since `poked` clears abruptly via a
-   setTimeout in RoomPage.jsx rather than being replaced by a new bubble. */
-.poke-bubble { animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both, actionBubbleOut .3s ease-in .4s forwards; }
-@keyframes actionBubbleOut { to { opacity:0; scale:.9; translate:0 -8px; } }
+/* 拍一拍气泡——刻意不再继承 .action-bubble（用户反馈"跟下注气泡太
+   像"，2026-08-11）：下注/弃牌是严肃的牌局动作，用暗金底板读作"正式播
+   报"；拍一拍是纯社交调侃，改成暖橘粉渐变 + 更夸张的弹入/摇晃，读起来
+   明显是"闹着玩的"，一眼就能跟下注气泡区分开，不用读文字内容也能分辨。
+   谁拍的（pokeFromName）写进文案本身，不是靠颜色/位置区分——同桌好几
+   个人都能拍同一个人，颜色再花也分不出是谁拍的，只有文字能说清楚。 */
+.poke-bubble {
+  position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+  padding:6px 14px; border-radius:999px; border:none;
+  background:linear-gradient(135deg, #FF9A5A, #FF5E86);
+  font-family:var(--font-body); font-size:13px; font-weight:800; color:#FFF6EE;
+  white-space:nowrap; letter-spacing:.2px;
+  box-shadow:0 4px 16px rgba(255,90,110,.5), 0 0 0 2px rgba(255,255,255,.18) inset;
+  z-index:8; pointer-events:none;
+  animation:pokeBubbleIn .4s cubic-bezier(.34,1.7,.64,1) both, pokeWiggle .5s ease-in-out .18s 1, pokeBubbleOut .3s ease-in .42s forwards;
+}
+@keyframes pokeBubbleIn {
+  0%   { opacity:0; scale:.4; rotate:-10deg; translate:0 6px; }
+  65%  { opacity:1; scale:1.12; rotate:4deg; translate:0 0; }
+  100% { opacity:1; scale:1; rotate:0deg; translate:0 0; }
+}
+@keyframes pokeWiggle {
+  0%, 100% { rotate:0deg; }
+  25%      { rotate:-6deg; }
+  75%      { rotate:6deg; }
+}
+@keyframes pokeBubbleOut { to { opacity:0; scale:.85; translate:0 -8px; } }
 
 /* 拍一拍表情选择器——复用 .action-bubble 同一套暗金"丝绒赌场"底板，横排一
    行表情按钮而不是单行文字。位置计算跟 .action-bubble/.poke-bubble 共用
-   bubbleStyle()，贴在同一侧，视觉上是同一族气泡的变体，不是新发明的样式。 */
+   bubbleStyle()，贴在同一侧。选择器本身还是暗金（跟牌桌其余弹层一致，
+   是"操作面板"不是"结果播报"），选完之后弹出的结果气泡才切到暖色系。 */
 .poke-picker { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); display:flex; gap:2px; padding:5px 6px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:9; animation:actionBubbleIn .25s cubic-bezier(.34,1.56,.64,1) both; }
 .poke-picker-emoji { background:none; border:none; padding:2px 4px; font-size:18px; line-height:1; cursor:pointer; border-radius:8px; transition:background .12s ease, transform .12s ease; }
 .poke-picker-emoji:hover, .poke-picker-emoji:active { background:rgba(212,175,55,.18); transform:scale(1.15); }
+/* 纯"拍一拍"跟表情之间隔一条细线，读作"这是个不一样类别的选项"，不是
+   随手混进表情行里的第七个表情。 */
+.poke-picker-plain { border-right:1px solid rgba(212,175,55,.25); margin-right:2px; padding-right:6px; }
 
 @keyframes revealGlow {
   0%, 100% { box-shadow: 0 0 6px rgba(212, 175, 55, 0.25); }
