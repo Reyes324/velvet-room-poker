@@ -149,6 +149,29 @@ test('倒计时视觉：环形描边渲染且在走，不与旧的呼吸边框�
   await expect(observer.locator('.seat.is-active')).toHaveCount(0);
   await expect(observer.locator('.seat.is-timed')).toHaveCount(1);
 
+  // issue #17：走线环跟数字倒计时曾经对不上——环用的 stroke-dasharray
+  // (232) 比真实描边路径长度（getTotalLength() 实测约 208.18）大了约
+  // 11%，导致 stroke-dashoffset 走到「真实路径长度」时环就已经视觉上完全
+  // 走空，而这时动画时长（跟数字倒计时同源）还没走完，数字还剩好几秒。
+  // 用真实 20 秒生产配置轮询到环视觉走空（dashoffset 逼近 dasharray）的
+  // 那一刻，此时数字倒计时必须也已经接近 0——否则就是这条对不上的 bug。
+  const readSecs = () => observer.locator('.turn-secs').textContent();
+  const readRingState = () => ring.evaluate(el => {
+    const cs = getComputedStyle(el);
+    return { offset: parseFloat(cs.strokeDashoffset), dasharray: parseFloat(cs.strokeDasharray) };
+  });
+  let drainedAtSecs = null;
+  for (let i = 0; i < 40; i++) {
+    const { offset, dasharray } = await readRingState();
+    if (offset >= dasharray * 0.99) {
+      drainedAtSecs = Number((await readSecs()).replace(/[^\d]/g, ''));
+      break;
+    }
+    await observer.waitForTimeout(500);
+  }
+  expect(drainedAtSecs).not.toBeNull();
+  expect(drainedAtSecs).toBeLessThanOrEqual(2);
+
   await ctxA.close();
   await ctxB.close();
 });

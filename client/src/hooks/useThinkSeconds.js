@@ -38,11 +38,24 @@ export function useThinkSeconds(isAction) {
 // render 结果不一致的问题。
 function computeTurnClock(startedAt, endsAt) {
   const now = Date.now();
+  const totalMs = Math.max(1, endsAt - startedAt);
+  const elapsedMs = Math.max(0, now - startedAt);
   return {
     key: `${startedAt}-${endsAt}`,
-    totalMs: Math.max(1, endsAt - startedAt),
-    elapsedMs: Math.max(0, now - startedAt),
+    totalMs,
+    elapsedMs,
     secondsLeft: Math.max(0, Math.ceil((endsAt - now) / 1000)),
+    // 走线环用的 animationDuration/animationDelay 只在这里、这一回合开始
+    // 的那一刻算一次，之后原样复用（PlayerSeat 直接读 clock.ringStyle，
+    // 不会跟着下面每 250ms 一次的 interval 重算）。CSS 动画从 SVG 挂载起
+    // 就已经在按真实挂钟时间自己往前播放了，如果每次 tick 都用新的
+    // elapsedMs 重新赋值 animationDelay，等于把"动画自己已经播放的时长"
+    // 和"手动算出来的已流逝时长"重复计了一遍，环会以约 2 倍真实速度走完
+    // ——这正是 issue #17"倒数还剩 10 秒边框就走完了"的根因（20 秒回合，
+    // 2 倍速度下真实过 10 秒时环已经走空，跟反馈的数字精确对应，
+    // 2026-08-11 用 Playwright 实测 animationDelay/strokeDashoffset 随时
+    // 间的变化率确认，不是猜的）。
+    ringStyle: { animationDuration: `${totalMs}ms`, animationDelay: `-${elapsedMs}ms` },
   };
 }
 
@@ -68,9 +81,15 @@ export function useTurnClock(isAction, startedAt, endsAt) {
 
   // key 没变——同一回合内，只需要每 250ms 刷新一次剩余时间用于秒数显示，
   // 走线环本身靠 CSS animation-delay 走时间，不依赖这个 interval。
+  // ringStyle 必须原样保留上一次（key 变化时算的那次）的值——如果这里也
+  // 跟着 computeTurnClock 一起重算，就是 issue #17 那个根因原样重现：把
+  // 每 250ms 一次的最新 elapsedMs 塞给一条已经在自己按挂钟时间播放的 CSS
+  // 动画，会跟动画自身的播放进度重复叠加。
   useEffect(() => {
     if (!active) return;
-    const id = setInterval(() => setClock(computeTurnClock(startedAt, endsAt)), 250);
+    const id = setInterval(() => {
+      setClock(prev => ({ ...computeTurnClock(startedAt, endsAt), ringStyle: prev?.ringStyle }));
+    }, 250);
     return () => clearInterval(id);
   }, [active, startedAt, endsAt]);
 

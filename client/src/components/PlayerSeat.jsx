@@ -59,6 +59,24 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   const countdown = clock?.secondsLeft ?? 0;
   const urgent = timed && countdown <= 5;
 
+  // Issue #17：走线环曾经跟数字倒计时对不上（环走完时数字还剩 10 秒）。根因
+  // 不是环的动画本身错，而是这里以前直接把 clock.elapsedMs（每 250ms 随
+  // useTurnClock 的 interval 刷新一次，给数字倒计时用的）喂给 SVG 的
+  // animationDelay：animation-delay 是相对"动画本身已经自然播放了多久"
+  // 叠加的，而这条 CSS 动画从挂载起就已经在自己往前走——每次 React 用一个
+  // 更大的负 elapsedMs 重新赋值 animationDelay，等于把"已经自然播放的时长"
+  // 和"手动喂进去的已流逝时长"重复计了一遍，环实际推进速度变成约 2 倍，
+  // 20 秒的回合大约在真实过了 10 秒时就已经视觉走空——跟用户反馈的"倒数还
+  // 有 10 秒边框就走完了"精确对应（2026-08-11 用 Playwright 实测轮询
+  // animationDelay/strokeDashoffset 随时间的变化率确认，不是猜的）。
+  // 修复：animationDelay/animationDuration 只应该在这一回合开始时算一次、
+  // 定死，之后交给 CSS 动画自己按真实挂钟时间播放（这也是代码里原有注释
+  // 说的意图："走线环本身靠 CSS animation-delay 走时间，不依赖这个
+  // interval"——之前没做到，因为 style 直接绑的是每 250ms 变化的
+  // clock.elapsedMs）。冻结值本身由 useTurnClock 提供（ringStyle），跟
+  // clock.key 同一次渲染期分支里算好，不会再被之后的 250ms tick 覆盖。
+  const ringStyle = clock?.ringStyle ?? null;
+
   // 说话波纹的强度（0..1）来自 useVoiceMesh 的实时音量表，故意不通过 props
   // 传数值再让 React 重渲染——那张表每帧都在变，真做成 props/state 会在整
   // 段说话期间持续触发这个组件（以及它的 turn-ring/svg 子树）重渲染。改成
@@ -156,10 +174,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             <rect
               className="turn-ring-progress"
               x="1" y="1" width="54" height="58" rx="9" ry="9"
-              style={{
-                animationDuration: `${clock.totalMs}ms`,
-                animationDelay: `-${clock.elapsedMs}ms`,
-              }}
+              style={ringStyle}
             />
           </svg>
         )}
