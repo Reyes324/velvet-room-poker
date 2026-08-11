@@ -427,13 +427,35 @@
    个人都能拍同一个人，颜色再花也分不出是谁拍的，只有文字能说清楚。 */
 .poke-bubble {
   position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
-  padding:6px 14px; border-radius:999px; border:none;
-  background:linear-gradient(135deg, #FF9A5A, #FF5E86);
-  font-family:var(--font-body); font-size:13px; font-weight:800; color:#FFF6EE;
-  white-space:nowrap; letter-spacing:.2px;
-  box-shadow:0 4px 16px rgba(255,90,110,.5), 0 0 0 2px rgba(255,255,255,.18) inset;
+  border:none; white-space:nowrap;
   z-index:8; pointer-events:none;
   animation:pokeBubbleIn .4s cubic-bezier(.34,1.7,.64,1) both, pokeWiggle .5s ease-in-out .18s 1, pokeBubbleOut .3s ease-in .42s forwards;
+}
+/* 不带表情（✋纯拍一拍/双击）——还是暖色实心胶囊，没有大图形可突出，需要
+   一个明确的形状让人一眼认出"这是条消息"。 */
+.poke-bubble--plain {
+  padding:6px 14px; border-radius:999px;
+  background:linear-gradient(135deg, #FF9A5A, #FF5E86);
+  box-shadow:0 4px 16px rgba(255,90,110,.5), 0 0 0 2px rgba(255,255,255,.18) inset;
+  font-family:var(--font-body); font-size:13px; font-weight:800; color:#FFF6EE; letter-spacing:.2px;
+}
+/* 带表情——重点是表情本身，不是气泡壳子。第一版给了跟纯文字胶囊一样的
+   实心暖色块底，用户反馈"这个粉红框有点突兀"——表情已经够抢眼了，色块
+   反而在跟它抢注意力。改成没有实色底、没有边框，表情就浮在牌桌绒面上，
+   只用一圈柔和的光晕帮它跟背景分开，文字加个描边阴影保证在绿色毛毡上
+   仍然看得清（用户反馈，2026-08-11）。 */
+.poke-bubble--emoji {
+  display:flex; flex-direction:column; align-items:center; gap:1px;
+  padding:2px 6px;
+}
+.poke-bubble__label {
+  font-family:var(--font-body); font-size:10px; font-weight:700; color:#FFF6EE;
+  letter-spacing:.2px; opacity:.95;
+  text-shadow:0 1px 3px rgba(0,0,0,.7), 0 0 6px rgba(0,0,0,.5);
+}
+.poke-bubble__glyph {
+  font-size:32px; line-height:1.1;
+  filter:drop-shadow(0 2px 6px rgba(0,0,0,.55)) drop-shadow(0 0 14px rgba(255,140,120,.5));
 }
 @keyframes pokeBubbleIn {
   0%   { opacity:0; scale:.4; rotate:-10deg; translate:0 6px; }

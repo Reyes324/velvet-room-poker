@@ -269,8 +269,24 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           是谁拍的自己（用户反馈，2026-08-11）。样式也不再复用 .action-
           bubble——那套是给下注/弃牌这类严肃的牌局动作用的暗金配色，拍一
           拍是社交性质的调侃动作，用户反馈"跟下注气泡太像"，改成独立的
-          .poke-bubble 暖色系样式，不再继承 .action-bubble。 */}
-      {poked && <div className="poke-bubble" style={bubbleStyle(bubbleSide)}>{pokeFromName ? `${pokeFromName} ` : ''}拍了拍{pokeEmoji ? ` ${pokeEmoji}` : ''}</div>}
+          .poke-bubble 暖色系样式，不再继承 .action-bubble。
+          带表情和不带表情是两种文案/两种排版，不是同一个模板套两种内容：
+          带表情时读作"XX 给你一个 😂"——重点是表情本身，文案缩小、表情
+          放大（用户反馈，2026-08-11："突出的是表情不是那个样式框"）；不
+          带表情（✋纯拍一拍/双击）时还是"XX 拍了拍"这句纯文字，没有大图
+          形可突出，维持原来的胶囊样式就够。 */}
+      {poked && (
+        pokeEmoji ? (
+          <div className="poke-bubble poke-bubble--emoji" style={bubbleStyle(bubbleSide)}>
+            <span className="poke-bubble__label">{pokeFromName ? `${pokeFromName} 给你` : '给你'}</span>
+            <span className="poke-bubble__glyph">{pokeEmoji}</span>
+          </div>
+        ) : (
+          <div className="poke-bubble poke-bubble--plain" style={bubbleStyle(bubbleSide)}>
+            {pokeFromName ? `${pokeFromName} ` : ''}拍了拍
+          </div>
+        )
+      )}
 
       {/* GameEngine.getStateForPlayer masks other seats' cards as [null, null]
           (same length as a real 2-card hand) whenever the viewer themselves
