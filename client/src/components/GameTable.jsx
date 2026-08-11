@@ -180,6 +180,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const tableZoneRef = useRef(null);
   const { scaleX: tableScaleX, scaleY: tableScaleY } = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
   // Position (seat columns, felt background) stretches non-uniformly with tableScaleX/Y
@@ -448,6 +449,19 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // bubble is now stale and in the way of the reveal + hand-summary
   // panel". Fold bubbles stay exempt — a folded player's cards are never
   // shown, so there's nothing for that bubble to cover.
+  // Room-code display so others can be pointed to the room without leaving
+  // the table (user feedback, #14: "别人可以进来" — showing the code makes
+  // it actually actionable, not just decorative). Reuses the same
+  // copy-invite-link pattern as Lobby/RoomPage's .room-code, not a fresh
+  // clipboard implementation.
+  function copyRoomCode() {
+    const url = `${window.location.origin}/room/${roomCode}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    }).catch(() => {});
+  }
+
   function visibleBubble(id) {
     const b = actionBubbles[id];
     if (!b) return undefined;
@@ -542,7 +556,17 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             <circle cx="17" cy="3" r="2.4" fill="currentColor" />
           </svg>
         </div>
-        {countdownText && <div className="timer-countdown">⏱ {countdownText}</div>}
+        {/* Room code sits in the same absolutely-centered slot as the final-5-
+            minutes timer countdown — mutually exclusive with it (the timer
+            only appears rarely, near the end of a timed game) so there's no
+            layout collision to reconcile; whichever is relevant wins. */}
+        {countdownText ? (
+          <div className="timer-countdown">⏱ {countdownText}</div>
+        ) : roomCode ? (
+          <div className="top-room-code" onClick={copyRoomCode} title="点击复制邀请链接" role="button" aria-label="房间号，点击复制邀请链接">
+            {codeCopied ? '已复制邀请链接 ✓' : roomCode}
+          </div>
+        ) : null}
         {/* 暂停/继续（用户反馈，2026-08-11）：只有坐位玩家（amPlaying）能
             触发，旁观者看不到这个按钮。图标用真的 SVG 画（跟其余全部图标
             按钮统一），不是 emoji/unicode 字符。 */}
@@ -729,6 +753,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             color={colorForId(me.id)}
             bubble={visibleBubble(me.id)}
             poked={pokedSeat?.targetId === me.id}
+            pokeEmoji={pokedSeat?.targetId === me.id ? pokedSeat.emoji : null}
             turnEndsAt={turnClock?.playerId === me.id ? turnClock.endsAt : null}
             turnStartedAt={turnClock?.playerId === me.id ? turnClock.startedAt : null}
             isSpeaking={voiceTalking || !!speakingPlayerIds?.has(me.id)}
@@ -772,8 +797,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               bubble={visibleBubble(p.id)}
               cardsSide={cardsSide}
               bubbleSide={bubbleSide}
-              onPoke={() => onPoke?.(p.id)}
+              onPoke={emoji => onPoke?.(p.id, emoji)}
               poked={pokedSeat?.targetId === p.id}
+              pokeEmoji={pokedSeat?.targetId === p.id ? pokedSeat.emoji : null}
               turnEndsAt={turnClock?.playerId === p.id ? turnClock.endsAt : null}
               turnStartedAt={turnClock?.playerId === p.id ? turnClock.startedAt : null}
               revealedCards={revealedPlayers[p.id]?.holeCards ?? null}

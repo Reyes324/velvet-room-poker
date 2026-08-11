@@ -110,9 +110,9 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     // persistent (not self-dismissing) banner. Both stay up until the host
     // actually resolves it, unlike a 3.5s toast that would vanish while
     // the host is still deciding.
-    'player:poked': ({ targetId }) => {
+    'player:poked': ({ targetId, emoji }) => {
       const key = Date.now();
-      setPokedSeat({ targetId, key });
+      setPokedSeat({ targetId, key, emoji: emoji ?? null });
       setTimeout(() => {
         setPokedSeat(p => (p?.key === key ? null : p));
       }, 700);
@@ -175,8 +175,8 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     emit('room:leave-for', { hostId: playerId, targetId });
   }
 
-  function poke(targetId) {
-    emit('player:poke', { fromId: playerId, targetId });
+  function poke(targetId, emoji) {
+    emit('player:poke', { fromId: playerId, targetId, emoji });
   }
 
   function handleAction(action, amount) {

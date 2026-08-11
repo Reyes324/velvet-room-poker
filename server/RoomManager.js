@@ -192,11 +192,21 @@ class Room {
   // Purely social — no game-state effect. Cooldown is keyed by the ordered
   // pair so A repeatedly poking B doesn't also throttle A poking C, or B
   // poking A back.
+  //
+  // Cooldown hits are silently dropped (`ignored: true`), not surfaced as an
+  // error — this was originally spec'd that way (design.md: "冷却期内的重复
+  // 请求直接忽略，不报错，静默丢弃") but the first implementation returned
+  // `{ error: '拍得太快了' }`, which the client turned into a red toast on
+  // every rapid double-tap. Real user feedback (GitHub #19): "那个过于频繁
+  // 的提示可以去掉吧？拍不到自动就知道了其实用户" — a failed pat needs no
+  // explicit notification, the user can tell nothing happened. Restored to
+  // the original silent-drop design; self-poke stays a real error since
+  // that's a distinct, always-blocked action rather than a rate limit.
   poke(fromId, targetId) {
     if (fromId === targetId) return { error: '不能拍自己' };
     const key = `${fromId}→${targetId}`;
     const last = this.pokeCooldowns.get(key);
-    if (last && Date.now() - last < POKE_COOLDOWN_MS) return { error: '拍得太快了' };
+    if (last && Date.now() - last < POKE_COOLDOWN_MS) return { ignored: true };
     this.pokeCooldowns.set(key, Date.now());
     return { ok: true };
   }

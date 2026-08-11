@@ -6,11 +6,17 @@
 // never shown face-down pre-showdown (removed — they carried no information
 // and only ate into the tight center-strip space); they only appear at real
 // showdown.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useThinkSeconds, useTurnClock } from '../hooks/useThinkSeconds';
 import Card from './Card';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
+
+// Preset reactions for 拍一拍 (GitHub #19's "最好还能拍的时候选表情动画效果"
+// ask) — must match server/index.js's POKE_EMOJI allowlist, since the
+// server re-validates whatever it receives against its own copy rather than
+// trusting the client.
+const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂'];
 
 // The showdown reveal always renders to the side of the seat (toward
 // whichever direction GameTable's cardsSide picks — the center strip, per
@@ -42,7 +48,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false, isHost = false, onFoldForDisconnected = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, pokeEmoji = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false, isHost = false, onFoldForDisconnected = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -85,6 +91,25 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   // 节流到约 12fps（~80ms 一次）——波纹是缓慢扩散的效果，肉眼分辨不出跟
   // 60fps 的差别，但把 JS 写 style 的频率降下来能明显减轻它和 CSS 自身
   // keyframe 动画抢重绘造成的卡顿（这条是真机反馈之后加的，之前是每帧都写）。
+  // 拍一拍表情选择器：点头像不再直接秒发，先弹出一小排表情，点其中一个才真
+  // 正发送（选中的表情会带进 player:poke 的 payload，见 RoomPage.poke）。
+  // 点到面板以外的地方视为放弃，不发送。
+  const [pokePickerOpen, setPokePickerOpen] = useState(false);
+  const pokePickerRef = useRef(null);
+  useEffect(() => {
+    if (!pokePickerOpen) return;
+    function onOutside(e) {
+      if (!pokePickerRef.current?.contains(e.target)) setPokePickerOpen(false);
+    }
+    document.addEventListener('pointerdown', onOutside, true);
+    return () => document.removeEventListener('pointerdown', onOutside, true);
+  }, [pokePickerOpen]);
+
+  function sendPoke(emoji) {
+    setPokePickerOpen(false);
+    onPoke?.(emoji);
+  }
+
   const rippleRef = useRef(null);
   useEffect(() => {
     if (!isSpeaking || !getVoiceVolume) return;
@@ -140,7 +165,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           </span>
         )}
       </div>
-      <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>
+      <div className={`avatar-card ${avClass}`} onClick={!isMe ? () => setPokePickerOpen(o => !o) : undefined} role={!isMe ? 'button' : undefined} aria-label={!isMe ? '拍一拍' : undefined}>
         {/* 说话中指示：独立于 avatar-card 自身 border/box-shadow 的叠加层
             （做法跟下面的 turn-ring 一样是并列的兄弟节点），刻意不占用那两
             个属性——is-active/is-timed/is-allin/is-winner 都在用它们，抢占
@@ -196,6 +221,14 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
       </div>
 
+      {pokePickerOpen && (
+        <div ref={pokePickerRef} className="poke-picker" style={bubbleStyle(bubbleSide)} onClick={e => e.stopPropagation()}>
+          {POKE_EMOJI.map(e => (
+            <button key={e} type="button" className="poke-picker-emoji" onClick={() => sendPoke(e)}>{e}</button>
+          ))}
+        </div>
+      )}
+
       {bubble && (
         <div
           key={bubble.key}
@@ -205,7 +238,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           {bubble.text}
         </div>
       )}
-      {poked && <div className="action-bubble poke-bubble" style={bubbleStyle(bubbleSide)}>戳了戳</div>}
+      {poked && <div className="action-bubble poke-bubble" style={bubbleStyle(bubbleSide)}>拍了拍{pokeEmoji ? ` ${pokeEmoji}` : ''}</div>}
 
       {/* GameEngine.getStateForPlayer masks other seats' cards as [null, null]
           (same length as a real 2-card hand) whenever the viewer themselves

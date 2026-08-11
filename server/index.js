@@ -13,6 +13,10 @@ const { getServerIdentity } = require('./serverIdentity');
 // silently fall back to heads-up just because `"4" !== 4`.
 const VALID_SEAT_COUNTS = [2, 4, 6, 8];
 
+// 拍一拍可选表情（GitHub #19）——固定白名单而不是接受任意字符串，客户端的
+// 拍一拍表情选择器只会发送这几个之一，服务端按白名单校验后再广播。
+const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂'];
+
 // 反馈提交的服务端校验上限——见下方 feedback:submit 处理逻辑。
 const FEEDBACK_MAX_TEXT_LENGTH = 2000;
 const FEEDBACK_MAX_IMAGE_BASE64_LENGTH = 3_000_000; // ~2.25MB decoded; client compresses to ~2MB target
@@ -753,13 +757,21 @@ function createServer({
       else io.to(result.code).emit('room:state', result.getLobbyState());
     });
 
-    socket.on('player:poke', ({ fromId, targetId }) => {
+    socket.on('player:poke', ({ fromId, targetId, emoji }) => {
       const room = rooms.getRoomByPlayer(fromId);
       if (!room) return socket.emit('game:error', '未找到房间');
       const result = room.poke(fromId, targetId);
       if (result.error) return socket.emit('game:error', result.error);
+      // Cooldown hit: silently drop, no broadcast, no error toast (see
+      // RoomManager.poke's comment — this is the fix for GitHub #19's "过于
+      // 频繁的提示" complaint).
+      if (result.ignored) return;
       room.touch();
-      io.to(room.code).emit('player:poked', { fromId, targetId });
+      // emoji is an optional user-picked reaction (see PlayerSeat's poke
+      // picker) — validated against a fixed allowlist so an arbitrary
+      // string can't be broadcast as-is.
+      const safeEmoji = POKE_EMOJI.includes(emoji) ? emoji : null;
+      io.to(room.code).emit('player:poked', { fromId, targetId, emoji: safeEmoji });
     });
 
     socket.on('room:restart', ({ playerId }) => {

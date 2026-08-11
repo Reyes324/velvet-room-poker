@@ -639,12 +639,13 @@ describe('RoomManager — 拍一拍', () => {
     expect(result.error).toBe('不能拍自己');
   });
 
-  it('2 秒冷却内重复拍同一人 → 拒绝', () => {
+  it('2 秒冷却内重复拍同一人 → 静默忽略（不报错，GitHub #19：去掉过于频繁的提示）', () => {
     const room = rooms.create('p1', 'Alice');
     rooms.join(room.code, 'p2', 'Bob', 'socket2');
     expect(room.poke('p1', 'p2').ok).toBe(true);
     const second = room.poke('p1', 'p2');
-    expect(second.error).toBe('拍得太快了');
+    expect(second.ignored).toBe(true);
+    expect(second.error).toBeUndefined();
   });
 
   it('冷却只按 fromId→targetId 这一对生效，不影响拍别人', () => {

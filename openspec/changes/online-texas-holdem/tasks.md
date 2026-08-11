@@ -1203,3 +1203,10 @@
   - 只有坐位玩家能触发，服务端（`room.players.some(...)`）和客户端（`amPlaying` 门控按钮可见性）两层拦，行动入口 `playerAction` 顶部统一拒绝暂停期间的行动请求
   - **写 e2e 时抓到一个真 bug**：暂停会把 `turnClock` 清成 `null`，`PlayerSeat` 原本没有区分"没有倒计时是因为暂停"和"没有倒计时是因为人机对战"这两种情况，会掉进后者的分支，显示成还在自己走的 `think-overlay` 正数计时——看起来像时间根本没冻结，跟"暂停"这件事矛盾。加了 `paused` prop 特判修掉，暂停时两种计时显示都不渲染
   - **验收**：服务端单测新增 10 条全过（`RoomManager.test.js` 3 条 + `pauseResume.test.js` 7 条，覆盖冻结/恢复剩余时间/竞态/非坐位玩家拒绝/行动拒绝/两手之间暂停/断线不触发异常路径）；e2e `pauseResume.spec.js` 2 条全过（真实渲染断言倒计时冻结+旁观看不到按钮）；`turnTimeout.spec.js` 3 条全过（既有超时流程无回归）；服务端全量 375 条仅 1 条既有 flaky（`integration.test.js` 断连测试，单独重跑通过，非本次引入）；构建通过；eslint 与基线持平（39/30，零新增）
+
+- [x] **拍一拍：文案改名 + 去掉冷却提示 + 表情选择**（2026-08-11，GitHub #19 真实用户反馈）
+  - **排查结论**：用户说的"过于频繁的提示"是 `RoomManager.poke()` 冷却命中时返回 `{ error: '拍得太快了' }` 触发的红色 toast——design.md 27.8 原本就写了"冷却期内的重复请求直接忽略（不报错，静默丢弃）"，是当初实现没照着落地，不是新需求。改回 `{ ignored: true }`，`server/index.js` 命中冷却时直接 `return`，不广播也不报错。
+  - **文案**：`client/src/components/PlayerSeat.jsx` 里用户可见的"戳了戳"改成"拍了拍"（`onPoke`/`poke`/`pokedSeat` 等内部命名不动，用户看不到）。
+  - **表情选择（新增）**：`client/src/components/PlayerSeat.jsx` 新增 `.poke-picker`——点头像弹出 6 个预设表情（😄😢👍😡❤️😂）的小气泡，点其中一个才真正发送，点面板外放弃；选中的表情随 `player:poke`→`player:poked` 传递（服务端 `POKE_EMOJI` 白名单校验，`server/index.js`），渲染进目标玩家的"拍了拍 😄"气泡。`GameTable.jsx`/`RoomPage.jsx` 顺手透传 `emoji`。
+  - `server/__tests__/RoomManager.test.js` 的冷却测试断言改成 `ignored: true` 而不是 `error`。
+  - **验收**：`cd client && npm run build` 通过；`npx eslint .` 38/29（≤ 基线 39/30，零新增）；服务端 366/366 全绿；Playwright 真实浏览器验证（2 人房间，一方点对手头像→选表情→目标屏幕正确渲染"拍了拍 😄"气泡，实测确认，非猜测——过程中还顺带发现并清掉了一个跟本次改动无关的干扰：Playwright 复用了一个改动前启动的旧 server 进程，`reuseExistingServer:true` 导致第一轮验证跑的是老代码，杀掉旧进程重跑后拿到真实结果）。

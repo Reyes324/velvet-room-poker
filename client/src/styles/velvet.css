@@ -425,6 +425,13 @@
 .poke-bubble { animation:actionBubbleIn .35s cubic-bezier(.34,1.56,.64,1) both, actionBubbleOut .3s ease-in .4s forwards; }
 @keyframes actionBubbleOut { to { opacity:0; scale:.9; translate:0 -8px; } }
 
+/* 拍一拍表情选择器——复用 .action-bubble 同一套暗金"丝绒赌场"底板，横排一
+   行表情按钮而不是单行文字。位置计算跟 .action-bubble/.poke-bubble 共用
+   bubbleStyle()，贴在同一侧，视觉上是同一族气泡的变体，不是新发明的样式。 */
+.poke-picker { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); display:flex; gap:2px; padding:5px 6px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:9; animation:actionBubbleIn .25s cubic-bezier(.34,1.56,.64,1) both; }
+.poke-picker-emoji { background:none; border:none; padding:2px 4px; font-size:18px; line-height:1; cursor:pointer; border-radius:8px; transition:background .12s ease, transform .12s ease; }
+.poke-picker-emoji:hover, .poke-picker-emoji:active { background:rgba(212,175,55,.18); transform:scale(1.15); }
+
 @keyframes revealGlow {
   0%, 100% { box-shadow: 0 0 6px rgba(212, 175, 55, 0.25); }
   50%      { box-shadow: 0 0 22px rgba(212, 175, 55, 0.65); }
@@ -574,6 +581,18 @@
   background:rgba(60,20,10,.35); border:1px solid rgba(255,122,69,.4); border-radius:14px;
   padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
   color:#FF7A45; letter-spacing:.5px; text-shadow:0 0 8px rgba(255,90,40,.35);
+}
+/* Room code, top-center of the game screen (user feedback, #14 — others
+   need a way to find the room to join). Same gold chip language and the
+   same absolutely-centered slot .timer-countdown uses (they're mutually
+   exclusive, see GameTable.jsx), so it never fights the timer for space.
+   Font is smaller/looser than .room-code's lobby-only usage to fit
+   comfortably in the top-bar strip alongside menu-btn/pause-btn. */
+.top-room-code {
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  background:rgba(212,175,55,.1); border:1px solid rgba(212,175,55,.28); border-radius:14px;
+  padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
+  color:#D4AF37; letter-spacing:2px; cursor:pointer; white-space:nowrap;
 }
 
 /* ── KEY ANIMATION KEYFRAMES ──────────────────────────────── */
