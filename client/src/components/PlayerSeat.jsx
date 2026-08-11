@@ -91,9 +91,9 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   // 节流到约 12fps（~80ms 一次）——波纹是缓慢扩散的效果，肉眼分辨不出跟
   // 60fps 的差别，但把 JS 写 style 的频率降下来能明显减轻它和 CSS 自身
   // keyframe 动画抢重绘造成的卡顿（这条是真机反馈之后加的，之前是每帧都写）。
-  // 拍一拍表情选择器：点头像不再直接秒发，先弹出一小排表情，点其中一个才真
-  // 正发送（选中的表情会带进 player:poke 的 payload，见 RoomPage.poke）。
-  // 点到面板以外的地方视为放弃，不发送。
+  // 拍一拍表情选择器：单击头像弹出一小排表情，点其中一个才真正发送（选中
+  // 的表情会带进 player:poke 的 payload，见 RoomPage.poke）。点到面板以
+  // 外的地方视为放弃，不发送。
   const [pokePickerOpen, setPokePickerOpen] = useState(false);
   const pokePickerRef = useRef(null);
   useEffect(() => {
@@ -104,6 +104,27 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
     document.addEventListener('pointerdown', onOutside, true);
     return () => document.removeEventListener('pointerdown', onOutside, true);
   }, [pokePickerOpen]);
+
+  // 单击/双击分流：单击弹出表情面板，双击直接发一个不带表情的"拍一拍"，
+  // 跳过面板（用户反馈，2026-08-11——想要一个比"点开面板再点✋"更快的路
+  // 径）。原生的单击事件在双击时也会先各打一次，所以单击这边不能立刻执
+  // 行，要等一小段时间确认"这不是双击的前半部分"才真正弹面板——这是双
+  // 击/单击互斥的标准做法，不是多余的延迟。
+  const avatarClickTimerRef = useRef(null);
+  function handleAvatarClick() {
+    if (isMe) return;
+    clearTimeout(avatarClickTimerRef.current);
+    avatarClickTimerRef.current = setTimeout(() => {
+      setPokePickerOpen(o => !o);
+    }, 220);
+  }
+  function handleAvatarDoubleClick() {
+    if (isMe) return;
+    clearTimeout(avatarClickTimerRef.current);
+    setPokePickerOpen(false);
+    sendPoke();
+  }
+  useEffect(() => () => clearTimeout(avatarClickTimerRef.current), []);
 
   function sendPoke(emoji) {
     setPokePickerOpen(false);
@@ -165,7 +186,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           </span>
         )}
       </div>
-      <div className={`avatar-card ${avClass}`} onClick={!isMe ? () => setPokePickerOpen(o => !o) : undefined} role={!isMe ? 'button' : undefined} aria-label={!isMe ? '拍一拍' : undefined}>
+      <div className={`avatar-card ${avClass}`} onClick={handleAvatarClick} onDoubleClick={handleAvatarDoubleClick} role={!isMe ? 'button' : undefined} aria-label={!isMe ? '单击选表情拍一拍，双击直接拍一拍' : undefined}>
         {/* 说话中指示：独立于 avatar-card 自身 border/box-shadow 的叠加层
             （做法跟下面的 turn-ring 一样是并列的兄弟节点），刻意不占用那两
             个属性——is-active/is-timed/is-allin/is-winner 都在用它们，抢占
