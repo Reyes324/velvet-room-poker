@@ -462,7 +462,44 @@ describe('集成测试 — 游戏流程', () => {
     expect(paused.awaitingBustResolution).toBe(true);
     expect(paused.players.find(p => p.id === 'p1').chips).toBe(0);
     expect(paused.players.find(p => p.id === 'p1').left).toBe(false);
+    // bustDecisionEndsAt 是给 BustDecisionModal/BustWaitModal 显示倒计时用
+    // 的绝对时间戳（2026-08-12，用户反馈：之前的 5 分钟太长、也完全不可见）
+    // ——应该是个大约 20 秒之后的时间点，不是 null、也不是离现在太远。
+    expect(paused.bustDecisionEndsAt).not.toBeNull();
+    const secondsOut = (paused.bustDecisionEndsAt - Date.now()) / 1000;
+    expect(secondsOut).toBeGreaterThan(0);
+    expect(secondsOut).toBeLessThanOrEqual(20);
   });
+
+  it('筹码归零后 20 秒无人决策 → 服务端自动帮归零方标记退出（原本 5 分钟，用户反馈缩短），牌局继续', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    const state1 = await gs1;
+    expect(state1.actionPlayerId).toBe('p1');
+
+    const room = rooms.getRoomByPlayer('p1');
+    room.game.players.find(p => p.id === 'p1').chips = 0;
+
+    const showdown = waitFor(c1, 'game:showdown');
+    c1.emit('game:action', { playerId: 'p1', action: 'fold' });
+    await showdown;
+
+    const stateAfterAck = waitFor(c1, 'room:state');
+    c1.emit('game:ready-next', { playerId: 'p1' });
+    c2.emit('game:ready-next', { playerId: 'p2' });
+    await stateAfterAck;
+    expect(room.awaitingBustResolution).toBe(true);
+
+    // 谁都不点，等超时兜底自己触发——真实等待而不是伪造计时器，因为这条
+    // 走的是真实的 socket.io + setTimeout 调用链，跟假计时器混真实 socket
+    // 连接曾经在别的测试里露出过时序噪声（见 design.md「断线跨手自动离
+    // 座」节）。20 秒的超时本身就短，真实等一次可以接受。
+    await new Promise(r => setTimeout(r, 21000));
+
+    expect(room.awaitingBustResolution).toBe(false);
+    expect(room.players.find(p => p.id === 'p1').left).toBe(true);
+  }, 30000);
 
   it('筹码归零后选择离开 → 标记 left（账本保留），单挑桌活跃人数不足 2 人，游戏结束回到大厅', async () => {
     const { c1, c2 } = await setupRoom();

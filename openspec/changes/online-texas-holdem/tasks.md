@@ -1228,3 +1228,9 @@
   - `RoomManager.js`：`startGame()`/`nextRound()` 各自为参与本手的玩家快照 `wasDisconnectedAtHandStart`；`nextRound()` 开头对"上一手开局时已断线且现在仍断线"的玩家批量 `markLeft`，但加了硬保底——这批离座绝不能让剩余人数掉到 2 人以下（沿用 Bug C 的教训，避免共享网络的集体瞬断被误判成"都走了"）
   - 客户端无需改动，`RoomPage.jsx` 早已有的"`me.left` 变化→提示并导航离开"逻辑天然复用；重连者自己不会看到误导提示，因为 `addPlayer()` 在响应返回前就把 `left` 重置了
   - **验收**：`server/__tests__/RoomManager.test.js` 新增 6 条单测全过；服务端全量单测 372/372 全绿（含过程中因假定时器/真实 socket ping 超时噪声一度失败、加保底后修复的既有 `reconnect.test.js`）；未改动客户端代码，未做浏览器验证（纯服务端逻辑变更，行为路径与既有"房主踢人"共用同一条已验证过的客户端管线）
+
+- [x] **破产决策弹窗超时重设计（2026-08-12，用户反馈：其他玩家陪等归零方决策时唯一按钮是"退出"，容易误触；归零方自己的弹窗此前完全没有可见时限，服务端安全超时长达 5 分钟）**
+  - 决策：归零玩家自己的弹窗加 20 秒可见倒计时，超时自动帮他选"退出"；其他玩家的等待弹窗去掉"退出"选项，改成不可点的纯等待+同步倒计时展示
+  - `server/index.js`：`BUST_DECISION_TIMEOUT_MS` 5 分钟 → 20 秒；新增 `room.bustDecisionEndsAt`（绝对时间戳）随 `maybeArmBustTimer` 的生命周期维护，经 `getLobbyState()` 广播——跟 `turnClock`/结算倒计时同一套模式，两边看到的数字天然同步
+  - 客户端抽出共享 hook `client/src/hooks/useSecondsLeft.js`（原来只在 `SettlementModal.jsx` 内部定义），`BustDecisionModal.jsx` 用它显示倒计时+归零时自动 `onLeave`，`BustWaitModal.jsx` 去掉退出按钮换成不可点的等待条；`PvePage.jsx` 未受影响（不传 `bustDecisionEndsAt`，prop 默认 `null`）
+  - **验收**：服务端单测新增 2 条（`bustDecisionEndsAt` 字段正确性、20 秒真实超时后自动 `markLeft`），全量 373/373 全过；`cd client && npm run build` 通过；`npx eslint .` 39/30 与基线持平；既有 e2e `game.spec.js` 27/27 通过；抛弃式 Playwright 验证确认等待方弹窗真的没有任何可点的退出元素（`pointer-events:none` 实测）、两边倒计时数字同步（≤2 秒误差）、无人点击时归零方 20 秒后真的自动离开牌桌、单挑桌对局正确结束

@@ -1922,6 +1922,18 @@ if (active.length < 2) {
 
 **验收**：客户端构建通过；eslint 与基线持平（39/30，零新增）；e2e `turnTimeout.spec.js`（4 条，验证"+15s"挪位置后延时/倒计时流程不受影响）与 `voiceTable.spec.js`（4 条，验证说话按钮挪位置后按住说话/建连/清理流程不受影响）全过；额外写了一个抛弃式 e2e（两个真实浏览器 context 各自建房/加入同一房间，断言不管谁在行动、`.ptt-btn` 在 A、B 两边的屏幕上都始终可见可点）验证过这次改动要保住的关键点——说话按钮的可见性只取决于 `voiceEnabled`，不取决于 `myTurn`，跑完即删，不进正式测试套件；用 9 人满座的 dev fixture（`/?states=` 对应"9人满桌·密集"那条）截图确认新位置在满座时不再压住任何座位头像。
 
+## 暂停/继续功能（用户反馈，2026-08-11，实现完成）
+
+完整设计过程见 `docs/superpowers/specs/2026-08-11-pause-resume-design.md`（brainstorming 产出），实施计划见 `docs/superpowers/plans/2026-08-11-pause-resume.md`。这里只记实现完成后的落地要点，不重复展开决策过程。
+
+**核心难点**：项目已有的"计时游戏"暂停机制（`awaitingTimerDecision`）刻意只在两手之间的边界生效，绝不打断进行中的一手。这次的暂停功能不能照搬这个简化——用户明确要求必须能立刻冻结当前正在进行的回合倒计时。解法是给 `Room` 加 `paused`/`pauseRemainingMs`/`pausedActionPlayerId` 三个字段，暂停时记下当前行动人的剩余毫秒数并清掉计时器，恢复时用记下来的剩余时间重新调用既有的 `startTurnClock`，没有新建任何计时基础设施。
+
+**最容易被忽略、回头看代码最需要解释"为什么"的一处改动**：`server/index.js` 的 `maybeArmTurnClock` 函数顶部加了一行 `if (room.paused) { room.clearTurnClock(); return; }`。这个函数被 `broadcastRoom`（几乎所有 socket 事件处理完之后都会调用的单一广播出口）无条件调用——如果不加这道短路，暂停后任何一次广播（哪怕只是别人重连、别人的动作气泡更新）都会把刚刚清掉的计时器重新点起来，暂停等于白做。这条不是 `room:pause` handler 自己能保证的，必须动这个既有的、被高频调用的函数本身。
+
+**实现中抓到的真 bug（不是猜的，是写 e2e 测出来的）**：暂停会让 `room.turnClock` 变成 `null`，客户端的 `PlayerSeat.jsx` 原本把"没有 `turnEndsAt`"统一当成"人机对战场景，用本地正数计时兜底"（`think-overlay`），暂停后会误触发这条兜底分支——数字看起来还在自己往上跳，跟"已经冻结"这件事直接矛盾。修法是给 `PlayerSeat` 加 `paused` prop，暂停时两种倒计时显示（环形/正数兜底）都不渲染，牌桌中央已有的暂停遮罩足够说明状态。
+
+**验收数据**：服务端单测新增 10 条全过（`RoomManager.test.js` 3 条纯逻辑单测 + `pauseResume.test.js` 7 条 socket 级集成测试）；e2e `pauseResume.spec.js` 2 条全过，其中一条是真实渲染断言（不是只信服务端状态）——暂停后倒计时数字/操作栏确实从 DOM 里消失、等待期间没有变化，继续后才重新出现并开始跳动；`turnTimeout.spec.js` 既有 3 条无回归；服务端全量 375 条仅 1 条既有 flaky（`integration.test.js` 一条断连测试，单独重跑通过）；构建通过；eslint 与基线持平（39/30，零新增）。
+
 ## 断线跨手自动离座（用户反馈，2026-08-12，实现完成）
 
 ### 起点
@@ -1974,14 +1986,35 @@ for (const p of active) p.wasDisconnectedAtHandStart = p.connected === false;
 
 `server/__tests__/RoomManager.test.js` 新增 6 条单测，覆盖：本手中途断线不受影响、跨手未恢复被移出、跨手前重连不受影响、被移出后重新加入能回到牌桌、两人同时断线时保底不清出、只有一人断线时保底不生效（正常单独移出）。全量服务端单测（`server/__tests__`，372 条）跑过，含上述因假定时器噪声暴露又被保底修复的既有 `reconnect.test.js`。
 
-## 暂停/继续功能（用户反馈，2026-08-11，实现完成）
+## 破产决策弹窗超时重设计（用户反馈，2026-08-12，实现完成）
 
-完整设计过程见 `docs/superpowers/specs/2026-08-11-pause-resume-design.md`（brainstorming 产出），实施计划见 `docs/superpowers/plans/2026-08-11-pause-resume.md`。这里只记实现完成后的落地要点，不重复展开决策过程。
+### 起点
 
-**核心难点**：项目已有的"计时游戏"暂停机制（`awaitingTimerDecision`）刻意只在两手之间的边界生效，绝不打断进行中的一手。这次的暂停功能不能照搬这个简化——用户明确要求必须能立刻冻结当前正在进行的回合倒计时。解法是给 `Room` 加 `paused`/`pauseRemainingMs`/`pausedActionPlayerId` 三个字段，暂停时记下当前行动人的剩余毫秒数并清掉计时器，恢复时用记下来的剩余时间重新调用既有的 `startTurnClock`，没有新建任何计时基础设施。
+用户朋友问了一个问题："有其他人清空筹码、等他决策时，其他人看到的界面是怎样的？会不会误触退出？" ——查证发现 `BustWaitModal`（其他人看到的等待弹窗）唯一的按钮是"退出"，一点手滑就真的离开了对局，而这跟"等别人决策"这件事本身没有关系。
 
-**最容易被忽略、回头看代码最需要解释"为什么"的一处改动**：`server/index.js` 的 `maybeArmTurnClock` 函数顶部加了一行 `if (room.paused) { room.clearTurnClock(); return; }`。这个函数被 `broadcastRoom`（几乎所有 socket 事件处理完之后都会调用的单一广播出口）无条件调用——如果不加这道短路，暂停后任何一次广播（哪怕只是别人重连、别人的动作气泡更新）都会把刚刚清掉的计时器重新点起来，暂停等于白做。这条不是 `room:pause` handler 自己能保证的，必须动这个既有的、被高频调用的函数本身。
+追问服务端现有的兜底机制后发现：归零玩家自己的 `BustDecisionModal` 完全没有可见时限，服务端的安全超时（`BUST_DECISION_TIMEOUT_MS`）长达 5 分钟，且从未在 UI 上暴露过。
 
-**实现中抓到的真 bug（不是猜的，是写 e2e 测出来的）**：暂停会让 `room.turnClock` 变成 `null`，客户端的 `PlayerSeat.jsx` 原本把"没有 `turnEndsAt`"统一当成"人机对战场景，用本地正数计时兜底"（`think-overlay`），暂停后会误触发这条兜底分支——数字看起来还在自己往上跳，跟"已经冻结"这件事直接矛盾。修法是给 `PlayerSeat` 加 `paused` prop，暂停时两种倒计时显示（环形/正数兜底）都不渲染，牌桌中央已有的暂停遮罩足够说明状态。
+### 决策（用户直接给出）
 
-**验收数据**：服务端单测新增 10 条全过（`RoomManager.test.js` 3 条纯逻辑单测 + `pauseResume.test.js` 7 条 socket 级集成测试）；e2e `pauseResume.spec.js` 2 条全过，其中一条是真实渲染断言（不是只信服务端状态）——暂停后倒计时数字/操作栏确实从 DOM 里消失、等待期间没有变化，继续后才重新出现并开始跳动；`turnTimeout.spec.js` 既有 3 条无回归；服务端全量 375 条仅 1 条既有 flaky（`integration.test.js` 一条断连测试，单独重跑通过）；构建通过；eslint 与基线持平（39/30，零新增）。
+1. **归零玩家自己的弹窗**（`BustDecisionModal`）：加 20 秒倒计时，超时系统自动帮他选"退出"（服务端原有的 5 分钟安全超时缩短到 20 秒，触发时的行为不变——仍是 `markLeft`）。
+2. **其他玩家的等待弹窗**（`BustWaitModal`）：去掉"退出"这个选项——他们没有理由退出。改成纯等待：不放任何可点的按钮，弹窗本身也不会自己消失；作为补充，展示一个跟归零玩家那边同步的倒计时，让人知道不是无限期等待。
+
+### 实现
+
+**服务端**（`server/index.js` + `RoomManager.js`）：
+
+- `BUST_DECISION_TIMEOUT_MS`：`5 * 60 * 1000` → `20 * 1000`。
+- 新增 `room.bustDecisionEndsAt`（绝对时间戳，`null` 表示当前没有待决策的破产），在 `maybeArmBustTimer` 里跟计时器的生命周期一起维护（armed 时设成 `Date.now() + BUST_DECISION_TIMEOUT_MS`，disarm/fire 时清空），通过 `getLobbyState()` 广播给所有客户端——跟 `turnClock`/`gameTimerEndsAt`/结算倒计时同一套"服务端权威绝对时间戳，客户端各自与本地 `Date.now()` 相减"模式，两边看到的倒计时因此天然同步（同一个数字来源），不是两份各自估算的时间。
+
+**客户端**：
+
+- 抽出共享 hook `client/src/hooks/useSecondsLeft.js`（原来只在 `SettlementModal.jsx` 内部定义，这次有了第二、第三个使用方就提出来共享，不是新逻辑）——把一个 `endsAt` 时间戳转成每 250ms 刷新一次的"剩余秒数"。`SettlementModal.jsx` 同步改成导入这个共享版本。
+- `BustDecisionModal.jsx`：接收 `bustDecisionEndsAt` prop，用 `useSecondsLeft` 算出剩余秒数并显示"N 秒后自动退出"；秒数归零时自动调用 `onLeave`（复用既有的 `leaveRoom` 流程，客户端本地立即离开，不用等服务端那份 20 秒计时器真正触发再等一次网络往返广播）。
+- `BustWaitModal.jsx`：去掉 `onLeave` 相关的按钮和 prop，原来的"退出"按钮位置换成一条不可点的等待条（`.modal-btn-cancel--static`，`pointer-events:none`），显示"等待中… N 秒"。
+- `PvePage.jsx` 的 `BustDecisionModal` 调用没有传 `bustDecisionEndsAt`（PvE 没有其他玩家陪等的问题，也没有对应的服务端计时器），prop 默认 `null`，不显示倒计时、不触发自动退出，保持原有行为不变——这次改动刻意只针对多人房间。
+
+### 测试
+
+- 服务端：`server/__tests__/integration.test.js` 新增 2 条——`getLobbyState().bustDecisionEndsAt` 归零时是约 20 秒后的时间戳；20 秒无人决策后服务端真的自动 `markLeft`（真实等待 21 秒，不用假计时器——本项目刚在上一节因为假计时器 + 真实 socket 混用踩过一次时序噪声，这里的超时本身够短，直接真实等更可靠）。全量服务端单测 373/373 全过。
+- 客户端：抛弃式 Playwright 验证（未入库为正式 e2e，属一次性确认）——(1) 等待方弹窗里确实没有任何"退出"文案的可点元素，等待条 `pointer-events` 计算值为 `none`；(2) 两边的倒计时数字来自同一个 `bustDecisionEndsAt`，实测相差 ≤2 秒；(3) 无人点击的情况下，真实等待超过 20 秒，归零方的页面自己离开了牌桌（`.game-stage` 消失），单挑桌另一方的等待弹窗也随之消失、游戏正确结束回大厅。
+- `cd client && npm run build` 通过；`npx eslint .` 39/30，与基线持平，零新增；既有 e2e `game.spec.js` 全量 27/27 通过（含依赖 `BustDecisionModal`/`BustWaitModal` 的两条 S3 用例，验证新版弹窗没有破坏既有借一底/旁观留下流程）。

@@ -554,6 +554,12 @@ class Room {
       startingChips: STARTING_CHIPS,
       players: this.players.map(p => ({ id: p.id, name: p.name, chips: p.chips, debt: p.debt || 0, connected: p.connected !== false, left: p.left || false, timeBankMs: p.timeBankMs ?? 0, bustResolved: p.bustResolved || false })),
       awaitingBustResolution: this.awaitingBustResolution,
+      // 破产决策的倒计时兜底——归零玩家自己的弹窗要显示"还剩几秒自动退出"，
+      // 其他人的等待弹窗要显示同一个数字（不是各自算一份），所以是绝对时间
+      // 戳、由服务端唯一权威（跟 turnClock/gameTimerEndsAt 同一套模式）。
+      // null 表示当前没有待决策的破产（不需要显示倒计时）。见 index.js 的
+      // maybeArmBustTimer。
+      bustDecisionEndsAt: this.bustDecisionEndsAt ?? null,
       // 当前回合的倒计时。公开信息——每个人都该看到轮到谁、还剩多久，不只是
       // 行动方自己。endsAt 是绝对时间戳，客户端自行与本地时间相减。
       turnClock: this.turnClock,

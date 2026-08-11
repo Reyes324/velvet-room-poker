@@ -226,7 +226,12 @@ function createServer({
   // "有人破产了却不做决定"的兜底，跟回合倒计时是两回事——倒计时管的是牌桌上
   // 的行动，这个管的是 awaitingBustResolution 这个暂停。Keyed by room code,
   // see maybeArmBustTimer below.
-  const BUST_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
+  //
+  // 原本是 5 分钟——用户反馈（2026-08-12）：其他玩家在等待期间只能干等，
+  // 5 分钟太长；同时归零玩家自己的弹窗此前完全没有时限。改成 20 秒，并配
+  // 上可见倒计时（见 room.bustDecisionEndsAt/BustDecisionModal/BustWaitModal），
+  // 到点的行为不变，仍是下面这段既有的 markLeft（相当于自动帮他选"退出"）。
+  const BUST_DECISION_TIMEOUT_MS = 20 * 1000;
   const bustTimers = new Map();
   // Settlement safety-timeout: if an eligible player disconnects during
   // settlement wait and never returns, auto-drop them after 10 minutes so
@@ -281,10 +286,15 @@ function createServer({
       clearTimeout(existing.timer);
       bustTimers.delete(room.code);
     }
-    if (!shouldBeArmed) return;
+    if (!shouldBeArmed) {
+      room.bustDecisionEndsAt = null;
+      return;
+    }
 
+    room.bustDecisionEndsAt = Date.now() + BUST_DECISION_TIMEOUT_MS;
     const timer = setTimeout(() => {
       bustTimers.delete(room.code);
+      room.bustDecisionEndsAt = null;
       // Re-validate at fire time — someone may have resolved (rebought,
       // spectated, or left) between arming and firing.
       for (const p of bustPending(room)) room.markLeft(p.id);

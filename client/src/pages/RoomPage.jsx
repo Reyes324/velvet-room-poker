@@ -354,10 +354,18 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           ——用 !settlement 当条件的话，结算表永远不消失、借一底弹窗永远不
           出现，直接死锁，比原来的 bug 还严重。 */}
       {myBust && (!settlement || iAmReady) && (
-        <BustDecisionModal onRebuy={rebuy} onSpectate={spectate} onLeave={leaveRoom} />
+        <BustDecisionModal
+          onRebuy={rebuy}
+          onSpectate={spectate}
+          onLeave={leaveRoom}
+          bustDecisionEndsAt={roomState?.bustDecisionEndsAt ?? null}
+        />
       )}
       {!myBust && othersBust.length > 0 && (
-        <BustWaitModal names={othersBust.map(p => p.name)} onLeave={leaveRoom} />
+        <BustWaitModal
+          names={othersBust.map(p => p.name)}
+          bustDecisionEndsAt={roomState?.bustDecisionEndsAt ?? null}
+        />
       )}
       {!myBust && othersBust.length > 0 && isHost && (
         <div className="toast toast--info">

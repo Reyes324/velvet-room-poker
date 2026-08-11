@@ -1,26 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useSecondsLeft } from '../hooks/useSecondsLeft';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
-// 结算画面到点自动进入下一手（服务端 SETTLEMENT_DISPLAY_MS）。endsAt 是绝对
-// 时间戳，各自跟本地 Date.now() 相减即可，不用问服务端。null 表示没有倒计时
-// 信息（旧服务端），这时退回到原来那句纯等待文案。
-function useSecondsLeft(endsAt) {
-  // Date.now() 只在回调里读，不在渲染期、也不在 effect 体内同步 setState
-  // ——这两种写法 eslint 的 react-hooks 规则都会拦（前者不纯，后者会引发
-  // 级联渲染）。首次取值走一个 0ms 的 timeout，同样是回调。
-  const [left, setLeft] = useState(null);
-
-  useEffect(() => {
-    if (!endsAt) return;
-    const update = () => setLeft(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
-    const first = setTimeout(update, 0);
-    const t = setInterval(update, 250);
-    return () => { clearTimeout(first); clearInterval(t); };
-  }, [endsAt]);
-
-  return left;
-}
 function colorForId(id) {
   let h = 0;
   for (const ch of String(id)) h = (h + ch.charCodeAt(0)) % 8;
