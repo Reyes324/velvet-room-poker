@@ -110,16 +110,23 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   // 径）。原生的单击事件在双击时也会先各打一次，所以单击这边不能立刻执
   // 行，要等一小段时间确认"这不是双击的前半部分"才真正弹面板——这是双
   // 击/单击互斥的标准做法，不是多余的延迟。
+  // 人机对战（PvePage.jsx）根本没接 onPoke——拍电脑对手没有意义，没人会
+  // 收到。以前点了照样弹表情面板，选完却 onPoke?.() 静默什么都不做，看
+  // 起来像"点了没反应的 bug"（用户反馈，2026-08-11："人机对战的时候没有
+  // 看到效果"）。改成 onPoke 不存在时压根不接点击/双击，也不再显示成可
+  // 点的样子——诚实地表达"这里没有这个功能"，而不是给一个会静默失败的
+  // 死交互。
+  const canPoke = !isMe && !!onPoke;
   const avatarClickTimerRef = useRef(null);
   function handleAvatarClick() {
-    if (isMe) return;
+    if (!canPoke) return;
     clearTimeout(avatarClickTimerRef.current);
     avatarClickTimerRef.current = setTimeout(() => {
       setPokePickerOpen(o => !o);
     }, 220);
   }
   function handleAvatarDoubleClick() {
-    if (isMe) return;
+    if (!canPoke) return;
     clearTimeout(avatarClickTimerRef.current);
     setPokePickerOpen(false);
     sendPoke();
@@ -186,7 +193,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           </span>
         )}
       </div>
-      <div className={`avatar-card ${avClass}`} onClick={handleAvatarClick} onDoubleClick={handleAvatarDoubleClick} role={!isMe ? 'button' : undefined} aria-label={!isMe ? '单击选表情拍一拍，双击直接拍一拍' : undefined}>
+      <div className={`avatar-card ${avClass}`} onClick={handleAvatarClick} onDoubleClick={handleAvatarDoubleClick} role={canPoke ? 'button' : undefined} aria-label={canPoke ? '单击选表情拍一拍，双击直接拍一拍' : undefined}>
         {/* 说话中指示：独立于 avatar-card 自身 border/box-shadow 的叠加层
             （做法跟下面的 turn-ring 一样是并列的兄弟节点），刻意不占用那两
             个属性——is-active/is-timed/is-allin/is-winner 都在用它们，抢占

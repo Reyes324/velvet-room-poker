@@ -428,7 +428,13 @@
 .poke-bubble {
   position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
   border:none; white-space:nowrap;
-  z-index:8; pointer-events:none;
+  /* z-index:8（跟 .action-bubble 共用的老值）不够高——去掉实色底之后这
+     层没有背景块把自己"垫"到视觉最前面，被同一个座位上的 .pos-badge
+     （庄家/小盲/大盲角标）挡住了大半，真机截图实测确认过，不是猜的
+     （用户反馈"看不到效果"，2026-08-11，根因其实是被挡住不是没触发）。
+     提到 25，稳稳压过座位自己内部的一切角标/环，但仍然留在 action-bar
+     (40)/modal-overlay(60) 之下，弹窗要开还是能盖住它。 */
+  z-index:25; pointer-events:none;
   animation:pokeBubbleIn .4s cubic-bezier(.34,1.7,.64,1) both, pokeBubbleOut .3s ease-in .42s forwards;
 }
 /* 不带表情（✋纯拍一拍/双击）——还是暖色实心胶囊，没有大图形可突出，需要
@@ -478,8 +484,11 @@
 /* 拍一拍表情选择器——复用 .action-bubble 同一套暗金"丝绒赌场"底板，横排一
    行表情按钮而不是单行文字。位置计算跟 .action-bubble/.poke-bubble 共用
    bubbleStyle()，贴在同一侧。选择器本身还是暗金（跟牌桌其余弹层一致，
-   是"操作面板"不是"结果播报"），选完之后弹出的结果气泡才切到暖色系。 */
-.poke-picker { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); display:flex; gap:2px; padding:5px 6px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:9; animation:actionBubbleIn .25s cubic-bezier(.34,1.56,.64,1) both; }
+   是"操作面板"不是"结果播报"），选完之后弹出的结果气泡才切到暖色系。
+   z-index 提到跟 .poke-bubble 同一挡位再往上一点——用户明确要求这个浮
+   层必须在最上层：它是个正在等待点击的交互面板，被任何座位角标/环挡住
+   一角都会导致点不中，比气泡被挡更麻烦（2026-08-11）。 */
+.poke-picker { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); display:flex; gap:2px; padding:5px 6px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:26; animation:actionBubbleIn .25s cubic-bezier(.34,1.56,.64,1) both; }
 .poke-picker-emoji { background:none; border:none; padding:2px 4px; font-size:18px; line-height:1; cursor:pointer; border-radius:8px; transition:background .12s ease, transform .12s ease; }
 .poke-picker-emoji:hover, .poke-picker-emoji:active { background:rgba(212,175,55,.18); transform:scale(1.15); }
 /* 纯"拍一拍"跟表情之间隔一条细线，读作"这是个不一样类别的选项"，不是
