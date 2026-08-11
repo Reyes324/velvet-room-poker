@@ -446,13 +446,16 @@
   font-family:var(--font-body); font-size:13px; font-weight:800; color:#FFF6EE; letter-spacing:.2px;
 }
 /* 带表情——重点是表情本身，不是气泡壳子。第一版给了跟纯文字胶囊一样的
-   实心暖色块底，用户反馈"这个粉红框有点突兀"——表情已经够抢眼了，色块
-   反而在跟它抢注意力。改成没有实色底、没有边框，表情就浮在牌桌绒面上，
-   只用一圈柔和的光晕帮它跟背景分开，文字加个描边阴影保证在绿色毛毡上
-   仍然看得清（用户反馈，2026-08-11）。 */
+   实心暖色块底，用户反馈"这个粉红框有点突兀"，改成完全没有底——结果又
+   在跟下注气泡（同一个座位、同一个 bubbleStyle() 锚点，两者可能前后脚
+   同时出现在同一块地方）叠在一起时分不清谁是谁。折中：加回一层很淡的
+   半透明深色底（不是之前那种高饱和度实心色块），只起"跟身后其他气泡分
+   开一层"的作用，本身不抢表情的视觉重量（用户反馈，2026-08-11）。 */
 .poke-bubble--emoji {
   display:flex; flex-direction:column; align-items:center; gap:1px;
-  padding:2px 6px;
+  padding:4px 10px 6px; border-radius:14px;
+  background:rgba(8,16,11,.4);
+  backdrop-filter:blur(2px);
 }
 .poke-bubble__label {
   font-family:var(--font-body); font-size:10px; font-weight:700; color:#FFF6EE;
