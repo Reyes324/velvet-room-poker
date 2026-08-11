@@ -42,7 +42,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false, isHost = false, onFoldForDisconnected = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -102,6 +102,25 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
       <div className="seat-name-row">
         <div className="seat-name">{player.name}</div>
         {badge && <span className="pos-badge">{badge}</span>}
+        {/* 断线指示：以前是页面顶部的一条 toast，只覆盖"轮到TA行动却断线"这
+            一种情况，其它断线玩家完全没有任何视觉提示（用户反馈 #20，中文：
+            "不同玩家断线中...放顶部是不是太重了"）。现在改成挂在头像名字行
+            的小徽标，任何 connected === false 的座位都会显示，跟顶部大面积
+            通知比起来轻得多，且离对应玩家更近、一眼能对上人。
+            "帮TA弃牌"这个操作本身只在断线的人恰好是当前行动玩家时才有意
+            义（弃的是TA正卡住的这一手），所以仍然只在 isAction 时出现——
+            直接做成徽标本身可点击，而不是另开一个独立提示框，房主不用在
+            两个地方之间找。 */}
+        {disconnected && (
+          <span
+            className={`disconnect-badge${isHost && isAction ? ' disconnect-badge--actionable' : ''}`}
+            onClick={isHost && isAction ? () => onFoldForDisconnected?.(player.id) : undefined}
+            role={isHost && isAction ? 'button' : undefined}
+            title={isHost && isAction ? '点击帮TA弃牌' : undefined}
+          >
+            {isHost && isAction ? '断线中·帮TA弃牌' : '断线中'}
+          </span>
+        )}
       </div>
       <div className={`avatar-card ${avClass}`} onClick={!isMe ? onPoke : undefined} role={!isMe ? 'button' : undefined}>
         {/* 说话中指示：独立于 avatar-card 自身 border/box-shadow 的叠加层

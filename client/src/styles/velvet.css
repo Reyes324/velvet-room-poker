@@ -210,8 +210,15 @@
 .turn-ring-progress {
   stroke:var(--gold-400);
   stroke-width:3.5;
-  /* 卡片周长约 2*(54+58) = 224，取 232 留出圆角的余量 */
-  stroke-dasharray:232;
+  /* dasharray/keyframe 目标值必须等于这个 <rect>（x=1 y=1 width=54
+     height=58 rx=9 ry=9）真实的描边路径长度，用浏览器 getTotalLength()
+     实测约 208.18（不是按 2*(w+h) 手算周长再"留余量"估出来的 232——那个
+     估算比真实路径长 ~11%，导致 stroke-dashoffset 在动画走到约 90%
+     duration 时就已经等于真实路径长度，环整条线提前消失、看起来"走完
+     了"，但数字倒计时（走完整个 duration 才到 0）还没到——这正是 issue
+     #17 反馈的"边框走线跟数字对不上"的根因，2026-08-11 用 Playwright 测
+     getTotalLength() 实测确认，不是猜的）。 */
+  stroke-dasharray:208.18;
   stroke-dashoffset:0;
   stroke-linecap:round;
   filter:drop-shadow(0 0 5px rgba(212,175,55,.6)) drop-shadow(0 0 11px rgba(212,175,55,.3));
@@ -220,7 +227,7 @@
   animation-fill-mode:forwards;
   transition:stroke .4s ease, filter .4s ease;
 }
-@keyframes ringDrain { to { stroke-dashoffset:232; } }
+@keyframes ringDrain { to { stroke-dashoffset:208.18; } }
 
 .turn-ring--urgent .turn-ring-track { stroke:var(--urgent-red); opacity:.2; }
 .turn-ring--urgent .turn-ring-progress {
@@ -355,6 +362,15 @@
    inline next to the seat name instead (real-device feedback: it read as
    covering the avatar art, and needed its own space, not a corner overlay). */
 .pos-badge { flex:0 0 auto; height:15px; padding:0 5px; border-radius:4px; background:#EAE0C8; color:var(--ink-black); font-family:var(--font-mono); font-size:10px; font-weight:700; line-height:15px; text-align:center; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,.5); }
+
+/* 断线徽标 — 同一行内跟 pos-badge 并列的小标签，取代原来盖住整页顶部的
+   toast（issue #20）。琥珀色跟 Lobby 里已有的断线提示同色（#B08A3A），
+   读起来是同一件事的两处呈现，而不是又发明一套新颜色语言。
+   host 且这一位正是当前行动玩家时（此时"帮TA弃牌"才有意义），徽标本身
+   变成可点击的操作入口：加下划线提示可点，文案里带出这个动作，房主不用
+   再去别处找。 */
+.disconnect-badge { flex:0 0 auto; height:15px; padding:0 6px; border-radius:4px; background:rgba(176,138,58,.22); color:#D8B368; border:1px solid rgba(176,138,58,.45); font-family:var(--font-body); font-size:10px; font-weight:600; line-height:13px; text-align:center; white-space:nowrap; }
+.disconnect-badge--actionable { cursor:pointer; text-decoration:underline; color:#EAC888; }
 
 /* chip footer — inside the same card border as the photo, not floating text below it */
 .stack-chip-footer {

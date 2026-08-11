@@ -429,8 +429,10 @@ test.describe('S2：断线处理', () => {
     // 用 __vrSocket.disconnect() 保留 context，可以后续重连回来。
     await actor.evaluate(() => window.__vrSocket.disconnect());
 
-    // 对方应该看到"断线中，等待重连"的提示，且**不会**获得行动机会
-    await other.locator('.toast--info', { hasText: '断线中' }).waitFor({ state: 'visible', timeout: 8000 });
+    // 对方应该在断线玩家自己的座位上看到"断线中"徽标（不再是页面顶部的
+    // toast，issue #20 之后改成了贴在头像旁的per-seat badge），且**不会**
+    // 获得行动机会
+    await other.locator('.disconnect-badge', { hasText: '断线中' }).waitFor({ state: 'visible', timeout: 8000 });
     const gotActionBar = await other.locator(S.actionBar).isVisible().catch(() => false);
     expect(gotActionBar).toBe(false);
 
@@ -466,10 +468,14 @@ test.describe('S2：断线处理', () => {
     }
 
     await actor.evaluate(() => window.__vrSocket.disconnect());
-    await other.locator('.toast--info', { hasText: '断线中' }).waitFor({ state: 'visible', timeout: 8000 });
+    // The badge doubles as the fold action for the host when the
+    // disconnected player is also the current action-player (see
+    // PlayerSeat.jsx's disconnect-badge--actionable).
+    const foldBadge = other.locator('.disconnect-badge', { hasText: '帮TA弃牌' });
+    await foldBadge.waitFor({ state: 'visible', timeout: 8000 });
 
     // `other` here is the host (p1) since actor !== p1 in this branch
-    await other.locator('text=帮TA弃牌').click();
+    await foldBadge.click();
 
     // Hand should advance past the disconnected player — settlement or a
     // fresh action bar for whoever's next both indicate progress happened.

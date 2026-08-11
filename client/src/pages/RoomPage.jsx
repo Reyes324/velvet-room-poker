@@ -218,15 +218,22 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
 
   const voice = useVoiceMesh({ socket, emit, playerId });
 
-  // Whoever's turn it currently is, cross-referenced against roomState's
-  // connection flags (gameState doesn't carry `connected` — that lives on
-  // the room-level player list, see server/RoomManager.js getLobbyState).
-  const stuckPlayer = inGame
-    ? roomState.players?.find(p => p.id === gameState.actionPlayerId && p.connected === false)
+  // Every disconnected seat, not just the one currently expected to act —
+  // used to be scoped to `stuckPlayer` (the action-player-only case) and
+  // surfaced as a single page-level toast. That hid any other player who'd
+  // dropped but wasn't mid-turn, and put a heavy top-of-screen banner on
+  // screen for what's really a per-seat fact (issue #20: "不同玩家断线
+  // 中...放顶部是不是太重了"). Now every disconnected seat gets its own
+  // small badge in PlayerSeat, so this only needs to be an id set — no
+  // separate "gameState doesn't carry connected" cross-reference beyond
+  // that lookup (still true: connection flags live on roomState.players,
+  // see server/RoomManager.js getLobbyState).
+  const disconnectedIds = inGame
+    ? new Set((roomState.players ?? []).filter(p => p.connected === false).map(p => p.id))
     : null;
 
-  function foldForDisconnected() {
-    emit('game:fold-disconnected', { hostId: playerId, targetId: stuckPlayer.id });
+  function foldForDisconnected(targetId) {
+    emit('game:fold-disconnected', { hostId: playerId, targetId });
   }
 
   // Anyone with 0 chips who hasn't left AND hasn't already resolved their
@@ -314,6 +321,8 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         getVoiceVolume={voice.getVolume}
         onStartTalking={voice.startTalking}
         onStopTalking={voice.stopTalking}
+        disconnectedIds={disconnectedIds}
+        onFoldForDisconnected={foldForDisconnected}
       />
       {roomState?.awaitingTimerDecision && isHost && (
         <TimerDecisionModal
@@ -390,19 +399,6 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           />
         );
       })()}
-      {stuckPlayer && (
-        <div className="toast toast--info">
-          {stuckPlayer.name} 断线中，等待重连…
-          {isHost && (
-            <span
-              style={{ marginLeft: 12, textDecoration: 'underline', cursor: 'pointer' }}
-              onClick={foldForDisconnected}
-            >
-              帮TA弃牌
-            </span>
-          )}
-        </div>
-      )}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </>

@@ -176,7 +176,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, disconnectedIds = null, onFoldForDisconnected = null }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -734,6 +734,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             isSpeaking={voiceTalking || !!speakingPlayerIds?.has(me.id)}
             getVoiceVolume={getVoiceVolume}
             paused={paused}
+            disconnected={!!disconnectedIds?.has(me.id)}
+            isHost={isHost}
+            onFoldForDisconnected={onFoldForDisconnected}
           />
         </div>
       )}
@@ -778,6 +781,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               isSpeaking={!!speakingPlayerIds?.has(p.id)}
               getVoiceVolume={getVoiceVolume}
               paused={paused}
+              disconnected={!!disconnectedIds?.has(p.id)}
+              isHost={isHost}
+              onFoldForDisconnected={onFoldForDisconnected}
             />
           </div>
         );
