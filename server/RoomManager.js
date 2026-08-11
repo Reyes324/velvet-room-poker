@@ -262,6 +262,9 @@ class Room {
     this.clearTurnClock();
     this.gameTimerEndsAt = durationMinutes ? Date.now() + durationMinutes * 60_000 : null;
     this.awaitingTimerDecision = false;
+    // 断线跨手自动离座（见 nextRound）的快照也要从第一手就开始记，否则
+    // 第一手全程断线的玩家永远不会被 nextRound() 的判定捕捉到。
+    for (const p of seated) p.wasDisconnectedAtHandStart = p.connected === false;
     return { ok: true };
   }
 
@@ -288,6 +291,29 @@ class Room {
 
   nextRound() {
     this.syncChipsFromGame();
+    // 断线跨手自动离座：本手断线不受影响（沿用下面的"不看 connected"逻
+    // 辑），但如果开始上一手的时候他就已经断线、到了这一手开局时仍然断
+    // 线，就视为离开——账本保留，重连后走跟新加入一样的"旁观当前这
+    // 手→下一手重新入座"流程（addPlayer 已有的 left 重置逻辑）。用户反
+    // 馈（2026-08-12）：长时间掉线的朋友每一手都要被干等一次完整倒计时，
+    // 体验很差。
+    //
+    // 用 wasDisconnectedAtHandStart（上一手开局时的断线快照）而不是直接
+    // 判"现在 connected===false"，是为了不重蹈 Bug C 的覆辙（见下方注释）
+    // ——一次跨越了整手的断线才会触发，手牌进行中途/交界瞬间的网络闪断
+    // 不会被误判。
+    //
+    // 额外保底：这一批离座绝不能让剩下的人数掉到 2 以下——同一间房里的人
+    // 往往共享网络（同一个 WiFi/路由器重启），一次集体瞬断跨越了整手边
+    // 界在理论上是可能的，这跟 Bug C 想防的"不能让掉线状态单方面判游戏
+    // 结束"是同一类风险。真掉到剩 1 个候选人时单独离座是安全的（跟真的
+    // 归零/退出没区别，下面 active.length < 2 的分支本来就会正确收尾）；
+    // 危险的只是"一次性judge一大批人都走"。
+    const stillPresent = this.players.filter(p => !p.left);
+    const purgeCandidates = stillPresent.filter(p => p.wasDisconnectedAtHandStart && p.connected === false);
+    if (purgeCandidates.length > 0 && stillPresent.length - purgeCandidates.length >= 2) {
+      for (const p of purgeCandidates) this.markLeft(p.id);
+    }
     // Only active (chips > 0, hasn't left) players enter the next hand —
     // this already naturally picks up anyone who joined mid-game, just
     // rebought, or just reconnected, since it's filtered fresh from the
@@ -323,6 +349,8 @@ class Room {
     this.dealerId = active[dealerIndex].id;
     this.game = new GameEngine(active, dealerIndex, BIG_BLIND);
     this.clearTurnClock();
+    // 为这一手实际入座的玩家刷新断线快照，供下一次 nextRound() 判定用。
+    for (const p of active) p.wasDisconnectedAtHandStart = p.connected === false;
     return { ok: true };
   }
 

@@ -826,3 +826,94 @@ describe('RoomManager — 暂停期间拒绝行动', () => {
     expect(room.getLobbyState().paused).toBe(true);
   });
 });
+
+describe('RoomManager — 断线跨手自动离座', () => {
+  it('本手中途才断线：这一手不受影响，仍正常参与', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame(); // p2 此时仍在线
+    room.setConnected('p2', false); // 本手打到一半才掉线
+    const result = room.nextRound();
+    expect(result.ok).toBe(true);
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p2', 'p3']));
+    expect(room.players.find(p => p.id === 'p2').left).toBe(false);
+  });
+
+  it('开局时就已断线、下一手仍未恢复 → 被移出牌桌（markLeft），账本记录保留', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.setConnected('p2', false);
+    room.startGame(); // p2 在开局这一刻就已经断线 → 这一手打完后触发离座判定
+    room.nextRound(); // 进入第二手：p2 仍断线，触发 markLeft
+    expect(room.players.find(p => p.id === 'p2').left).toBe(true);
+    expect(room.players.find(p => p.id === 'p2').chips).toBeGreaterThanOrEqual(0); // 账本没被清
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).not.toContain('p2');
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p3']));
+  });
+
+  it('开局时断线，但在下一手开始前重新连接 → 不会被移出', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.setConnected('p2', false);
+    room.startGame();
+    room.setConnected('p2', true); // 断线闪断后自己重连回来了
+    room.nextRound();
+    expect(room.players.find(p => p.id === 'p2').left).toBe(false);
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toContain('p2');
+  });
+
+  it('被移出后重新加入房间（addPlayer 走 left 重置逻辑）→ 能重新回到牌桌', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.setConnected('p2', false);
+    room.startGame();
+    room.nextRound(); // p2 被移出
+    expect(room.players.find(p => p.id === 'p2').left).toBe(true);
+
+    room.addPlayer('p2', 'Bob', 'socket2-new'); // 重连
+    expect(room.players.find(p => p.id === 'p2').left).toBe(false);
+    expect(room.players.find(p => p.id === 'p2').connected).toBe(true);
+
+    room.nextRound(); // 下一手正常把他重新发进去
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toContain('p2');
+  });
+
+  it('三人局中两人同时在开局时就断线、下一手都未恢复 → 不会一次性都被移出（保底：不能让剩余人数掉到2人以下），沿用"断线不影响发牌"的旧逻辑', () => {
+    // 同一个房间的人常常共享网络（同一路由器），两人同时断线不一定是两人
+    // 都真的走了，可能是一次共享的网络抖动跨越了整手边界——跟 Bug C 想防
+    // 的"不能让掉线状态单方面判游戏结束"是同一类风险，所以这里保底不离座。
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.setConnected('p2', false);
+    room.setConnected('p3', false);
+    room.startGame();
+    const result = room.nextRound();
+    expect(room.players.find(p => p.id === 'p2').left).toBe(false);
+    expect(room.players.find(p => p.id === 'p3').left).toBe(false);
+    expect(result.ok).toBe(true);
+    expect(room.status).toBe('playing');
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p2', 'p3']));
+  });
+
+  it('三人局中只有一人开局时就断线、下一手仍未恢复 → 正常单独移出（剩 2 人不受保底限制）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.setConnected('p2', false);
+    room.startGame();
+    room.nextRound();
+    expect(room.players.find(p => p.id === 'p2').left).toBe(true);
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p3']));
+  });
+});
