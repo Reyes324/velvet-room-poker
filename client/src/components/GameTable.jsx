@@ -175,10 +175,27 @@ function columnYs(rows) {
   return [...spreadInZone(topCount, TOP_ZONE), ...spreadInZone(bottomCount, BOTTOM_ZONE)];
 }
 
-// Shared by both seatPositions() and spectatorSeatPositions() below — the
-// two-column zigzag fill (opponents[0]→left row 0, [1]→right row 0, …) is
-// identical either way, they only differ in whether a hero slot gets
-// reserved on top of it.
+// Shared by both seatPositions() and spectatorSeatPositions() below.
+//
+// 玩家反馈（2026-08-12）：opponents[i] 原来是"左一个右一个"来回交替填充
+// （[0]→left row0, [1]→right row0, [2]→left row1, [3]→right row1…），拿
+// 真实多人对局实测庄家/小盲/大盲的座位后发现，这个交替顺序**不是顺时针
+// 绕桌一圈**——3 人以上时会在左右两侧来回横跳（左上→右上→左中→右中→
+// 左下…），玩家反馈"看不出行动顺序"正是这个原因。
+//
+// 这里改的只是"第 i 个玩家该填哪个已经算好的座位槽"这一步映射，坐标计
+// 算本身（leftYs/rightYs 每一个具体的 x/y 值、每列多少人、TOP_ZONE/
+// BOTTOM_ZONE 分配、行距）完全不动——用户明确要求"位置不动，只改顺序"，
+// 这一批坐标之前经过大量真机截图调校过，不该跟着重新验证一遍。
+//
+// 顺时针从 hero（画面底部）出发，下一个座位应该是离 hero 最近的左侧座位
+// （心算+3 人局真机实测确认过：hero 在 6 点钟方向，顺时针下一步先经过
+// 9 点钟——也就是左侧——不是右侧）。所以左列按"离 hero 最近→最远"（也
+// 就是 leftYs 数组倒过来，因为 leftYs 本身是 columnYs() 算出来的"离 hero
+// 最远→最近"顺序，TOP_ZONE 在前、BOTTOM_ZONE 在后）依次分配给
+// opponents[0..leftCount-1]；越过桌子顶端之后沿右列"离 hero 最远→最近"
+// （rightYs 原本的顺序，不用倒）分配给 opponents[leftCount..n-1]，正好绕
+//回到 hero 身边，完整走完一圈顺时针。
 function twoColumnPositions(n) {
   if (n === 0) return [];
   const leftCount = Math.ceil(n / 2);
@@ -186,15 +203,11 @@ function twoColumnPositions(n) {
   const leftYs = columnYs(leftCount);
   const rightYs = columnYs(rightCount);
   const seats = [];
-  let leftRow = 0, rightRow = 0;
-  for (let i = 0; i < n; i++) {
-    if (i % 2 === 0) {
-      seats.push({ x: COL_LEFT_X, y: leftYs[leftRow], side: 'left' });
-      leftRow++;
-    } else {
-      seats.push({ x: COL_RIGHT_X, y: rightYs[rightRow], side: 'right' });
-      rightRow++;
-    }
+  for (let i = leftCount - 1; i >= 0; i--) {
+    seats.push({ x: COL_LEFT_X, y: leftYs[i], side: 'left' });
+  }
+  for (let i = 0; i < rightCount; i++) {
+    seats.push({ x: COL_RIGHT_X, y: rightYs[i], side: 'right' });
   }
   return seats;
 }
