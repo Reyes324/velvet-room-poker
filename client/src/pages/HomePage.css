@@ -207,18 +207,34 @@
 
 /* 首页原来这里还有 .home-refresh-link（刷新）和 .home-changelog-link（最
    近更新）两个入口，跟这个左上角同一视觉层级——用户反馈太碎，只留反馈
-   入口，另外两个连同各自的 CSS 一起删掉了（2026-08-11）。 */
+   入口，另外两个连同各自的 CSS 一起删掉了（2026-08-11）。剩下这一个入口
+   之前是纯文字、灰色小字，用户反馈"太不明显"（GitHub issue #15）——改成
+   跟 .menu-btn 同一套圆角芯片语言：图标+文字、金色描边+半透明底，比纯
+   文字更抓眼，但只用小尺寸/低饱和度，不跟"创建/加入房间"两个主 CTA 抢
+   视觉重量（2026-08-11）。 */
 .home-feedback-link {
   position: absolute;
   top: max(env(safe-area-inset-top, 0px), var(--sp-4));
   left: var(--sp-4);
   z-index: 1;
-  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: rgba(212,175,55,.12);
+  border: 1px solid rgba(212,175,55,.3);
+  font-family: var(--font-display);
   font-size: 12px;
-  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: .5px;
+  color: var(--gold-200);
   cursor: pointer;
+  transition: background .15s, border-color .15s;
 }
-.home-feedback-link:active { opacity: .6; }
+.home-feedback-link__icon { flex-shrink: 0; color: #D4AF37; }
+.home-feedback-link:active { background: rgba(212,175,55,.22); border-color: rgba(212,175,55,.45); opacity: .85; }
 
 .btn-primary {
   flex: 1;

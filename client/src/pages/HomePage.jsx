@@ -241,8 +241,19 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
           "刷新"和"最近更新"两个入口，用户反馈太碎、只留这一个（2026-08-11）
           ——"刷新"那条本来是给 iOS 主屏幕书签模式下网页视图不自动唤醒重新
           请求这个问题兜底的，GameTable 游戏进行中的菜单里还留着同样的入
-          口，不影响那条诉求；"最近更新"直接去掉，不再提供别的入口。 */}
-      <div className="home-feedback-link" onClick={() => setShowFeedback(true)}>问题反馈</div>
+          口，不影响那条诉求；"最近更新"直接去掉，不再提供别的入口。改成
+          带图标的金色芯片（GitHub issue #15 "反馈入口太不明显"），跟
+          .menu-btn 同一套圆角矩形芯片语言，但依然只是次要入口，不跟"创
+          建/加入房间"这两个主 CTA 抢视觉重量（2026-08-11）。 */}
+      <div className="home-feedback-link" onClick={() => setShowFeedback(true)}>
+        <svg className="home-feedback-link__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 5.5C4 4.67 4.67 4 5.5 4h13c.83 0 1.5.67 1.5 1.5v10c0 .83-.67 1.5-1.5 1.5H9l-4 3.5v-3.5H5.5C4.67 17 4 16.33 4 15.5v-10Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
+          <circle cx="8.3" cy="10.3" r="1" fill="currentColor"/>
+          <circle cx="12" cy="10.3" r="1" fill="currentColor"/>
+          <circle cx="15.7" cy="10.3" r="1" fill="currentColor"/>
+        </svg>
+        <span>问题反馈</span>
+      </div>
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </div>
   );
