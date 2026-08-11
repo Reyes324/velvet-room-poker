@@ -685,6 +685,10 @@
   padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
   color:#D4AF37; letter-spacing:2px; cursor:pointer; white-space:nowrap;
 }
+/* 人机对战：这里显示的是字面量"人机对战"四个字，不是真实房间码，没有邀
+   请链接可复制——去掉 cursor:pointer，不再假装是个能点的按钮
+   （2026-08-12）。 */
+.top-room-code--static { cursor:default; }
 
 /* ── KEY ANIMATION KEYFRAMES ──────────────────────────────── */
 @keyframes dealFly {

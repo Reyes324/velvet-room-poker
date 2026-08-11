@@ -222,7 +222,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, disconnectedIds = null, onFoldForDisconnected = null }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, disconnectedIds = null, onFoldForDisconnected = null }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -636,9 +636,17 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         {/* Room code sits in the same absolutely-centered slot as the final-5-
             minutes timer countdown — mutually exclusive with it (the timer
             only appears rarely, near the end of a timed game) so there's no
-            layout collision to reconcile; whichever is relevant wins. */}
+            layout collision to reconcile; whichever is relevant wins.
+            人机对战没有真实房间号可分享——PvePage.jsx 传进来的 roomCode 是
+            字面量"人机对战"这四个字，不是可邀请的房间码。之前这里不分场
+            景一律套"点击复制邀请链接"这套点击行为，人机对战下点了会静默
+            写一个 `/room/人机对战` 这种坏链接进剪贴板，还谎称"已复制邀请
+            链接 ✓"（用户反馈，2026-08-12）。isPve 时改成纯文字、不可点、
+            不带那句"点击复制邀请链接"的提示文案。 */}
         {countdownText ? (
           <div className="timer-countdown">⏱ {countdownText}</div>
+        ) : roomCode && isPve ? (
+          <div className="top-room-code top-room-code--static">{roomCode}</div>
         ) : roomCode ? (
           <div className="top-room-code" onClick={copyRoomCode} title="点击复制邀请链接" role="button" aria-label="房间号，点击复制邀请链接">
             {codeCopied ? '已复制邀请链接 ✓' : roomCode}
@@ -661,8 +669,13 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           </div>
           {/* 暂停/继续（用户反馈，2026-08-11）：只有坐位玩家（amPlaying）能
               触发，旁观者看不到这个按钮。图标用真的 SVG 画（跟其余全部图标
-              按钮统一），不是 emoji/unicode 字符。 */}
-          {amPlaying && (
+              按钮统一），不是 emoji/unicode 字符。
+              人机对战不接这个功能——PvePage.jsx 没有传 onPause/onResume，
+              之前不看 isPve 只看 amPlaying 时按钮照样渲染，点了却是个完
+              全没反应的死按钮（跟拍一拍在人机对战里犯过的是同一类问题，
+              2026-08-12 一起查出来的）。暂停本来就是"协调一桌真人"的功
+              能，人机对战里只有你自己，想停随时能停，不需要这个按钮。 */}
+          {amPlaying && !isPve && (
             <div
               className={`pause-btn${paused ? ' pause-btn--active' : ''}`}
               onClick={paused ? onResume : onPause}

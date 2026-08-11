@@ -143,6 +143,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
         onOpenStats={() => { emit('pve:get-hand-history'); setShowStats(true); }}
         onOpenFeedback={() => setShowFeedback(true)}
+        isPve
       />
       {showLedger && (
         <LedgerModal
