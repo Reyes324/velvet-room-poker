@@ -429,7 +429,7 @@
   position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
   border:none; white-space:nowrap;
   z-index:8; pointer-events:none;
-  animation:pokeBubbleIn .4s cubic-bezier(.34,1.7,.64,1) both, pokeWiggle .5s ease-in-out .18s 1, pokeBubbleOut .3s ease-in .42s forwards;
+  animation:pokeBubbleIn .4s cubic-bezier(.34,1.7,.64,1) both, pokeBubbleOut .3s ease-in .42s forwards;
 }
 /* 不带表情（✋纯拍一拍/双击）——还是暖色实心胶囊，没有大图形可突出，需要
    一个明确的形状让人一眼认出"这是条消息"。 */
@@ -453,19 +453,25 @@
   letter-spacing:.2px; opacity:.95;
   text-shadow:0 1px 3px rgba(0,0,0,.7), 0 0 6px rgba(0,0,0,.5);
 }
+/* 表情自己的动作只保留一次放大缩小的脉冲——原来弹入自带的转正+额外一段
+   摇晃（±6°）两段旋转叠在一起显得太闹（用户反馈，2026-08-11："摇晃不用
+   太多"），改成表情单独脉冲一次（1 → 1.2 → 1），跟整个气泡的弹入/上飘
+   淡出是各自独立的动画，互不冲突（分别作用在 .poke-bubble 和
+   .poke-bubble__glyph 两个不同元素上）。 */
 .poke-bubble__glyph {
   font-size:32px; line-height:1.1;
   filter:drop-shadow(0 2px 6px rgba(0,0,0,.55)) drop-shadow(0 0 14px rgba(255,140,120,.5));
+  display:inline-block;
+  animation:pokeGlyphPulse .5s ease-in-out .2s 1;
+}
+@keyframes pokeGlyphPulse {
+  0%, 100% { scale:1; }
+  50%      { scale:1.2; }
 }
 @keyframes pokeBubbleIn {
   0%   { opacity:0; scale:.4; rotate:-10deg; translate:0 6px; }
   65%  { opacity:1; scale:1.12; rotate:4deg; translate:0 0; }
   100% { opacity:1; scale:1; rotate:0deg; translate:0 0; }
-}
-@keyframes pokeWiggle {
-  0%, 100% { rotate:0deg; }
-  25%      { rotate:-6deg; }
-  75%      { rotate:6deg; }
 }
 @keyframes pokeBubbleOut { to { opacity:0; scale:.85; translate:0 -8px; } }
 
