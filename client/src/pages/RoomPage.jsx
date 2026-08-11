@@ -114,9 +114,13 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       const key = Date.now();
       const fromName = roomState?.players?.find(p => p.id === fromId)?.name ?? null;
       setPokedSeat({ targetId, key, emoji: emoji ?? null, fromName });
+      // 700ms 太短，表情还没看清就没了（用户反馈，2026-08-11）——拉到
+      // 1.6s，跟 velvet.css 里 .poke-bubble 的淡出时机（pokeBubbleOut
+      // 延迟到 1.3s 才开始）对齐，动画本身走完了这里才清状态，不会提前
+      // 把还没播完淡出动画的气泡从 DOM 里砍掉。
       setTimeout(() => {
         setPokedSeat(p => (p?.key === key ? null : p));
-      }, 700);
+      }, 1600);
     },
     'game:cards-revealed': ({ playerId, playerName, holeCards }) => {
       setRevealedPlayers(prev => ({ ...prev, [playerId]: { playerName, holeCards } }));
