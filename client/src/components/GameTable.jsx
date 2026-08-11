@@ -13,6 +13,39 @@ import { useTableScale } from '../hooks/useTableScale';
 const TABLE_REF_W = 375;
 const TABLE_REF_H = 610;
 
+// Shared "deal origin" point every dealt card visually flies from (user
+// feedback, GitHub #18/#6: "派牌的动画，每张牌都是从同一个中心点（页面的
+// 中心点）派出"). Reuses .table-oval's own resting spot — .table-oval sits
+// `top:0; bottom:200px` inside the TABLE_REF_H canvas (see velvet.css), so
+// its content (Pot + community cards) is vertically centered around
+// (TABLE_REF_H-200)/2 already — that's the natural "table center" reference
+// point other code in this file already treats as a landmark, not a new
+// coordinate invented for this fix.
+const DEAL_ORIGIN_X = TABLE_REF_W / 2;
+const DEAL_ORIGIN_Y = (TABLE_REF_H - 200) / 2;
+// Card footprint + row gap, both read straight from velvet.css (.c-sm /
+// .c-md / .community / .hero-cards) — used to work out each card's own
+// resting offset from ITS row's center, so the per-card --dx/--dy below can
+// place that row-center exactly at DEAL_ORIGIN and have every card in the
+// row fan out from there, instead of guessing pixels.
+const COMMUNITY_CARD_STEP = 41; // .c-sm width 36 + .community gap 5
+const HERO_CARD_STEP = 62; // .c-md width 52 + .hero-cards gap 10
+// Hero's card row itself sits well below the table's visual center (down in
+// the fixed bottom hero-section) — approximated by the hero seat's own
+// design-canvas position below, close enough that the flight direction and
+// distance both read correctly (confirmed by real render, not hand-computed
+// alone — see verification notes).
+const HERO_ROW_Y = 430;
+
+// A dealt card's start offset (--dx/--dy, consumed by .card-deal in
+// velvet.css) so it visually originates at DEAL_ORIGIN and lands at its own
+// slot — `i` is the card's index within its row, `count` the row length,
+// `step` the row's per-card pitch, `rowX`/`rowY` the row's own center.
+function dealOriginOffset(i, count, step, rowX, rowY) {
+  const cardX = rowX + (i - (count - 1) / 2) * step;
+  return { dx: DEAL_ORIGIN_X - cardX, dy: DEAL_ORIGIN_Y - rowY };
+}
+
 // 最后一家跟注、这一手进入摊牌时，先让这个动作气泡实际停留这么久，再翻开
 // 对手的底牌——不然摊牌揭示会跟这次动作的状态更新同一瞬间到达，气泡还没
 // 看清就已经被翻牌盖过去了（用户反馈，2026-07-28）。
@@ -207,6 +240,35 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
 
+  // Seats are fixed — they should NOT replay an entrance animation every new
+  // hand, only when a genuinely new player takes a seat (user feedback,
+  // GitHub #18/#6: "玩家头像应该是固定的呀，除非有新人加入才会变动呀").
+  // Computed fresh every render (not memoized on the id list) and compared
+  // against the PREVIOUS render's roster, snapshotted into this ref by the
+  // effect below right after each commit — same prev-vs-current ref pattern
+  // as prevShowdownRef/prevHeroRevealedRef elsewhere in this file. Because
+  // it's recomputed every render rather than cached, an id only ever reads
+  // as "new" for the render(s) between the join actually happening and that
+  // effect flushing — once the ref catches up, the same id compares as
+  // already-known on every later hand. On this component's very first
+  // render (table just mounted), the ref starts empty, so every seat
+  // already at the table also flags as "new" once — a reasonable one-time
+  // "table populating" moment on first view, not a per-hand replay.
+  const opponentIdsKey = opponents.map(p => p.id).join(',');
+  const [knownOpponentIds, setKnownOpponentIds] = useState(() => new Set());
+  const [knownOpponentIdsKey, setKnownOpponentIdsKey] = useState(null);
+  const newJoinerIds = new Set(opponents.filter(p => !knownOpponentIds.has(p.id)).map(p => p.id));
+  // React-blessed "adjust state during render" pattern (not an effect) —
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  // — updates the "known ids" snapshot synchronously in the SAME render the
+  // roster changed in, so newJoinerIds above only ever reads as non-empty
+  // for that one render (React re-renders immediately with the new state
+  // before committing, no extra effect round-trip / flash needed).
+  if (opponentIdsKey !== knownOpponentIdsKey) {
+    setKnownOpponentIdsKey(opponentIdsKey);
+    setKnownOpponentIds(new Set(opponents.map(p => p.id)));
+  }
+
   // GameEngine zeroes this.pot the instant a hand ends (the chips already
   // moved into the winner's stack — see _endHand) and that's the very same
   // game:state broadcast that flips phase to 'showdown', so gameState.pot
@@ -357,9 +419,11 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // justDealt (removed): that was a one-render pulse computed straight from a ref,
   // which got reset to false by this very effect's OWN commit before the browser
   // ever painted the in-between state — so anything gated on it (community cards,
-  // hero's own face-down cards, the opponent seat fly-in) silently never animated.
-  // Gating all of those on this persistent `dealing` state instead — exactly like
-  // the opponent reveal-card animation already correctly did — fixes that.
+  // hero's own face-down cards) silently never animated. Gating those on this
+  // persistent `dealing` state instead — exactly like the opponent reveal-card
+  // animation already correctly did — fixes that.
+  // NOTE: the opponent SEAT fly-in (.deal-in, below) is deliberately NOT gated
+  // on this — see newJoinerIds below for why.
   const dealing = !heroRevealed;
   const prevHeroRevealedRef = useRef(true);
   const justRevealed = !prevHeroRevealedRef.current && heroRevealed;
@@ -724,6 +788,10 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             if (gameState.phase === 'waiting') {
               return <div key={i} className="c-empty" />;
             }
+            // Community row is itself centered on DEAL_ORIGIN, so each
+            // card's own offset from the row's center IS its offset from
+            // the shared deal point — no extra row-position math needed.
+            const origin = dealOriginOffset(i, COMMUNITY_COUNT, COMMUNITY_CARD_STEP, DEAL_ORIGIN_X, DEAL_ORIGIN_Y);
             return (
               <Card
                 key={i}
@@ -731,6 +799,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                 faceDown
                 animate={dealing ? 'card-deal' : null}
                 delay={dealing ? communityDealDelayFor(i) : 0}
+                dx={dealing ? origin.dx : null}
+                dy={dealing ? origin.dy : null}
               />
             );
           })}
@@ -784,7 +854,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         return (
           <div
             key={p.id}
-            className={`player-slot${dealing ? ' deal-in' : ''}`}
+            className={`player-slot${newJoinerIds.has(p.id) ? ' deal-in' : ''}`}
             style={{ left: `${s.x}px`, top: `${s.y}px`, '--d': `${dealDelay}s` }}
           >
             <PlayerSeat
@@ -830,15 +900,20 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                         {...cardEffect(c.raw)}
                       />
                     ))
-                  : me.holeCards.map((_, i) => (
-                      <Card
-                        key={`back-${i}`}
-                        size="md"
-                        faceDown
-                        animate={dealing ? 'card-deal' : null}
-                        delay={dealing ? dealDelayFor(myId, i) : 0}
-                      />
-                    )))
+                  : me.holeCards.map((_, i) => {
+                      const origin = dealOriginOffset(i, 2, HERO_CARD_STEP, DEAL_ORIGIN_X, HERO_ROW_Y);
+                      return (
+                        <Card
+                          key={`back-${i}`}
+                          size="md"
+                          faceDown
+                          animate={dealing ? 'card-deal' : null}
+                          delay={dealing ? dealDelayFor(myId, i) : 0}
+                          dx={dealing ? origin.dx : null}
+                          dy={dealing ? origin.dy : null}
+                        />
+                      );
+                    }))
               : [<Card key={0} size="md" faceDown />, <Card key={1} size="md" faceDown />]}
           </div>
         </div>

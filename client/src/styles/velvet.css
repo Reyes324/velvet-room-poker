@@ -621,10 +621,14 @@
   0%,100% { filter:brightness(1); }
   40%     { filter:brightness(1.6) drop-shadow(0 0 20px rgba(212,175,55,.9)); }
 }
-/* A dealt card slides in from the dealer's side with a bit of rotation and
-   settles flat — reads as a hand placing it down, not just fading into place. */
+/* A dealt card slides in from the shared table-center deal point (--dx/--dy,
+   set per-card by GameTable's dealOriginOffset — user feedback GitHub
+   #18/#6: "每张牌都是从同一个中心点派出") with a bit of rotation, and
+   settles flat — reads as a hand placing it down, not just fading into
+   place. Falls back to the original small fixed offset when --dx/--dy
+   aren't set (defensive only — every current card-deal caller sets them). */
 @keyframes cardDeal {
-  0%   { opacity:0; transform:translate(46px,-34px) rotate(22deg) scale(.72); }
+  0%   { opacity:0; transform:translate(var(--dx,46px),var(--dy,-34px)) rotate(22deg) scale(.72); }
   55%  { opacity:1; }
   100% { opacity:1; transform:translate(0,0) rotate(0deg) scale(1); }
 }

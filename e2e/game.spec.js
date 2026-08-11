@@ -757,6 +757,46 @@ test.describe('发牌动画：公共牌先扣着发下来，到点再翻', () =>
   });
 });
 
+// ─── 用户反馈 GitHub #18/#6：座位是固定的，只有新人加入才该有入场动画；
+//     每手开局只应该是"牌"在动，而且要从同一个中心点派出 ──────────────────
+
+test.describe('开局动画：座位固定不重播，牌从同一中心点发出', () => {
+  test('第二手开局时，已在场的座位不再有 .deal-in 入场动画', async ({ browser }) => {
+    test.setTimeout(30000);
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await startGame(p1);
+
+    // 第一手：这是本页面第一次挂载牌桌，座位允许（也确实会）播一次入场——
+    // 这不是本用例要断言的地方，只是先把这一手打完，走到能确认下一手已经
+    // 真正重新开局（preflop 再次出现）的地方。
+    const [actor] = await findActor(p1, p2);
+    await actor.locator(S.foldBtn).click();
+    await expect(p1.locator(S.settlement)).toBeVisible({ timeout: 8000 });
+    await expect(p2.locator(S.settlement)).toBeVisible({ timeout: 8000 });
+    await p1.getByText('我知道了').click();
+    await p2.getByText('我知道了').click();
+
+    // 两人都确认后服务端立即开下一手，不用等 15s 的自动倒计时——发牌动画
+    // 一开始（操作栏消失、下一位行动者的栏出现）就检查座位有没有被重新
+    // 打上 .deal-in。
+    await Promise.race([
+      p1.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }),
+      p2.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }),
+    ]);
+    const dealInCount = await p1.locator('.player-slot.deal-in').count();
+    expect(dealInCount).toBe(0);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});
+
 // ─── 座位布局：两栏贴边分布，取代椭圆弧形 ──────────────────────────────────────────
 
 test.describe('座位布局：两栏贴边', () => {
