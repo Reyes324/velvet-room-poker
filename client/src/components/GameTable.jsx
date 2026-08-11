@@ -644,28 +644,44 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             {codeCopied ? '已复制邀请链接 ✓' : roomCode}
           </div>
         ) : null}
-        {/* 暂停/继续（用户反馈，2026-08-11）：只有坐位玩家（amPlaying）能
-            触发，旁观者看不到这个按钮。图标用真的 SVG 画（跟其余全部图标
-            按钮统一），不是 emoji/unicode 字符。 */}
-        {amPlaying && (
-          <div
-            className={`pause-btn${paused ? ' pause-btn--active' : ''}`}
-            onClick={paused ? onResume : onPause}
-            aria-label={paused ? '继续对局' : '暂停对局'}
-            role="button"
-          >
-            {paused ? (
-              <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
-                <path d="M6 4 L16 10 L6 16 Z" fill="currentColor" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
-                <rect x="5" y="4" width="4" height="12" rx="1" fill="currentColor" />
-                <rect x="11" y="4" width="4" height="12" rx="1" fill="currentColor" />
-              </svg>
-            )}
+        <div className="top-bar-right">
+          {/* "问题反馈"以前只是菜单里一行不起眼的文字，用户要求拎出来放到
+              顶部（2026-08-12），复用首页 .home-feedback-link 同一套图
+              标+边框样式（同一个入口，同一个视觉语言，不是重新发明一
+              个）。不像暂停按钮那样只给坐位玩家——旁观的人一样可能想反
+              馈问题，之前菜单里的那一行本来就没有这个限制。 */}
+          <div className="top-feedback-link" onClick={() => onOpenFeedback?.()} role="button" aria-label="问题反馈">
+            <svg className="top-feedback-link__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 5.5C4 4.67 4.67 4 5.5 4h13c.83 0 1.5.67 1.5 1.5v10c0 .83-.67 1.5-1.5 1.5H9l-4 3.5v-3.5H5.5C4.67 17 4 16.33 4 15.5v-10Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
+              <circle cx="8.3" cy="10.3" r="1" fill="currentColor"/>
+              <circle cx="12" cy="10.3" r="1" fill="currentColor"/>
+              <circle cx="15.7" cy="10.3" r="1" fill="currentColor"/>
+            </svg>
+            <span>问题反馈</span>
           </div>
-        )}
+          {/* 暂停/继续（用户反馈，2026-08-11）：只有坐位玩家（amPlaying）能
+              触发，旁观者看不到这个按钮。图标用真的 SVG 画（跟其余全部图标
+              按钮统一），不是 emoji/unicode 字符。 */}
+          {amPlaying && (
+            <div
+              className={`pause-btn${paused ? ' pause-btn--active' : ''}`}
+              onClick={paused ? onResume : onPause}
+              aria-label={paused ? '继续对局' : '暂停对局'}
+              role="button"
+            >
+              {paused ? (
+                <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+                  <path d="M6 4 L16 10 L6 16 Z" fill="currentColor" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+                  <rect x="5" y="4" width="4" height="12" rx="1" fill="currentColor" />
+                  <rect x="11" y="4" width="4" height="12" rx="1" fill="currentColor" />
+                </svg>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       {paused && (
         <div className="pause-overlay">
@@ -706,7 +722,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             {onOpenStats && (
               <div className="menu-row" onClick={() => { setShowMenu(false); onOpenStats(); }}>战绩</div>
             )}
-            <div className="menu-row" onClick={() => { setShowMenu(false); onOpenFeedback?.(); }}>问题反馈</div>
             {isHost && (
               <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
             )}

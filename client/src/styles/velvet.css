@@ -556,6 +556,22 @@
    显示仍在用同一个 class，样式留着。 */
 .bankroll { background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.36); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
 
+/* 顶部右侧一组——"问题反馈"+暂停按钮并排，之前只有暂停按钮一个元素，
+   right:auto/justify-content:space-between 直接管就够了；现在两个都要跟
+   .top-bar 右边缘对齐、彼此之间留统一间距，包一层 flex 容器。 */
+.top-bar-right { display:flex; align-items:center; gap:8px; }
+/* "问题反馈"从菜单里搬到顶部（用户反馈，2026-08-12），复用首页
+   .home-feedback-link 一模一样的图标+边框+文字组合，同一个入口没必要
+   两套视觉语言。 */
+.top-feedback-link {
+  display:flex; align-items:center; gap:5px; height:30px; padding:0 12px;
+  border-radius:15px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.3);
+  font-family:var(--font-display); font-size:12px; font-weight:600; letter-spacing:.5px;
+  color:var(--gold-200); cursor:pointer; transition:background .15s, border-color .15s;
+}
+.top-feedback-link__icon { flex-shrink:0; color:#D4AF37; }
+.top-feedback-link:active { background:rgba(212,175,55,.22); border-color:rgba(212,175,55,.45); opacity:.85; }
+
 /* 暂停/继续按钮，跟 .menu-btn 同一套圆角矩形芯片语言。暂停态用绿色系
    （跟 --state-safe/说话发光同一色系，读作"这个功能当前生效中"），静止态
    用金色，跟其余顶部图标一致。 */
@@ -653,14 +669,19 @@
   color:#FF7A45; letter-spacing:.5px; text-shadow:0 0 8px rgba(255,90,40,.35);
 }
 /* Room code, top-center of the game screen (user feedback, #14 — others
-   need a way to find the room to join). Same gold chip language and the
-   same absolutely-centered slot .timer-countdown uses (they're mutually
-   exclusive, see GameTable.jsx), so it never fights the timer for space.
-   Font is smaller/looser than .room-code's lobby-only usage to fit
-   comfortably in the top-bar strip alongside menu-btn/pause-btn. */
+   need a way to find the room to join). Same absolutely-centered slot
+   .timer-countdown uses (they're mutually exclusive, see GameTable.jsx),
+   so it never fights the timer for space. Font is smaller/looser than
+   .room-code's lobby-only usage to fit comfortably in the top-bar strip
+   alongside menu-btn/pause-btn/问题反馈.
+   No border — once the "问题反馈" chip and .pause-btn both got their own
+   bordered outlines (2026-08-12), the top bar read as too many boxed
+   chips fighting for attention side by side; dropping this one's border
+   (keeping the soft fill + gold text) lets it read as a quieter label in
+   the middle, not another button competing with the two flanking it. */
 .top-room-code {
   position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-  background:rgba(212,175,55,.1); border:1px solid rgba(212,175,55,.28); border-radius:14px;
+  background:rgba(212,175,55,.1); border-radius:14px;
   padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
   color:#D4AF37; letter-spacing:2px; cursor:pointer; white-space:nowrap;
 }
