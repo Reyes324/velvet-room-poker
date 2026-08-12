@@ -1256,3 +1256,9 @@
   - 服务端早就把 all-in 单独标记（`GameEngine.js` 的 `type:'allin'` label，raise/call 清零筹码都会走这条），客户端只是没利用——`GameTable.jsx` 的 `actionBubbles` 新增 `allIn` 字段，`PlayerSeat.jsx` 按此加 `action-bubble--allin` 修饰类，`velvet.css` 复用 `.modal-btn-danger` 同一套红色渐变+脉动暖色光晕
   - 覆盖范围：不只是全下方自己看到红色气泡，**任何玩家看任何人全下**都是这个样式（同一份广播状态，`PlayerSeat.jsx` 不区分座位是不是自己的）
   - **验收**：抛弃式 Playwright 真实两个浏览器验证——全下方自己、以及对手屏幕上看到的同一条气泡都带 `.action-bubble--allin` 类+红色渐变背景（实测计算样式确认，不是读源码猜的）；真机截图确认视觉效果；`cd client && npm run build` 通过；`npx eslint .` 38/29 与基线持平或更低；既有 e2e `game.spec.js` 27/27 无回归
+
+- [x] **反馈进展面板小改：loading 动画 + 卡片序号 + 去掉提交表单的隐私提示（2026-08-12）**
+  - `FeedbackListPanel.jsx` 加载中从纯文字"加载中…"改成金色旋转圈（`.fb-spinner`）+ 文字；每张卡片加序号（`.fb-card-index`，按列表顺序 1/2/3…）
+  - `FeedbackModal.jsx` 去掉提交表单里的"图片会公开发布在 GitHub 上，注意不要包含隐私信息"提示文案（连同未使用的 `.feedback-image-notice` CSS 一并删除）
+  - 同一批还永久删除了 8/10、8/11 两天创建的 13 条已处理完的历史 feedback issue（#13~#25，`gh api graphql` 的 `deleteIssue` mutation），用户明确要求"删掉"（不是仅关闭）
+  - **验收**：`cd client && npm run build` 通过；`npx eslint .` 38/29 与基线持平；抛弃式 Playwright 验证确认 spinner 有 `fbSpin` 动画且加载中可见、卡片序号正确按顺序显示、提交表单里确认不再有隐私提示文案

@@ -121,7 +121,6 @@ export default function FeedbackModal({ onClose, playerName }) {
                 </label>
               )}
             </div>
-            <p className="feedback-image-notice">图片会公开发布在 GitHub 上，注意不要包含隐私信息</p>
             {error && <p className="home-error">{error}</p>}
             <div className="feedback-list-link" onClick={() => setShowList(true)}>查看反馈进展 ›</div>
             <div className="modal-btns">

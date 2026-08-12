@@ -19,7 +19,7 @@ function CommentRow({ comment }) {
 
 // 单条反馈——提交人、提交时间、处理状态、原始内容、全部评论，都在这一
 // 张卡片里；不再是"点进去才看详情"的两级导航（用户明确要求）。
-function FeedbackCard({ issue }) {
+function FeedbackCard({ issue, index }) {
   const { author, rest } = extractAuthor(issue.body);
   const { text, images } = extractImages(rest);
   const status = statusOf(issue);
@@ -28,6 +28,7 @@ function FeedbackCard({ issue }) {
     <div className="fb-card">
       <div className="fb-card-head">
         <span className="fb-card-who">
+          <span className="fb-card-index">{index}</span>
           {author && <span className="fb-card-author">{author}</span>}
           <span className="fb-card-time">{formatTime(issue.createdAt)}</span>
         </span>
@@ -70,11 +71,16 @@ export default function FeedbackListPanel({ onClose }) {
           <div className="hh-panel-count">{issues ? `共 ${issues.length} 条` : ''}</div>
         </div>
         <div className="fb-list-content">
-          {issues === null && !error && <div className="hh-empty">加载中…</div>}
+          {issues === null && !error && (
+            <div className="fb-loading">
+              <div className="fb-spinner" />
+              <span>加载中…</span>
+            </div>
+          )}
           {error && <div className="hh-empty">{error}</div>}
           {issues?.length === 0 && <div className="hh-empty">还没有人提过反馈</div>}
-          {issues?.map(issue => (
-            <FeedbackCard key={issue.number} issue={issue} />
+          {issues?.map((issue, i) => (
+            <FeedbackCard key={issue.number} issue={issue} index={i + 1} />
           ))}
         </div>
       </div>
