@@ -43,9 +43,16 @@ const POKE_PICKER_EMOJI = POKE_EMOJI;
 // browser treat both edges as constraints and squash the element's width
 // down to whatever's between them (confirmed via computed-style inspection
 // on a real render, not guessed).
-function sideStyle(cardsSide) {
-  if (cardsSide === 'left') return { position: 'absolute', left: 'auto', right: 'calc(100% + 3px)', top: '50%', bottom: 'auto', transform: 'translateY(-50%)' };
-  if (cardsSide === 'right') return { position: 'absolute', left: 'calc(100% + 3px)', right: 'auto', top: '50%', bottom: 'auto', transform: 'translateY(-50%)' };
+// anchorTop：顶排座位（TOP_ZONE 内，见 GameTable.jsx）离视口顶部很近，
+// 真机上常常正好卡在浏览器自己的地址栏/导航条下面——原来的
+// top:50%+translateY(-50%) 是"以座位为中心上下对称展开"，气泡/选择器
+// 有一半的高度会往上探出视口，被导航栏遮住一截（用户反馈 2026-08-13，
+// 真机截图确认过）。顶排座位改成从座位顶部往下长（top:0，不再居中），
+// 气泡整体只会往座位下方展开，不会再往上探出视口。
+function sideStyle(cardsSide, anchorTop) {
+  const vAlign = anchorTop ? { top: '0', bottom: 'auto', transform: 'translateY(0)' } : { top: '50%', bottom: 'auto', transform: 'translateY(-50%)' };
+  if (cardsSide === 'left') return { position: 'absolute', left: 'auto', right: 'calc(100% + 3px)', ...vAlign };
+  if (cardsSide === 'right') return { position: 'absolute', left: 'calc(100% + 3px)', right: 'auto', ...vAlign };
   return { position: 'absolute', left: '50%', right: 'auto', bottom: 'calc(100% + 4px)', top: 'auto', transform: 'translateX(-50%)' };
 }
 
@@ -53,11 +60,11 @@ function sideStyle(cardsSide) {
 // bubbleSide passed) — hero sits centered at the bottom of the canvas with
 // clear room above toward the community cards, confirmed via a real render;
 // every other seat always gets an explicit side from GameTable now.
-function bubbleStyle(bubbleSide) {
-  return bubbleSide ? sideStyle(bubbleSide) : undefined;
+function bubbleStyle(bubbleSide, anchorTop) {
+  return bubbleSide ? sideStyle(bubbleSide, anchorTop) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, pokeEmoji = null, pokeFromName = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -255,18 +262,27 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             不满意，2026-08-12 改成用户直接找的透明背景 PNG 素材
             （egg-splat.png）——落地瞬间蛋图标挤压消失（squash+闪光+座位
             震动，物理反馈这部分手感是对的，保留），紧接着淡入这张真实
-            的蛋壳+蛋黄+蛋液图，比继续手画更可信。 */}
+            的蛋壳+蛋黄+蛋液图，比继续手画更可信。
+            2026-08-13：蛋图标原本是"从正上方掉落"，用户反馈想要"从页面
+            中心被扔过去"的感觉。GameTable.jsx 算好了从牌桌中心（
+            DEAL_ORIGIN，跟发牌动画共用同一个原点）到这个座位的偏移量，
+            通过 pokeThrowFrom 传下来，用跟发牌动画（.card-deal 的
+            --dx/--dy）完全一样的技术：起点是"中心到这里的反向偏移"，终
+            点是 (0,0)，读起来就是"从桌子中心飞过来"，不是发明新技术。 */}
         {poked && pokeEmoji === '🥚' && (
           <div className="egg-splat" aria-hidden="true">
             <div className="egg-splat__flash" />
             <img className="egg-splat__img" src={eggSplatImg} alt="" />
-            <div className="egg-splat__icon">🥚</div>
+            <div
+              className="egg-splat__icon"
+              style={pokeThrowFrom ? { '--throw-dx': `${pokeThrowFrom.dx}px`, '--throw-dy': `${pokeThrowFrom.dy}px` } : undefined}
+            >🥚</div>
           </div>
         )}
       </div>
 
       {pokePickerOpen && (
-        <div ref={pokePickerRef} className="poke-picker" style={bubbleStyle(bubbleSide)} onClick={e => e.stopPropagation()}>
+        <div ref={pokePickerRef} className="poke-picker" style={bubbleStyle(bubbleSide, bubbleAnchorTop)} onClick={e => e.stopPropagation()}>
           {/* 纯"拍一拍"（不带表情）原来在这里也有个 ✋ 按钮，用户反馈
               （2026-08-12）：双击头像本身就能触发不带表情的拍一拍
               （handleAvatarDoubleClick，见上方），选择器里再放一个重复
@@ -281,7 +297,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         <div
           key={bubble.key}
           className={`action-bubble${bubble.folded ? ' action-bubble--folded' : ''}${bubble.allIn ? ' action-bubble--allin' : ''}`}
-          style={bubbleStyle(bubbleSide)}
+          style={bubbleStyle(bubbleSide, bubbleAnchorTop)}
         >
           {bubble.text}
         </div>
@@ -298,12 +314,12 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           形可突出，维持原来的胶囊样式就够。 */}
       {poked && (
         pokeEmoji ? (
-          <div className="poke-bubble poke-bubble--emoji" style={bubbleStyle(bubbleSide)}>
+          <div className="poke-bubble poke-bubble--emoji" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
             <span className="poke-bubble__label">{pokeFromName ? `${pokeFromName} 给你` : '给你'}</span>
             <span className="poke-bubble__glyph">{pokeEmoji}</span>
           </div>
         ) : (
-          <div className="poke-bubble poke-bubble--plain" style={bubbleStyle(bubbleSide)}>
+          <div className="poke-bubble poke-bubble--plain" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
             {pokeFromName ? `${pokeFromName} ` : ''}拍了拍
           </div>
         )

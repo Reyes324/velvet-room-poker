@@ -873,6 +873,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             getVoiceVolume={getVoiceVolume}
             paused={paused}
             disconnected={!!disconnectedIds?.has(me.id)}
+            pokeThrowFrom={{ dx: DEAL_ORIGIN_X - heroSeatPos.x, dy: DEAL_ORIGIN_Y - heroSeatPos.y }}
           />
         </div>
       )}
@@ -912,6 +913,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               poked={pokedSeat?.targetId === p.id}
               pokeEmoji={pokedSeat?.targetId === p.id ? pokedSeat.emoji : null}
               pokeFromName={pokedSeat?.targetId === p.id ? pokedSeat.fromName : null}
+              pokeThrowFrom={{ dx: DEAL_ORIGIN_X - s.x, dy: DEAL_ORIGIN_Y - s.y }}
+              bubbleAnchorTop={s.y <= TOP_ZONE.end}
               turnEndsAt={turnClock?.playerId === p.id ? turnClock.endsAt : null}
               turnStartedAt={turnClock?.playerId === p.id ? turnClock.startedAt : null}
               revealedCards={revealedPlayers[p.id]?.holeCards ?? null}
