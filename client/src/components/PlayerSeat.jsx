@@ -302,12 +302,10 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
 
       {pokePickerOpen && (
         <div ref={pokePickerRef} className="poke-picker" style={bubbleStyle(bubbleSide)} onClick={e => e.stopPropagation()}>
-          {/* 纯"拍一拍"（不带表情）——表情选择器加进来之后，原来"点头像直接
-              拍一下"这个最快路径不能丢，不是所有人每次都想停下来挑表情
-              （用户反馈，2026-08-11）。放在表情最前面，一个手掌图标，跟后
-              面的表情视觉上明显是"同一排里的一个选项"，不是弹窗外的另一
-              个入口。 */}
-          <button type="button" className="poke-picker-emoji poke-picker-plain" onClick={() => sendPoke()} aria-label="拍一拍（不带表情）">✋</button>
+          {/* 纯"拍一拍"（不带表情）原来在这里也有个 ✋ 按钮，用户反馈
+              （2026-08-12）：双击头像本身就能触发不带表情的拍一拍
+              （handleAvatarDoubleClick，见上方），选择器里再放一个重复
+              入口没必要，去掉后 8 个表情正好排成规整的 4×2 网格。 */}
           {POKE_PICKER_EMOJI.map(e => (
             <button key={e} type="button" className="poke-picker-emoji" onClick={() => sendPoke(e)}>{e}</button>
           ))}
