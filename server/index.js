@@ -14,8 +14,11 @@ const { getServerIdentity } = require('./serverIdentity');
 const VALID_SEAT_COUNTS = [2, 4, 6, 8];
 
 // 拍一拍可选表情（GitHub #19）——固定白名单而不是接受任意字符串，客户端的
-// 拍一拍表情选择器只会发送这几个之一，服务端按白名单校验后再广播。
-const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂'];
+// 拍一拍表情选择器只会发送这几个之一，服务端按白名单校验后再广播。🥚 是
+// 第一个"特效"类表情（GitHub #26）：跟其他表情走同一条 player:poke 广播
+// 链路，客户端单独识别这个表情、在目标座位上多播一段砸蛋动画（不是新协
+// 议，只是客户端渲染分支）。
+const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚'];
 
 // 反馈提交的服务端校验上限——见下方 feedback:submit 处理逻辑。
 const FEEDBACK_MAX_TEXT_LENGTH = 2000;

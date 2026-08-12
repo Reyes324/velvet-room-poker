@@ -15,8 +15,10 @@ const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue'
 // Preset reactions for 拍一拍 (GitHub #19's "最好还能拍的时候选表情动画效果"
 // ask) — must match server/index.js's POKE_EMOJI allowlist, since the
 // server re-validates whatever it receives against its own copy rather than
-// trusting the client.
-const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂'];
+// trusting the client. 🥚 additionally triggers the "egg splat" special
+// effect below (GitHub #26) — same broadcast, just a richer render for this
+// one glyph.
+const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚'];
 
 // The showdown reveal always renders to the side of the seat (toward
 // whichever direction GameTable's cardsSide picks — the center strip, per
@@ -247,6 +249,18 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           )}
         </div>
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
+        {/* 表情特效（GitHub #26）——用户明确要求"固定动画就行，不用从谁头像
+            飞过去"，所以是叠在目标座位头像上播一次的定点动画，不是抛物
+            运动。跟 .poke-bubble 复用同一条 poked/pokeEmoji 触发信号，只
+            是这个表情多播一层视觉。目前只有 🥚 这一个，写成简单的
+            emoji===判断而不是抽象成"特效表"——只有一个实例时抽象只会增加
+            阅读成本，真加第二个特效时再回头提炼共性。 */}
+        {poked && pokeEmoji === '🥚' && (
+          <div className="egg-splat" aria-hidden="true">
+            <div className="egg-splat__yolk" />
+            <div className="egg-splat__icon">🥚</div>
+          </div>
+        )}
       </div>
 
       {pokePickerOpen && (

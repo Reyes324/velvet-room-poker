@@ -173,6 +173,22 @@
   border:2px solid rgba(212,175,55,.18); background:#0A1A0E;
   display:flex; flex-direction:column;
 }
+/* 拍一拍表情特效——目前只有 🥚（GitHub #26）。叠在整个 avatar-card 上
+   （头像+筹码footer），不裁进 avatar-photo 那 42px，蛋壳掉落的视觉范围
+   要盖住整张座位卡才够"炸开"的感觉。三段时间线：掉落+弹入 → 抖动"裂开"
+   → 蛋黄光晕扩散淡出，跟 .poke-bubble 同样在 1.6s 左右整体淡出，两者
+   同时收场。 */
+.egg-splat { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:9; animation:eggSplatFadeOut .25s ease-in 1.35s forwards; }
+.egg-splat__yolk { position:absolute; width:70%; height:70%; border-radius:50%; background:radial-gradient(circle, rgba(255,205,60,.55), rgba(255,205,60,0) 70%); opacity:0; animation:eggYolkSplat .5s ease-out .5s both; }
+.egg-splat__icon { font-size:26px; line-height:1; animation:eggDrop .4s cubic-bezier(.34,1.56,.64,1) both, eggCrackShake .16s ease-in-out .4s 3; }
+@keyframes eggDrop { 0%{ transform:translateY(-36px) scale(.6); opacity:0; } 65%{ opacity:1; } 100%{ transform:translateY(0) scale(1); opacity:1; } }
+@keyframes eggCrackShake { 0%,100%{ transform:translateX(0) rotate(0deg); } 25%{ transform:translateX(-3px) rotate(-10deg); } 75%{ transform:translateX(3px) rotate(10deg); } }
+@keyframes eggYolkSplat { 0%{ transform:scale(.3); opacity:0; } 45%{ opacity:1; } 100%{ transform:scale(1.5); opacity:0; } }
+@keyframes eggSplatFadeOut { to { opacity:0; } }
+@media (prefers-reduced-motion: reduce) {
+  .egg-splat, .egg-splat__yolk, .egg-splat__icon { animation:none; opacity:1; }
+}
+
 /* Rounding lives on the photo/footer themselves, not via overflow:hidden on
    .avatar-card as a whole. */
 .avatar-photo {

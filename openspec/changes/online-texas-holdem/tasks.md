@@ -1262,3 +1262,8 @@
   - `FeedbackModal.jsx` 去掉提交表单里的"图片会公开发布在 GitHub 上，注意不要包含隐私信息"提示文案（连同未使用的 `.feedback-image-notice` CSS 一并删除）
   - 同一批还永久删除了 8/10、8/11 两天创建的 13 条已处理完的历史 feedback issue（#13~#25，`gh api graphql` 的 `deleteIssue` mutation），用户明确要求"删掉"（不是仅关闭）
   - **验收**：`cd client && npm run build` 通过；`npx eslint .` 38/29 与基线持平；抛弃式 Playwright 验证确认 spinner 有 `fbSpin` 动画且加载中可见、卡片序号正确按顺序显示、提交表单里确认不再有隐私提示文案
+
+- [x] **拍一拍加"砸蛋"特效（2026-08-12，GitHub #26）**
+  - 用反馈评估框架过了一遍：合理但 P2/娱乐向，跟用户确认后现在就做；明确是"被拍方座位定点播放固定动画"，不是抛物飞行动画
+  - 完全复用现有拍一拍链路（`player:poke`/`player:poked`/`POKE_EMOJI` 白名单/冷却/广播），服务端+客户端 `POKE_EMOJI` 都加了 🥚，客户端 `PlayerSeat.jsx` 按 `pokeEmoji==='🥚'` 叠一层 `.egg-splat` 动画（掉落→抖动裂开→蛋黄光晕淡出），跟原有气泡共存不互斥；只有一个特效实例，暂不抽象成通用"特效表"
+  - **验收**：抛弃式 Playwright 真实两个浏览器验证——被拍方和拍的一方都能看到同一份特效广播；真机截图确认视觉效果；`cd client && npm run build` 通过；`npx eslint .` 38/29 与基线持平；服务端全量 383/383
