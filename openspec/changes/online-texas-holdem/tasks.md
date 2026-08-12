@@ -1270,3 +1270,11 @@
 
 - [x] **GitHub #27（打字聊天界面）评估：P2，暂不做（2026-08-12）**
   - 用反馈评估框架判断：现有语音+拍一拍已基本覆盖社交需求，打字聊天是唯一需要新增独立机制（协议+UI+持久化）的，成本明显更高；跟用户确认后定为 P2，issue 保留 open 作为 backlog，不实现
+
+- [x] **修订：砸蛋特效重新设计（frontend-design skill，2026-08-12）**
+  - 从"逐条反馈加元素"改成完整四拍时间线（蓄力下落→撞击[挤压+闪光+震动同一瞬间]→四散→残留淡出），配色拉拢到项目自己的暗金色阶（`--gold-100`/`--gold-300`），跟已有动效语言统一
+  - **验收**：`getComputedStyle` 实测确认动画各阶段 opacity/transform 精确匹配设计；headless 截图在部分时间点跟实测数据矛盾，判断是 Chromium 对 emoji opacity 动画的截图渲染 artifact，如实告知用户建议真机确认，未自行认定"没问题"；`cd client && npm run build` 通过；`npx eslint .` 与基线持平
+
+- [x] **修订：移除断线"帮TA弃牌"手动操作（2026-08-12，用户反馈：跟已有的断线跨手自动离座+20秒行动倒计时功能重复，且标签文案容易让人困惑）**
+  - 客户端断线徽标改回纯展示"断线中"，服务端 `game:fold-disconnected`/`foldForDisconnected`/`resolveDisconnectedTurn` 整条链路删除（确认过 `resolveDisconnectedTurn` 并非跟自动超时共享逻辑，是过时注释）
+  - **验收**：相关服务端/e2e 测试一并删除；`cd client && npm run build` 通过；`npx eslint .` 与基线持平；服务端全量 376/376；e2e `game.spec.js` 26/26 无回归

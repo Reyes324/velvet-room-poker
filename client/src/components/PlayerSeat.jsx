@@ -20,6 +20,27 @@ const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue'
 // one glyph.
 const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚'];
 
+// 🥚 砸碎特效用——蛋壳碎片/蛋液飞溅的固定方向组，"洒一地"的杂乱感（用户
+// 反馈 2026-08-12："想要扔鸡蛋砸碎、宣泄情绪的感觉"，原来只有图标+光晕
+// 看不出"碎"）。写死几组固定值而不是每次随机：真随机会让同一个特效每次
+// 拍视觉噪音不一致，反而认不出"这是同一个动作"。dy 普遍比 dx 大且为正
+// （往下飞散），带一点点重力坠落的感觉，不是纯球形扩散。
+const EGG_SHELL_FRAGS = [
+  { dx: '-30px', dy: '22px', rot: '-140deg' },
+  { dx: '26px', dy: '28px', rot: '160deg' },
+  { dx: '-18px', dy: '38px', rot: '90deg' },
+  { dx: '20px', dy: '40px', rot: '-100deg' },
+  { dx: '-34px', dy: '10px', rot: '60deg' },
+  { dx: '32px', dy: '8px', rot: '-60deg' },
+];
+const EGG_YOLK_DROPS = [
+  { dx: '-14px', dy: '30px' },
+  { dx: '16px', dy: '34px' },
+  { dx: '-24px', dy: '18px' },
+  { dx: '24px', dy: '20px' },
+  { dx: '0px', dy: '40px' },
+];
+
 // The showdown reveal always renders to the side of the seat (toward
 // whichever direction GameTable's cardsSide picks — the center strip, per
 // column). Rows sit close enough together that anything rendered
@@ -50,7 +71,7 @@ function bubbleStyle(bubbleSide) {
   return bubbleSide ? sideStyle(bubbleSide) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, pokeEmoji = null, pokeFromName = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false, isHost = false, onFoldForDisconnected = null }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, onPoke, poked = false, pokeEmoji = null, pokeFromName = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -168,6 +189,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
     folded && 'is-folded',
     allin && 'is-allin',
     poked && 'is-poked',
+    poked && pokeEmoji === '🥚' && 'is-egg-hit',
   ].filter(Boolean).join(' ');
 
   return (
@@ -180,20 +202,12 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             "不同玩家断线中...放顶部是不是太重了"）。现在改成挂在头像名字行
             的小徽标，任何 connected === false 的座位都会显示，跟顶部大面积
             通知比起来轻得多，且离对应玩家更近、一眼能对上人。
-            "帮TA弃牌"这个操作本身只在断线的人恰好是当前行动玩家时才有意
-            义（弃的是TA正卡住的这一手），所以仍然只在 isAction 时出现——
-            直接做成徽标本身可点击，而不是另开一个独立提示框，房主不用在
-            两个地方之间找。 */}
-        {disconnected && (
-          <span
-            className={`disconnect-badge${isHost && isAction ? ' disconnect-badge--actionable' : ''}`}
-            onClick={isHost && isAction ? () => onFoldForDisconnected?.(player.id) : undefined}
-            role={isHost && isAction ? 'button' : undefined}
-            title={isHost && isAction ? '点击帮TA弃牌' : undefined}
-          >
-            {isHost && isAction ? '断线中·帮TA弃牌' : '断线中'}
-          </span>
-        )}
+            纯展示，不带"帮TA弃牌"这个操作了——用户反馈（2026-08-12）：
+            回合本身有 20 秒行动倒计时兜底（不看是否在线，到点自动弃牌/
+            过牌），断线满一手未恢复还会被自动移出牌桌（见"断线跨手自动
+            离座"），这两条已经解决了"一直卡着大家"的问题，房主手动帮TA
+            弃牌顶多省 20 秒，却让标签显得莫名其妙。 */}
+        {disconnected && <span className="disconnect-badge">断线中</span>}
       </div>
       <div className={`avatar-card ${avClass}`} onClick={handleAvatarClick} onDoubleClick={handleAvatarDoubleClick} role={canPoke ? 'button' : undefined} aria-label={canPoke ? '单击选表情拍一拍，双击直接拍一拍' : undefined}>
         {/* 说话中指示：独立于 avatar-card 自身 border/box-shadow 的叠加层
@@ -254,11 +268,29 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             运动。跟 .poke-bubble 复用同一条 poked/pokeEmoji 触发信号，只
             是这个表情多播一层视觉。目前只有 🥚 这一个，写成简单的
             emoji===判断而不是抽象成"特效表"——只有一个实例时抽象只会增加
-            阅读成本，真加第二个特效时再回头提炼共性。 */}
+            阅读成本，真加第二个特效时再回头提炼共性。
+            2026-08-12 用 frontend-design skill 重新设计过一版：不是元素
+            堆砌，是一条完整的四拍时间线——蓄力下落→撞击（挤压+闪光+震
+            动同一瞬间）→四散（蛋壳/蛋液带旋转甩出）→残留淡出，配色从
+            "随手的蛋黄黄"改成拉拢到这张牌桌自己的暗金体系（--gold-300/
+            --gold-100），读起来是这张桌子自己的效果，不是随手贴的表情
+            贴纸。 */}
         {poked && pokeEmoji === '🥚' && (
           <div className="egg-splat" aria-hidden="true">
+            <div className="egg-splat__flash" />
+            <div className="egg-splat__white" />
             <div className="egg-splat__yolk" />
             <div className="egg-splat__icon">🥚</div>
+            {/* 蛋壳碎片——摔碎的关键视觉信号，纯图标+光晕看不出"碎"，得有
+                实际飞散开的碎片。方向/角度写死几组固定值，够"洒一地"的
+                杂乱感就行，不需要真随机（真随机每次拍都不一样反而增加
+                视觉噪音，读不出这是同一个特效）。 */}
+            {EGG_SHELL_FRAGS.map((f, i) => (
+              <span key={i} className="egg-shell" style={{ '--dx': f.dx, '--dy': f.dy, '--rot': f.rot }} />
+            ))}
+            {EGG_YOLK_DROPS.map((d, i) => (
+              <span key={i} className="egg-drop" style={{ '--dx': d.dx, '--dy': d.dy }} />
+            ))}
           </div>
         )}
       </div>

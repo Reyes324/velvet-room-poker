@@ -237,10 +237,6 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     ? new Set((roomState.players ?? []).filter(p => p.connected === false).map(p => p.id))
     : null;
 
-  function foldForDisconnected(targetId) {
-    emit('game:fold-disconnected', { hostId: playerId, targetId });
-  }
-
   // Anyone with 0 chips who hasn't left AND hasn't already resolved their
   // bust decision is exactly who the room is holding the next hand for
   // (server-side: awaitingBustResolution) — the room stays on 'playing'
@@ -327,7 +323,6 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         onStartTalking={voice.startTalking}
         onStopTalking={voice.stopTalking}
         disconnectedIds={disconnectedIds}
-        onFoldForDisconnected={foldForDisconnected}
       />
       {roomState?.awaitingTimerDecision && isHost && (
         <TimerDecisionModal

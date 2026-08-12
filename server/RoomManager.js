@@ -443,23 +443,6 @@ class Room {
     return this.game.players[this.game.actionIndex]?.id ?? null;
   }
 
-  // Shared by the host's manual "帮TA弃牌" button and the system safety
-  // timeout (see server/index.js maybeArmPauseTimer) — the only difference
-  // between those two callers is who's allowed to trigger it, not what
-  // happens once triggered, so both funnel through here.
-  resolveDisconnectedTurn(targetId) {
-    if (!this.game) return { error: '游戏未开始' };
-    const target = this.players.find(p => p.id === targetId);
-    if (!target || target.connected !== false) return { error: '该玩家未处于断线状态' };
-    if (this.getActionPlayerId() !== targetId) return { error: '还没轮到该玩家' };
-    return this.game.fold(targetId);
-  }
-
-  foldForDisconnected(hostId, targetId) {
-    if (this.hostId !== hostId) return { error: '只有房主可以这样做' };
-    return this.resolveDisconnectedTurn(targetId);
-  }
-
   // 这手牌此刻是否真的在等某个人行动。
   //
   // 单看 getActionPlayerId() 是不够的：牌局对象在一手结束后仍然存在，

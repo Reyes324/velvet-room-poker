@@ -444,50 +444,6 @@ test.describe('S2：断线处理', () => {
     await ctx2.close();
   });
 
-  test('房主可以帮断线且轮到行动的玩家弃牌，牌局能继续', async ({ browser }) => {
-    const ctx1 = await browser.newContext();
-    const ctx2 = await browser.newContext();
-    const p1 = await ctx1.newPage();
-    const p2 = await ctx2.newPage();
-
-    const code = await createRoom(p1, 'Alice'); // p1 is host
-    await joinRoom(p2, 'Bob', code);
-    await startGame(p1);
-
-    const [actor, other] = await findActor(p1, p2);
-    const actorIsHost = actor === p1;
-    if (actorIsHost) {
-      // Host is the one who's stuck — the host-fold-button path can't run
-      // (no one else can click it); this scenario is covered by the
-      // 5-minute safety timeout instead (server-side test, Task 7), not
-      // re-tested here since it isn't practical to wait 5 real minutes in
-      // an e2e run.
-      await ctx1.close();
-      await ctx2.close();
-      return;
-    }
-
-    await actor.evaluate(() => window.__vrSocket.disconnect());
-    // The badge doubles as the fold action for the host when the
-    // disconnected player is also the current action-player (see
-    // PlayerSeat.jsx's disconnect-badge--actionable).
-    const foldBadge = other.locator('.disconnect-badge', { hasText: '帮TA弃牌' });
-    await foldBadge.waitFor({ state: 'visible', timeout: 8000 });
-
-    // `other` here is the host (p1) since actor !== p1 in this branch
-    await foldBadge.click();
-
-    // Hand should advance past the disconnected player — settlement or a
-    // fresh action bar for whoever's next both indicate progress happened.
-    const [gotBar, gotResult] = await Promise.all([
-      other.locator(S.actionBar).waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false),
-      other.locator(S.settlement).waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false),
-    ]);
-    expect(gotBar || gotResult).toBe(true);
-
-    await ctx1.close();
-    await ctx2.close();
-  });
 });
 
 // ─── S3：筹码归零与借一底 ───────────────────────────────────────────────────────

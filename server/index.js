@@ -771,10 +771,9 @@ function createServer({
     });
 
     // Host-only equivalent of "player:leave-room", for a busted player who
-    // won't decide (mirrors game:fold-disconnected's manual override of
-    // the mid-hand pause timer). Only usable while that specific player is
-    // actually the thing the room is paused on — can't be used to force
-    // out a player who simply hasn't rebought yet outside a bust pause.
+    // won't decide. Only usable while that specific player is actually the
+    // thing the room is paused on — can't be used to force out a player
+    // who simply hasn't rebought yet outside a bust pause.
     socket.on('room:leave-for', ({ hostId, targetId }) => {
       const room = rooms.getRoomByPlayer(hostId);
       if (!room || room.hostId !== hostId) return;
@@ -955,14 +954,6 @@ function createServer({
           room.dropFromSettlementWait(targetId)) {
         advanceRoom(room);
       }
-    });
-
-    socket.on('game:fold-disconnected', ({ hostId, targetId }) => {
-      const room = rooms.getRoomByPlayer(hostId);
-      if (!room) return socket.emit('game:error', '未找到房间');
-      const result = room.foldForDisconnected(hostId, targetId);
-      if (result.error) return socket.emit('game:error', result.error);
-      handleActionResult(room, result);
     });
 
     socket.on('game:ready-next', ({ playerId }) => {
