@@ -281,7 +281,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
         </svg>
         <span>问题反馈</span>
       </div>
-      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} playerName={name} />}
     </div>
   );
 }

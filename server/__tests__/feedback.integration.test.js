@@ -29,9 +29,6 @@ beforeEach(async () => {
     listFeedbackWithComments: vi.fn(async () => ([
       { number: 23, title: '断线问题', body: '正文', state: 'closed', labels: ['feedback'], createdAt: 't1', url: 'u1', comments: [] },
     ])),
-    addFeedbackComment: vi.fn(async (issueNumber, authorName, text) => ({
-      id: 1, body: `**${authorName}**：${text}`, createdAt: 't',
-    })),
   };
   const created = createServer({ feedbackReporter: fakeReporter });
   server = created.server;
@@ -49,15 +46,23 @@ describe('feedback:submit', () => {
   it('正常提交（无图片）：调用 createFeedbackIssue，回调 { ok: true, issueUrl }', async () => {
     const c = await connect();
     const res = await emitWithAck(c, 'feedback:submit', { text: '结算算错了' });
-    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '结算算错了', images: [] });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '结算算错了', images: [], authorName: undefined });
     expect(res).toEqual({ ok: true, issueUrl: 'https://github.com/x/y/issues/7' });
+  });
+
+  // 用户反馈（2026-08-12）：反馈列表要显示"谁提交的"——不新增专门的称呼
+  // 输入框，直接复用调用方已有的昵称，原样透传给 createFeedbackIssue。
+  it('带 authorName 提交：原样透传给 createFeedbackIssue', async () => {
+    const c = await connect();
+    await emitWithAck(c, 'feedback:submit', { text: '结算算错了', authorName: 'Alice' });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '结算算错了', images: [], authorName: 'Alice' });
   });
 
   it('带图片提交：images 原样透传给 createFeedbackIssue', async () => {
     const c = await connect();
     const image = { base64: 'ZmFrZQ==', mimeType: 'image/png' };
     await emitWithAck(c, 'feedback:submit', { text: '截图见附件', images: [image] });
-    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '截图见附件', images: [image] });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '截图见附件', images: [image], authorName: undefined });
   });
 
   // 用户反馈 #3（2026-08-03）：只能上传一张图不够用
@@ -69,7 +74,7 @@ describe('feedback:submit', () => {
       { base64: 'Yw==', mimeType: 'image/webp' },
     ];
     await emitWithAck(c, 'feedback:submit', { text: '三张图', images: imgs });
-    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '三张图', images: imgs });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '三张图', images: imgs, authorName: undefined });
   });
 
   it('旧客户端兼容：只发单个 image 字段时归一化成 images 数组', async () => {
@@ -78,7 +83,7 @@ describe('feedback:submit', () => {
     const c = await connect();
     const image = { base64: 'ZmFrZQ==', mimeType: 'image/png' };
     await emitWithAck(c, 'feedback:submit', { text: '旧版客户端', image });
-    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '旧版客户端', images: [image] });
+    expect(fakeReporter.createFeedbackIssue).toHaveBeenCalledWith({ text: '旧版客户端', images: [image], authorName: undefined });
   });
 
   it('超过张数上限：直接回错误，不调用 createFeedbackIssue', async () => {
@@ -172,48 +177,3 @@ describe('feedback:list', () => {
   });
 });
 
-describe('feedback:comment', () => {
-  it('正常调用：issueNumber/authorName/text 原样透传给 addFeedbackComment', async () => {
-    const c = await connect();
-    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: '我也遇到了' });
-    expect(fakeReporter.addFeedbackComment).toHaveBeenCalledWith(23, 'Alice', '我也遇到了');
-    expect(res).toEqual({ ok: true, comment: { id: 1, body: '**Alice**：我也遇到了', createdAt: 't' } });
-  });
-
-  it('缺少 issueNumber：直接回错误，不调用 addFeedbackComment', async () => {
-    const c = await connect();
-    const res = await emitWithAck(c, 'feedback:comment', { authorName: 'Alice', text: '文字' });
-    expect(res.error).toBeTruthy();
-    expect(fakeReporter.addFeedbackComment).not.toHaveBeenCalled();
-  });
-
-  it('评论内容为空：直接回错误，不调用 addFeedbackComment', async () => {
-    const c = await connect();
-    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: '   ' });
-    expect(res.error).toBeTruthy();
-    expect(fakeReporter.addFeedbackComment).not.toHaveBeenCalled();
-  });
-
-  it('评论内容超过 2000 字：直接回错误，不调用 addFeedbackComment', async () => {
-    const c = await connect();
-    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: 'x'.repeat(2001) });
-    expect(res.error).toBeTruthy();
-    expect(fakeReporter.addFeedbackComment).not.toHaveBeenCalled();
-  });
-
-  it('isConfigured() 返回 false：直接回错误，不调用 addFeedbackComment', async () => {
-    fakeReporter.isConfigured = vi.fn(() => false);
-    const c = await connect();
-    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: '文字' });
-    expect(res.error).toBeTruthy();
-    expect(fakeReporter.addFeedbackComment).not.toHaveBeenCalled();
-  });
-
-  it('addFeedbackComment 抛错：回调 { error }，不让异常冒泡把 socket 断掉', async () => {
-    fakeReporter.addFeedbackComment = vi.fn(async () => { throw new Error('GitHub 502'); });
-    const c = await connect();
-    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: '文字' });
-    expect(res.error).toBeTruthy();
-    expect(c.connected).toBe(true);
-  });
-});

@@ -115,10 +115,26 @@
   justify-content: space-between;
   margin-bottom: 8px;
 }
+.fb-card-who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.fb-card-author {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .fb-card-time {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
+  flex-shrink: 0;
 }
 .fb-status {
   font-family: var(--font-mono);
@@ -181,45 +197,4 @@
   color: var(--text-secondary);
   white-space: pre-wrap;
   line-height: 1.5;
-}
-.fb-comment-form {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255,255,255,.08);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.fb-comment-name, .fb-comment-input {
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: 13px;
-  padding: 8px 10px;
-}
-.fb-comment-name:focus, .fb-comment-input:focus {
-  outline: none;
-  border-color: rgba(212,175,55,.4);
-}
-.fb-comment-input-row {
-  display: flex;
-  gap: 6px;
-}
-.fb-comment-input { flex: 1; min-width: 0; }
-.fb-comment-send {
-  flex-shrink: 0;
-  padding: 0 14px;
-  border: none;
-  border-radius: 8px;
-  background: rgba(212,175,55,.16);
-  color: var(--gold-400, #D4AF37);
-  font-family: var(--font-display);
-  font-size: 13px;
-  cursor: pointer;
-}
-.fb-comment-send:disabled {
-  opacity: .5;
-  cursor: default;
 }

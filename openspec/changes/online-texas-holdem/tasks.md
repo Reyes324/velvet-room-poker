@@ -1246,3 +1246,7 @@
   - 服务端 `feedbackReporter.js` 新增 `listFeedbackIssues`/`listFeedbackComments`/`listFeedbackWithComments`/`addFeedbackComment`，新增 socket 事件 `feedback:list`/`feedback:comment`；评论作者名字拼进正文前缀（`**名字**：`），客户端 `feedbackFormat.js` 负责解析回显示名字，`vr_feedbackName` 记住填过的名字
   - **真机排查中顺带修了一个桌面端 bug**：`HomePage.jsx` 的 `.home` 容器从未参与 `global.css` 里"桌面端把移动端 UI 框成居中 460px 一列"的既有规则，导致新加的全屏面板在桌面视口下被 `.home` 自己的 `overflow:hidden` 裁切、完全点不到；修法是把 `.home` 加进那条既有选择器列表
   - **验收**：服务端单测新增 20 条（`feedbackReporter.test.js`）+ 集成测试新增约 12 条（`feedback.integration.test.js`），全量 392/392 全过；客户端本地无真实 GitHub token，用真实 Playwright 拦截 socket 层直接回真实数据结构验证渲染（状态标签、图片摘出、自动评估签名识别、评论提交即时更新、返回按钮语义）；`cd client && npm run build` 通过；`npx eslint .` 39/30 与基线持平
+
+- [x] **修订：反馈进展面板去掉评论输入，改成显示提交人（2026-08-12，同一天内追加确认）**
+  - 用户否决了"加评论"功能，也否决了新增专门称呼输入框——去掉 `addFeedbackComment`/`feedback:comment`（评论继续只读展示，不能新增）；提交人姓名直接复用调用方已有的昵称（`FeedbackModal` 新增 `playerName` prop，三处调用方各自传入），不新增输入 UI
+  - **验收**：服务端全量 383/383 全过；`cd client && npm run build` 通过；`npx eslint .` 38/29（比基线更低，净删代码）；抛弃式 Playwright 复测确认提交人姓名正确显示、评论区无输入控件、提交表单无新增输入框、`authorName` 正确随昵称一起发出

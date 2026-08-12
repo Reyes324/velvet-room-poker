@@ -561,7 +561,7 @@ function createServer({
     // 反馈入口——用户反馈（2026-08-02）："能不能直接在网页上提供一个类似
     // 问题反馈的入口"。存储层是 GitHub Issue，不是本地文件，见
     // server/feedbackReporter.js 顶部注释里的持久化约束说明。
-    socket.on('feedback:submit', async ({ text, image, images } = {}, callback) => {
+    socket.on('feedback:submit', async ({ text, image, images, authorName } = {}, callback) => {
       if (!feedbackReporter.isConfigured()) {
         return callback?.({ error: '反馈服务暂时不可用，请稍后再试' });
       }
@@ -589,7 +589,7 @@ function createServer({
         return callback?.({ error: '图片总大小超出限制，请减少张数或压缩后再试' });
       }
       try {
-        const { issueUrl } = await feedbackReporter.createFeedbackIssue({ text: trimmed, images: imageList });
+        const { issueUrl } = await feedbackReporter.createFeedbackIssue({ text: trimmed, images: imageList, authorName });
         callback?.({ ok: true, issueUrl });
       } catch (e) {
         console.error('[feedback] createFeedbackIssue failed:', e.message);
@@ -597,9 +597,10 @@ function createServer({
       }
     });
 
-    // 反馈进展可见 + 批注（用户反馈，2026-08-12）——列表直接读 GitHub Issue
-    // （连各自的评论一起，客户端要求整页展示、不做二级详情导航），不建独
-    // 立存储，见 feedbackReporter.js 顶部注释。
+    // 反馈进展可见（用户反馈，2026-08-12）——列表直接读 GitHub Issue（连各
+    // 自的评论一起只读展示，客户端要求整页展示、不做二级详情导航），不建
+    // 独立存储，见 feedbackReporter.js 顶部注释。评论只读、不支持在 app 里
+    // 加评论（用户明确不需要这个）。
     socket.on('feedback:list', async (_payload, callback) => {
       if (!feedbackReporter.isConfigured()) {
         return callback?.({ error: '反馈服务暂时不可用，请稍后再试' });
@@ -610,25 +611,6 @@ function createServer({
       } catch (e) {
         console.error('[feedback] listFeedbackWithComments failed:', e.message);
         callback?.({ error: '获取反馈列表失败，请稍后再试' });
-      }
-    });
-
-    socket.on('feedback:comment', async ({ issueNumber, authorName, text } = {}, callback) => {
-      if (!feedbackReporter.isConfigured()) {
-        return callback?.({ error: '反馈服务暂时不可用，请稍后再试' });
-      }
-      const trimmed = (text || '').trim();
-      if (!trimmed) return callback?.({ error: '请输入评论内容' });
-      if (trimmed.length > FEEDBACK_MAX_TEXT_LENGTH) {
-        return callback?.({ error: `评论太长（最多 ${FEEDBACK_MAX_TEXT_LENGTH} 字）` });
-      }
-      if (!Number.isInteger(issueNumber)) return callback?.({ error: '缺少反馈编号' });
-      try {
-        const comment = await feedbackReporter.addFeedbackComment(issueNumber, authorName, trimmed);
-        callback?.({ ok: true, comment });
-      } catch (e) {
-        console.error('[feedback] addFeedbackComment failed:', e.message);
-        callback?.({ error: '评论发送失败，请稍后再试' });
       }
     });
 

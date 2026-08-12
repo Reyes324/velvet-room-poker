@@ -4,7 +4,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const {
   createFeedbackIssue, isConfigured,
-  listFeedbackIssues, listFeedbackComments, listFeedbackWithComments, addFeedbackComment,
+  listFeedbackIssues, listFeedbackComments, listFeedbackWithComments,
 } = require('../feedbackReporter');
 
 function fakeResponse(ok, status, jsonBody) {
@@ -53,6 +53,18 @@ describe('feedbackReporter — createFeedbackIssue', () => {
     expect(body.body).toContain('结算的时候少算了一个底池');
     expect(body.body).not.toContain('![');
     expect(result).toEqual({ issueNumber: 42, issueUrl: 'https://github.com/x/y/issues/42' });
+    // 没传 authorName 时正文前缀回退成"匿名"（用户反馈 2026-08-12：反馈列
+    // 表要显示"谁提交的"，不新增专门的称呼输入框，直接复用调用方的昵称）。
+    expect(body.body.startsWith('**提交人：匿名**\n\n')).toBe(true);
+  });
+
+  it('带 authorName：正文前缀带上这个名字', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      fakeResponse(true, 201, { number: 46, html_url: 'https://github.com/x/y/issues/46' })
+    );
+    await createFeedbackIssue({ text: '正文', authorName: 'Alice' }, { fetchImpl, token, repo });
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body.body).toBe('**提交人：Alice**\n\n正文');
   });
 
   it('带图片：先调 Contents API 上传，再调 Issues API，body 里带图片 markdown 用的是返回的 download_url', async () => {
@@ -214,45 +226,3 @@ describe('feedbackReporter — listFeedbackWithComments', () => {
   });
 });
 
-describe('feedbackReporter — addFeedbackComment', () => {
-  const token = 'ghp_fake_token';
-  const repo = 'someone/somerepo';
-
-  it('没有 token 时直接抛错，不发请求', async () => {
-    const fetchImpl = vi.fn();
-    await expect(addFeedbackComment(23, 'Alice', '我也遇到了', { fetchImpl, token: undefined, repo }))
-      .rejects.toThrow(/FEEDBACK_GITHUB_TOKEN/);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('空文本抛错，不发请求', async () => {
-    const fetchImpl = vi.fn();
-    await expect(addFeedbackComment(23, 'Alice', '   ', { fetchImpl, token, repo })).rejects.toThrow(/评论内容/);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('评论正文自动带上作者名字前缀，POST 到正确的 issue', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      fakeResponse(true, 201, { id: 99, body: '**Alice**：我也遇到了', created_at: 't' })
-    );
-    const result = await addFeedbackComment(23, 'Alice', '我也遇到了', { fetchImpl, token, repo });
-    const [url, opts] = fetchImpl.mock.calls[0];
-    expect(url).toBe(`https://api.github.com/repos/${repo}/issues/23/comments`);
-    expect(opts.method).toBe('POST');
-    const body = JSON.parse(opts.body);
-    expect(body.body).toBe('**Alice**：我也遇到了');
-    expect(result).toEqual({ id: 99, body: '**Alice**：我也遇到了', createdAt: 't' });
-  });
-
-  it('没有提供作者名字时回退成"匿名"', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(fakeResponse(true, 201, { id: 100, body: '**匿名**：随便说说', created_at: 't' }));
-    await addFeedbackComment(23, '', '随便说说', { fetchImpl, token, repo });
-    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
-    expect(body.body).toBe('**匿名**：随便说说');
-  });
-
-  it('GitHub API 返回非 2xx 时抛错', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(fakeResponse(false, 403, {}));
-    await expect(addFeedbackComment(23, 'Alice', '文字', { fetchImpl, token, repo })).rejects.toThrow(/403/);
-  });
-});

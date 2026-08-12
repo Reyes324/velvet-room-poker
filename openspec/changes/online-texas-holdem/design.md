@@ -2083,3 +2083,12 @@ for (const p of active) p.wasDisconnectedAtHandStart = p.connected === false;
 - 服务端：`feedbackReporter.test.js` 新增 20 条单测（覆盖 `listFeedbackIssues`/`listFeedbackComments`/`listFeedbackWithComments`/`addFeedbackComment` 的正常路径、边界、错误路径，含"不同 issue 的评论不串"这条）；`feedback.integration.test.js` 新增两组 socket 层集成测试（`feedback:list`/`feedback:comment`，覆盖校验分支+异常不冒泡断连接）。服务端全量 392/392 全过。
 - 客户端：本地没有配置真实 `FEEDBACK_GITHUB_TOKEN`（只在 Render 生产环境有），没法在这里真的打 GitHub API——服务端数据转换逻辑已经被上面的单测充分覆盖；客户端渲染层用真实 Playwright + 在浏览器里拦截 `window.__vrSocket.emit('feedback:list'/'feedback:comment', ...)` 直接回 ack（真实数据结构，真实 React 渲染，真实 DOM 断言），验证了状态标签映射、图片 markdown 摘出渲染、自动评估签名识别、真人评论解析、提交评论后卡片即时更新、名字被记住、返回按钮回到表单而不是整个关掉。
 - `cd client && npm run build` 通过；`npx eslint .` 39/30，与基线持平，零新增。
+
+### 修订：去掉评论输入，改成显示提交人（用户反馈，2026-08-12，同一天内追加确认）
+
+上线后跟用户确认细节，砍掉了一部分、加了另一部分：
+
+1. **去掉"加评论"功能**——用户明确表示不需要针对反馈评论；已有的评论（尤其是自动评估留的"处理结果"）继续只读展示，只是不能再从 app 里新增评论了。对应删掉了 `addFeedbackComment`（`feedbackReporter.js`）、`feedback:comment` socket 事件、`FeedbackListPanel` 里的评论输入框/发送逻辑，以及相关测试。
+2. **反馈本身要显示"谁提交的"**——一开始想加个专门的"称呼"输入框，用户否决："直接用进入房间的昵称就可以了"。改成 `FeedbackModal` 新增 `playerName` prop，三个调用方（`HomePage.jsx` 传当前表单里正在填的 `name`、`RoomPage.jsx`/`PvePage.jsx` 传各自已有的 `playerName`）各自传入已有的昵称，不新增任何输入 UI。提交时这个名字被拼进 `createFeedbackIssue` 生成的 issue 正文最前面（`**提交人：名字**\n\n`，没有名字时回退"匿名"），跟评论那套 `**名字**：` 前缀格式故意不同、互不干扰。客户端新增 `extractAuthor()`（`feedbackFormat.js`）解析出这个前缀，列表卡片头部展示。
+
+验收：服务端全量 383/383 全过（改动本身不涉及既有游戏逻辑，中途一次偶发失败经单独重跑确认是既有的 socket 时序 flaky，与本次改动无关）；`cd client && npm run build` 通过；`npx eslint .` 38/29（比基线还低一条，删除的代码比新增的多）；抛弃式 Playwright 复测确认：卡片正确显示提交人姓名（含没有前缀的旧数据/兼容场景不报错）、页面上不再有任何评论输入框、提交表单本身没有新增"称呼"输入框、提交时 `authorName` 确实带上了首页表单里已经填的名字。

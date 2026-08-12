@@ -192,7 +192,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
           onLeave={handleExit}
         />
       )}
-      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} playerName={playerName} />}
       {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </>
   );

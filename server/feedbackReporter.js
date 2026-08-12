@@ -49,7 +49,7 @@ async function uploadImage({ base64, mimeType }, { fetchImpl, token, repo }) {
 async function createFeedbackIssue(
   // image（单张）保留为兼容入口——见 index.js 里同一处的说明：线上可能有缓
   // 存着旧前端的浏览器，而这个模块本身也已经有一批只传 image 的测试。
-  { text, image = null, images = null },
+  { text, image = null, images = null, authorName = null },
   { fetchImpl = fetch, token = process.env.FEEDBACK_GITHUB_TOKEN, repo = process.env.FEEDBACK_GITHUB_REPO || DEFAULT_REPO } = {},
 ) {
   if (!token) throw new Error('FEEDBACK_GITHUB_TOKEN 未配置');
@@ -66,8 +66,12 @@ async function createFeedbackIssue(
     imageMarkdown += `\n\n![反馈图片](${downloadUrl})`;
   }
 
+  // 反馈列表要显示"谁提交的"（用户反馈，2026-08-12）——不新增专门的称呼输
+  // 入框，直接复用玩家已经在用的昵称（房间内是当前玩家名，首页是表单里
+  // 正在填的名字）。客户端 extractAuthor() 按这个"提交人：" 前缀解析。
+  const name = (authorName || '').trim().slice(0, 20) || '匿名';
   const title = trimmed.slice(0, 60).replace(/\n/g, ' ');
-  const body = `${trimmed}${imageMarkdown}`;
+  const body = `**提交人：${name}**\n\n${trimmed}${imageMarkdown}`;
   const res = await fetchImpl(`${API_BASE}/repos/${repo}/issues`, {
     method: 'POST',
     headers: authHeaders(token),
@@ -131,30 +135,7 @@ async function listFeedbackWithComments(opts = {}) {
   })));
 }
 
-// authorName 拼进评论正文最前面——这条评论最终是用同一个服务端 token（同
-// 一个 GitHub 账号身份）发出去的，GitHub 上看不出真实是谁写的，得自己在
-// 文字里带上名字。跟自动评估留言的格式（"**评估结论：...**"）不冲突，
-// 客户端负责把两种格式都渲染成看得懂的样子。
-async function addFeedbackComment(
-  issueNumber, authorName, text,
-  { fetchImpl = fetch, token = process.env.FEEDBACK_GITHUB_TOKEN, repo = process.env.FEEDBACK_GITHUB_REPO || DEFAULT_REPO } = {},
-) {
-  if (!token) throw new Error('FEEDBACK_GITHUB_TOKEN 未配置');
-  const trimmed = (text || '').trim();
-  if (!trimmed) throw new Error('缺少评论内容');
-  const name = (authorName || '').trim().slice(0, 30) || '匿名';
-  const body = `**${name}**：${trimmed}`;
-  const res = await fetchImpl(`${API_BASE}/repos/${repo}/issues/${issueNumber}/comments`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify({ body }),
-  });
-  if (!res.ok) throw new Error(`评论发送失败（GitHub ${res.status}）`);
-  const data = await res.json();
-  return { id: data.id, body: data.body, createdAt: data.created_at };
-}
-
 module.exports = {
   createFeedbackIssue, isConfigured,
-  listFeedbackIssues, listFeedbackComments, listFeedbackWithComments, addFeedbackComment,
+  listFeedbackIssues, listFeedbackComments, listFeedbackWithComments,
 };

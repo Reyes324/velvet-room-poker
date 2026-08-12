@@ -9,7 +9,10 @@ const MAX_TEXT_LENGTH = 2000;
 // 这里再挡一道不是重复劳动——本地就能给出即时提示，不用等一次失败的往返。
 const MAX_IMAGES = 4;
 
-export default function FeedbackModal({ onClose }) {
+// playerName：反馈列表要显示"谁提交的"（用户反馈，2026-08-12），不新增
+// 专门的称呼输入框——直接复用调用方已经有的昵称（房间内是当前玩家名，
+// 首页没有对应昵称时就不传，服务端会显示"匿名"）。
+export default function FeedbackModal({ onClose, playerName }) {
   const { socket } = useSocket({});
   const [text, setText] = useState('');
   // 一张图 = { url: 预览用的 object URL, payload: { base64, mimeType } 真正发出去的 }
@@ -60,7 +63,7 @@ export default function FeedbackModal({ onClose }) {
         // 15s 是单张图时定的；多图要串行上传到 GitHub，按张数放宽超时，
     // 否则传满 4 张几乎必然在服务端还没传完时就被判超时。
     const timeoutMs = 15000 + images.length * 10000;
-    socket.timeout(timeoutMs).emit('feedback:submit', { text: text.trim(), images: images.map(i => i.payload) }, (err, res) => {
+    socket.timeout(timeoutMs).emit('feedback:submit', { text: text.trim(), images: images.map(i => i.payload), authorName: playerName || null }, (err, res) => {
       if (err) {
         setStatus('error');
         setError('提交超时，请重试');
