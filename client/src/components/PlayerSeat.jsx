@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useThinkSeconds, useTurnClock } from '../hooks/useThinkSeconds';
 import Card from './Card';
+import eggSplatImg from '../assets/egg-splat.png';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
@@ -19,26 +20,12 @@ const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue'
 // render for this one glyph.
 const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚', '☕️', '😈'];
 
-// 表情选择器实际显示的子集——用户反馈（2026-08-12）：现在这版砸蛋动画
-// 效果不够好（试过 CSS 手写两版，还是不满意，打算换成现成的 Lottie/GIF
-// 素材），先把 🥚 从选择器里屏蔽掉，换好素材再放出来；服务端白名单没删
-// 这个表情（见 server/index.js 同名常量的注释），所以这里只是"选择器不
-// 显示"，不是"整个功能砍掉"。
-const POKE_PICKER_EMOJI = POKE_EMOJI.filter(e => e !== '🥚');
-
-// 🥚 砸碎特效用——之前是 6 个碎片往四面八方飞（radial burst），用户反馈
-// "这个是爆炸的感觉不是砸鸡蛋的感觉"。查了几个真实的蛋壳裂开 CSS 实现
-// （codingstella.com 的蛋形开关动画）后确认根因：径向四散本来就是"爆炸/
-// confetti"的视觉语言，真实的蛋裂开是**两半壳分开**（沿一条锯齿裂缝），
-// 蛋液是**顺裂缝往下流/摊开成一滩**，不是径向喷溅。所以改成固定的
-// 左右两半壳分开（不再需要随机方向组，只有"左"和"右"两个固定实例）。
-// 少量顺着裂缝往下滴落的小滴——dy 明显大于 dx（几乎垂直向下），是主水
-// 渍之外的次要点缀，不是径向喷溅的那种"碎片"。
-const EGG_YOLK_DROPS = [
-  { dx: '-4px', dy: '30px' },
-  { dx: '5px', dy: '36px' },
-  { dx: '-2px', dy: '42px' },
-];
+// 两版纯 CSS 手画的"蛋壳裂开"（径向碎片版、两半壳分开版）用户都不满意，
+// 换成用户直接找来的透明背景 PNG 素材（client/src/assets/egg-splat.png，
+// 原图 1254×1254，本地用 sips 压到 320×320 再进仓库——原图 1.4MB 对一个
+// 只在 56px 座位卡上短暂出现的特效来说太重，压完 140KB）。所以 🥚 重新
+// 放回选择器。
+const POKE_PICKER_EMOJI = POKE_EMOJI;
 
 // The showdown reveal always renders to the side of the seat (toward
 // whichever direction GameTable's cardsSide picks — the center strip, per
@@ -262,40 +249,18 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           )}
         </div>
         <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
-        {/* 表情特效（GitHub #26）——用户明确要求"固定动画就行，不用从谁头像
-            飞过去"，所以是叠在目标座位头像上播一次的定点动画，不是抛物
-            运动。跟 .poke-bubble 复用同一条 poked/pokeEmoji 触发信号，只
-            是这个表情多播一层视觉。目前只有 🥚 这一个，写成简单的
-            emoji===判断而不是抽象成"特效表"——只有一个实例时抽象只会增加
-            阅读成本，真加第二个特效时再回头提炼共性。
-            2026-08-12 用 frontend-design skill 重新设计过一版：不是元素
-            堆砌，是一条完整的四拍时间线——蓄力下落→撞击（挤压+闪光+震
-            动同一瞬间）→裂开（蛋壳分成两半，蛋液顺裂缝往下流）→残留
-            淡出，配色从"随手的蛋黄黄"改成拉拢到这张牌桌自己的暗金体系
-            （--gold-300/--gold-100），读起来是这张桌子自己的效果，不是
-            随手贴的表情贴纸。
-            2026-08-12 二次修订：最初的"四散"版本是蛋壳碎片径向往四面
-            八方飞（radial burst），用户反馈"这个是爆炸的感觉不是砸鸡
-            蛋的感觉"——查了真实的蛋壳裂开 CSS 参考实现后确认，径向喷溅
-            本来就是"爆炸/confetti"的视觉语言。真实的蛋裂开是两半壳沿
-            一条锯齿裂缝分开、蛋液顺裂缝往下流摊开成一滩，不是向四周
-            崩开，所以改成下面这样：固定的左右两半壳（不再是一堆随机
-            方向的小碎片），蛋液主体是纵向拉长、往下"流"的水滴形，只
-            留 2~3 个几乎垂直下落的小滴点缀。 */}
+        {/* 表情特效（GitHub #26）——叠在目标座位头像上播一次的定点动画，
+            跟 .poke-bubble 复用同一条 poked/pokeEmoji 触发信号。
+            两版纯 CSS 手画的蛋壳裂开（径向碎片版、两半壳分开版）用户都
+            不满意，2026-08-12 改成用户直接找的透明背景 PNG 素材
+            （egg-splat.png）——落地瞬间蛋图标挤压消失（squash+闪光+座位
+            震动，物理反馈这部分手感是对的，保留），紧接着淡入这张真实
+            的蛋壳+蛋黄+蛋液图，比继续手画更可信。 */}
         {poked && pokeEmoji === '🥚' && (
           <div className="egg-splat" aria-hidden="true">
             <div className="egg-splat__flash" />
-            <div className="egg-splat__white" />
-            <div className="egg-splat__yolk" />
+            <img className="egg-splat__img" src={eggSplatImg} alt="" />
             <div className="egg-splat__icon">🥚</div>
-            {/* 蛋壳裂成两半——真实蛋裂开的关键信号，锯齿裂缝用 clip-path
-                画出两片不规则边缘，往下方左右两侧分开滑走并带轻微旋转，
-                不是碎成一堆小方块四散。 */}
-            <span className="egg-shell egg-shell--left" />
-            <span className="egg-shell egg-shell--right" />
-            {EGG_YOLK_DROPS.map((d, i) => (
-              <span key={i} className="egg-drop" style={{ '--dx': d.dx, '--dy': d.dy }} />
-            ))}
           </div>
         )}
       </div>

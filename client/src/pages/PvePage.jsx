@@ -39,6 +39,20 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   const [showFeedback, setShowFeedback] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
   const settlementTimerRef = useRef(null);
+  // 拍一拍在人机对战里没有服务端广播这条路可走（AI 收不到，也没有第二个
+  // 真人需要同步）——用户反馈（2026-08-13）："人机对战也保留发表情这个
+  // 交互和效果，我测试比较方便"，纯本地 state 就够，不需要 pve:xxx 事件。
+  const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key, emoji } | null
+
+  function poke(targetId, emoji) {
+    const key = Date.now();
+    setPokedSeat({ targetId, key, emoji: emoji ?? null, fromName: null });
+    // 1.6s 跟 RoomPage.jsx 的真实实现、以及 velvet.css 里 .poke-bubble 的
+    // 淡出时机保持一致。
+    setTimeout(() => {
+      setPokedSeat(p => (p?.key === key ? null : p));
+    }, 1600);
+  }
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ msg, type });
@@ -143,6 +157,8 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
         onOpenStats={() => { emit('pve:get-hand-history'); setShowStats(true); }}
         onOpenFeedback={() => setShowFeedback(true)}
+        onPoke={poke}
+        pokedSeat={pokedSeat}
         isPve
       />
       {showLedger && (
