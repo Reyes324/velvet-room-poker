@@ -12,13 +12,19 @@ import Card from './Card';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
-// Preset reactions for 拍一拍 (GitHub #19's "最好还能拍的时候选表情动画效果"
-// ask) — must match server/index.js's POKE_EMOJI allowlist, since the
-// server re-validates whatever it receives against its own copy rather than
-// trusting the client. 🥚 additionally triggers the "egg splat" special
-// effect below (GitHub #26) — same broadcast, just a richer render for this
-// one glyph.
-const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚'];
+// Full allowlist — must match server/index.js's POKE_EMOJI, since the
+// server re-validates whatever it receives against its own copy rather
+// than trusting the client. 🥚 additionally triggers the "egg splat"
+// special effect below (GitHub #26) — same broadcast, just a richer
+// render for this one glyph.
+const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚', '☕️', '😈'];
+
+// 表情选择器实际显示的子集——用户反馈（2026-08-12）：现在这版砸蛋动画
+// 效果不够好（试过 CSS 手写两版，还是不满意，打算换成现成的 Lottie/GIF
+// 素材），先把 🥚 从选择器里屏蔽掉，换好素材再放出来；服务端白名单没删
+// 这个表情（见 server/index.js 同名常量的注释），所以这里只是"选择器不
+// 显示"，不是"整个功能砍掉"。
+const POKE_PICKER_EMOJI = POKE_EMOJI.filter(e => e !== '🥚');
 
 // 🥚 砸碎特效用——之前是 6 个碎片往四面八方飞（radial burst），用户反馈
 // "这个是爆炸的感觉不是砸鸡蛋的感觉"。查了几个真实的蛋壳裂开 CSS 实现
@@ -302,7 +308,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
               面的表情视觉上明显是"同一排里的一个选项"，不是弹窗外的另一
               个入口。 */}
           <button type="button" className="poke-picker-emoji poke-picker-plain" onClick={() => sendPoke()} aria-label="拍一拍（不带表情）">✋</button>
-          {POKE_EMOJI.map(e => (
+          {POKE_PICKER_EMOJI.map(e => (
             <button key={e} type="button" className="poke-picker-emoji" onClick={() => sendPoke(e)}>{e}</button>
           ))}
         </div>
