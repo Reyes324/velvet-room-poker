@@ -2092,3 +2092,27 @@ for (const p of active) p.wasDisconnectedAtHandStart = p.connected === false;
 2. **反馈本身要显示"谁提交的"**——一开始想加个专门的"称呼"输入框，用户否决："直接用进入房间的昵称就可以了"。改成 `FeedbackModal` 新增 `playerName` prop，三个调用方（`HomePage.jsx` 传当前表单里正在填的 `name`、`RoomPage.jsx`/`PvePage.jsx` 传各自已有的 `playerName`）各自传入已有的昵称，不新增任何输入 UI。提交时这个名字被拼进 `createFeedbackIssue` 生成的 issue 正文最前面（`**提交人：名字**\n\n`，没有名字时回退"匿名"），跟评论那套 `**名字**：` 前缀格式故意不同、互不干扰。客户端新增 `extractAuthor()`（`feedbackFormat.js`）解析出这个前缀，列表卡片头部展示。
 
 验收：服务端全量 383/383 全过（改动本身不涉及既有游戏逻辑，中途一次偶发失败经单独重跑确认是既有的 socket 时序 flaky，与本次改动无关）；`cd client && npm run build` 通过；`npx eslint .` 38/29（比基线还低一条，删除的代码比新增的多）；抛弃式 Playwright 复测确认：卡片正确显示提交人姓名（含没有前缀的旧数据/兼容场景不报错）、页面上不再有任何评论输入框、提交表单本身没有新增"称呼"输入框、提交时 `authorName` 确实带上了首页表单里已经填的名字。
+
+## all-in 动作气泡加醒目样式（GitHub #25，用户反馈，2026-08-12，实现完成）
+
+### 起点：跟用户核对后发现原始反馈的诉求被自动评估理解偏了
+
+issue #25 原文是"有玩家 allin 的时候，其他人跟住的时候添加一个确认跟住的操作"，自动评估把它当成"要不要加二次确认弹窗"的交互设计问题留给人决策。核对细节时用户否决了这个方向——真正想解决的不是"太容易手滑跟注"，而是**现在 all-in 这个动作气泡跟普通加注气泡长得一样朴素，看不出这家伙已经全下了**。根源是视觉信息不够，不是操作缺一道确认。
+
+### 决策
+
+不加确认弹窗（不打断跟注节奏），改成让 all-in 的动作气泡本身足够醒目——红色/暖色调，一眼跟其他动作区分开。
+
+### 实现
+
+服务端本来就已经把 all-in 单独标记（`GameEngine.js`：无论是 raise 还是 call 把自己筹码清零，都会走 `type:'allin'` 这个 label，不是复用 `raise`/`call`），客户端只是从来没利用这个信息做视觉区分——`GameTable.jsx` 拼气泡文案时，`allin` 分支只改了文字（"ALL IN ¥X"），没有传对应的样式标记。
+
+- `GameTable.jsx`：`actionBubbles` state 新增 `allIn` 布尔字段，`label.type === 'allin'` 时置真。
+- `PlayerSeat.jsx`：气泡渲染时按 `bubble.allIn` 加一个 `action-bubble--allin` 修饰类（跟已有的 `action-bubble--folded` 同一个模式）。
+- `velvet.css`：`.action-bubble--allin` 复用 `.modal-btn-danger` 那套红色渐变（`#7A1E1E → #C0392B`）——这是 app 里"危险/重大"动作已有的视觉语言，不是新发明一套配色；再加一圈会脉动的暖色光晕（`allinGlow` keyframe，`prefers-reduced-motion` 时关掉动画只留静态光晕）。
+
+### 测试
+
+抛弃式 Playwright 验证（真实两个浏览器 context，一方全下）：确认全下方自己的气泡带 `.action-bubble--allin` 类且文案含"ALL IN"；**对手屏幕上看到的同一条气泡也是这个样式**（同一份服务端广播状态，不是各自客户端猜的）；实测计算样式确认背景色确实是红色渐变，不是默认暗金色。真机截图确认视觉效果——红色气泡在绿色牌桌背景下非常醒目，跟旁边座位默认暗金色的下注气泡（若有）形成明显对比。
+
+`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线（39/30）持平或更低，零新增；服务端全量 383/383（无关联，未改动服务端）；既有 e2e `game.spec.js` 27/27 无回归。

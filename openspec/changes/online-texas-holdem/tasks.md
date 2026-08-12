@@ -1250,3 +1250,9 @@
 - [x] **修订：反馈进展面板去掉评论输入，改成显示提交人（2026-08-12，同一天内追加确认）**
   - 用户否决了"加评论"功能，也否决了新增专门称呼输入框——去掉 `addFeedbackComment`/`feedback:comment`（评论继续只读展示，不能新增）；提交人姓名直接复用调用方已有的昵称（`FeedbackModal` 新增 `playerName` prop，三处调用方各自传入），不新增输入 UI
   - **验收**：服务端全量 383/383 全过；`cd client && npm run build` 通过；`npx eslint .` 38/29（比基线更低，净删代码）；抛弃式 Playwright 复测确认提交人姓名正确显示、评论区无输入控件、提交表单无新增输入框、`authorName` 正确随昵称一起发出
+
+- [x] **all-in 动作气泡加醒目样式（2026-08-12，GitHub #25，用户反馈核对后发现自动评估理解偏了）**
+  - issue 原文要的是"给跟注加二次确认"，自动评估把它当交互设计问题留白；核对后用户否决了确认弹窗方向——真正诉求是"现在 all-in 气泡跟普通加注气泡一样朴素，看不出全下了"，改成从视觉上一眼区分，不打断跟注节奏
+  - 服务端早就把 all-in 单独标记（`GameEngine.js` 的 `type:'allin'` label，raise/call 清零筹码都会走这条），客户端只是没利用——`GameTable.jsx` 的 `actionBubbles` 新增 `allIn` 字段，`PlayerSeat.jsx` 按此加 `action-bubble--allin` 修饰类，`velvet.css` 复用 `.modal-btn-danger` 同一套红色渐变+脉动暖色光晕
+  - 覆盖范围：不只是全下方自己看到红色气泡，**任何玩家看任何人全下**都是这个样式（同一份广播状态，`PlayerSeat.jsx` 不区分座位是不是自己的）
+  - **验收**：抛弃式 Playwright 真实两个浏览器验证——全下方自己、以及对手屏幕上看到的同一条气泡都带 `.action-bubble--allin` 类+红色渐变背景（实测计算样式确认，不是读源码猜的）；真机截图确认视觉效果；`cd client && npm run build` 通过；`npx eslint .` 38/29 与基线持平或更低；既有 e2e `game.spec.js` 27/27 无回归

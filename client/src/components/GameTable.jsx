@@ -479,8 +479,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       if (actorId && label) {
         let text = null;
         let folded = false;
+        let allIn = false;
         if (label.type === 'fold') { text = '弃牌'; folded = true; }
-        else if (label.type === 'allin') text = `ALL IN ¥${label.amount.toLocaleString()}`;
+        else if (label.type === 'allin') { text = `ALL IN ¥${label.amount.toLocaleString()}`; allIn = true; }
         else if (label.type === 'raise') text = `加注 ¥${label.amount.toLocaleString()}`;
         else if (label.type === 'call') text = `跟注 ¥${label.amount.toLocaleString()}`;
         else text = '过牌'; // check
@@ -500,7 +501,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         // see GameEngine._recordAction.
         const key = Date.now();
         const phase = gameState.lastActionPhase ?? gameState.phase;
-        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, phase } }));
+        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, allIn, phase } }));
       }
     }
     prevActionSeqRef.current = seq;
