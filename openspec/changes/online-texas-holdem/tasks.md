@@ -1278,3 +1278,7 @@
 - [x] **修订：移除断线"帮TA弃牌"手动操作（2026-08-12，用户反馈：跟已有的断线跨手自动离座+20秒行动倒计时功能重复，且标签文案容易让人困惑）**
   - 客户端断线徽标改回纯展示"断线中"，服务端 `game:fold-disconnected`/`foldForDisconnected`/`resolveDisconnectedTurn` 整条链路删除（确认过 `resolveDisconnectedTurn` 并非跟自动超时共享逻辑，是过时注释）
   - **验收**：相关服务端/e2e 测试一并删除；`cd client && npm run build` 通过；`npx eslint .` 与基线持平；服务端全量 376/376；e2e `game.spec.js` 26/26 无回归
+
+- [x] **再次修订：砸蛋特效从"径向爆炸"改成"两半壳分开+往下流"（2026-08-12，用户反馈+参考成熟方案）**
+  - 查了真实蛋壳裂开 CSS 实现后确认根因：径向碎片/水滴本身就是"爆炸"的视觉语言；改成固定左右两半壳（clip-path 锯齿裂缝）往下方分开，蛋白蛋黄用 scaleY+translateY 做成"往下流"的水滴形而不是径向放大的圆
+  - **验收**：抛弃式 Playwright 结构断言（两半壳各一个，不再是一堆碎片）+ `getComputedStyle` 实测确认两半壳 transform 精确对称分开、蛋液 scaleY/translateY 符合下流设计；真机截图确认视觉上是向下淌开而非居中实心圆；构建/lint/服务端全量测试均无回归

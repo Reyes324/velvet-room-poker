@@ -20,25 +20,18 @@ const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue'
 // one glyph.
 const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚'];
 
-// 🥚 砸碎特效用——蛋壳碎片/蛋液飞溅的固定方向组，"洒一地"的杂乱感（用户
-// 反馈 2026-08-12："想要扔鸡蛋砸碎、宣泄情绪的感觉"，原来只有图标+光晕
-// 看不出"碎"）。写死几组固定值而不是每次随机：真随机会让同一个特效每次
-// 拍视觉噪音不一致，反而认不出"这是同一个动作"。dy 普遍比 dx 大且为正
-// （往下飞散），带一点点重力坠落的感觉，不是纯球形扩散。
-const EGG_SHELL_FRAGS = [
-  { dx: '-30px', dy: '22px', rot: '-140deg' },
-  { dx: '26px', dy: '28px', rot: '160deg' },
-  { dx: '-18px', dy: '38px', rot: '90deg' },
-  { dx: '20px', dy: '40px', rot: '-100deg' },
-  { dx: '-34px', dy: '10px', rot: '60deg' },
-  { dx: '32px', dy: '8px', rot: '-60deg' },
-];
+// 🥚 砸碎特效用——之前是 6 个碎片往四面八方飞（radial burst），用户反馈
+// "这个是爆炸的感觉不是砸鸡蛋的感觉"。查了几个真实的蛋壳裂开 CSS 实现
+// （codingstella.com 的蛋形开关动画）后确认根因：径向四散本来就是"爆炸/
+// confetti"的视觉语言，真实的蛋裂开是**两半壳分开**（沿一条锯齿裂缝），
+// 蛋液是**顺裂缝往下流/摊开成一滩**，不是径向喷溅。所以改成固定的
+// 左右两半壳分开（不再需要随机方向组，只有"左"和"右"两个固定实例）。
+// 少量顺着裂缝往下滴落的小滴——dy 明显大于 dx（几乎垂直向下），是主水
+// 渍之外的次要点缀，不是径向喷溅的那种"碎片"。
 const EGG_YOLK_DROPS = [
-  { dx: '-14px', dy: '30px' },
-  { dx: '16px', dy: '34px' },
-  { dx: '-24px', dy: '18px' },
-  { dx: '24px', dy: '20px' },
-  { dx: '0px', dy: '40px' },
+  { dx: '-4px', dy: '30px' },
+  { dx: '5px', dy: '36px' },
+  { dx: '-2px', dy: '42px' },
 ];
 
 // The showdown reveal always renders to the side of the seat (toward
@@ -271,23 +264,29 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             阅读成本，真加第二个特效时再回头提炼共性。
             2026-08-12 用 frontend-design skill 重新设计过一版：不是元素
             堆砌，是一条完整的四拍时间线——蓄力下落→撞击（挤压+闪光+震
-            动同一瞬间）→四散（蛋壳/蛋液带旋转甩出）→残留淡出，配色从
-            "随手的蛋黄黄"改成拉拢到这张牌桌自己的暗金体系（--gold-300/
-            --gold-100），读起来是这张桌子自己的效果，不是随手贴的表情
-            贴纸。 */}
+            动同一瞬间）→裂开（蛋壳分成两半，蛋液顺裂缝往下流）→残留
+            淡出，配色从"随手的蛋黄黄"改成拉拢到这张牌桌自己的暗金体系
+            （--gold-300/--gold-100），读起来是这张桌子自己的效果，不是
+            随手贴的表情贴纸。
+            2026-08-12 二次修订：最初的"四散"版本是蛋壳碎片径向往四面
+            八方飞（radial burst），用户反馈"这个是爆炸的感觉不是砸鸡
+            蛋的感觉"——查了真实的蛋壳裂开 CSS 参考实现后确认，径向喷溅
+            本来就是"爆炸/confetti"的视觉语言。真实的蛋裂开是两半壳沿
+            一条锯齿裂缝分开、蛋液顺裂缝往下流摊开成一滩，不是向四周
+            崩开，所以改成下面这样：固定的左右两半壳（不再是一堆随机
+            方向的小碎片），蛋液主体是纵向拉长、往下"流"的水滴形，只
+            留 2~3 个几乎垂直下落的小滴点缀。 */}
         {poked && pokeEmoji === '🥚' && (
           <div className="egg-splat" aria-hidden="true">
             <div className="egg-splat__flash" />
             <div className="egg-splat__white" />
             <div className="egg-splat__yolk" />
             <div className="egg-splat__icon">🥚</div>
-            {/* 蛋壳碎片——摔碎的关键视觉信号，纯图标+光晕看不出"碎"，得有
-                实际飞散开的碎片。方向/角度写死几组固定值，够"洒一地"的
-                杂乱感就行，不需要真随机（真随机每次拍都不一样反而增加
-                视觉噪音，读不出这是同一个特效）。 */}
-            {EGG_SHELL_FRAGS.map((f, i) => (
-              <span key={i} className="egg-shell" style={{ '--dx': f.dx, '--dy': f.dy, '--rot': f.rot }} />
-            ))}
+            {/* 蛋壳裂成两半——真实蛋裂开的关键信号，锯齿裂缝用 clip-path
+                画出两片不规则边缘，往下方左右两侧分开滑走并带轻微旋转，
+                不是碎成一堆小方块四散。 */}
+            <span className="egg-shell egg-shell--left" />
+            <span className="egg-shell egg-shell--right" />
             {EGG_YOLK_DROPS.map((d, i) => (
               <span key={i} className="egg-drop" style={{ '--dx': d.dx, '--dy': d.dy }} />
             ))}

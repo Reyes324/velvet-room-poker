@@ -189,11 +189,13 @@
       （.egg-splat__flash）和座位震动（.is-egg-hit）严格对齐到同一
       时间点，三者叠加才是"砸中"的实感，分开各自触发只是"凑巧同时
       发生的三件事"。
-   ③ 四散释放 340→950ms —— 蛋白/蛋黄从挤扁的落点"绽开"，蛋壳碎片和
-      蛋液带旋转甩出（ease-out 快出慢停，模拟动量耗散），跟①的
-      "蓄力"、②的"释放"构成完整的张力曲线。
-   ④ 残留淡出 950→1600ms —— 散落的碎片/水渍基本静止，整层在收尾
-      250ms 一起淡出，跟 .poke-bubble 的收场时机对齐，两者同时收场。 */
+   ③ 裂开流淌 340→950ms —— 蛋壳分成两半沿裂缝滑开，蛋液顺裂缝往下
+      流、摊开成一滩（不是径向喷溅——真实参考了几个蛋壳裂开的 CSS
+      实现后确认，"往四面八方飞的碎片"读起来是爆炸/confetti，"两半
+      壳分开+液体往下流"才是"蛋裂开"该有的样子，用户反馈 2026-08-12
+      "这个是爆炸的感觉不是砸鸡蛋的感觉"就是冲着这一点来的）。
+   ④ 残留淡出 950→1600ms —— 蛋壳/水渍基本静止，整层在收尾 250ms 一起
+      淡出，跟 .poke-bubble 的收场时机对齐，两者同时收场。 */
 .egg-splat { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; overflow:visible; pointer-events:none; z-index:9; animation:eggSplatFadeOut .25s ease-in 1.35s forwards; }
 
 /* ① 蓄力下落——蛋图标本身，下落时轻微自转，落地瞬间挤压（squash）后
@@ -215,51 +217,67 @@
 }
 @keyframes eggFlash { 0%{ transform:scale(.4); opacity:0; } 35%{ transform:scale(1.1); opacity:1; } 100%{ transform:scale(1.6); opacity:0; } }
 
-/* ③ 蛋白——半透明、不规则（两层偏心 radial-gradient 叠出"摊开一滩"而
-   不是正圆），色相是暖金-100 而不是冷白，跟牌桌整体色温一致；蛋黄叠在
-   正中间、色相是暗金-300，两层一起才读得出"这是个摔碎的蛋"。 */
+/* ③ 蛋白+蛋黄——不是径向扩散的圆，是从撞击点往下"流"的水滴形：宽度
+   变化不大，主要靠 scaleY（纵向拉长）+ translateY（整体下移）表现液体
+   顺着裂缝往下淌、在座位卡下半部摊开成一滩的感觉。顶部窄、底部宽的
+   border-radius（水滴形）比正圆更像"往下滴"而不是"向外炸"。色相是
+   暖金-100（蛋白）/暗金-300（蛋黄），不用冷白/纯黄，跟牌桌整体色温
+   一致。 */
 .egg-splat__white {
-  position:absolute; width:155%; height:155%; border-radius:46% 54% 52% 48%/50% 46% 54% 50%;
+  position:absolute; top:38%; left:50%; width:70%; height:85%;
+  transform-origin:50% 0%; margin-left:-35%;
+  border-radius:50% 50% 42% 42% / 40% 40% 60% 60%;
   background:
-    radial-gradient(ellipse 58% 52% at 40% 44%, rgba(250,240,204,.6), rgba(250,240,204,0) 70%),
-    radial-gradient(ellipse 52% 58% at 62% 60%, rgba(250,240,204,.42), rgba(250,240,204,0) 72%);
-  opacity:0; animation:eggWhiteSplat .5s cubic-bezier(.15,.8,.35,1) .32s both;
+    radial-gradient(ellipse 90% 60% at 50% 15%, rgba(250,240,204,.65), rgba(250,240,204,.15) 70%, rgba(250,240,204,0) 88%);
+  opacity:0; animation:eggWhiteDrip .55s cubic-bezier(.2,.7,.25,1) .32s both;
 }
 .egg-splat__yolk {
-  position:absolute; width:32%; height:32%; border-radius:50%;
+  position:absolute; top:40%; left:50%; width:30%; height:30%;
+  transform-origin:50% 0%; margin-left:-15%;
+  border-radius:50%;
   background:radial-gradient(circle at 38% 35%, #F0DC96, #D4AF37 62%, #A87200 100%);
   box-shadow:0 0 6px rgba(0,0,0,.3) inset;
-  opacity:0; animation:eggYolkSplat .4s cubic-bezier(.15,.8,.35,1) .34s both;
+  opacity:0; animation:eggYolkDrip .5s cubic-bezier(.2,.7,.25,1) .34s both;
 }
-@keyframes eggWhiteSplat { 0%{ transform:scale(.15); opacity:0; } 30%{ opacity:1; } 100%{ transform:scale(1); opacity:0; } }
-@keyframes eggYolkSplat { 0%{ transform:scale(.25); opacity:0; } 35%{ opacity:1; } 100%{ transform:scale(1); opacity:0; } }
+@keyframes eggWhiteDrip { 0%{ transform:scaleY(.2) translateY(0); opacity:0; } 25%{ opacity:1; } 100%{ transform:scaleY(1) translateY(14%); opacity:0; } }
+@keyframes eggYolkDrip { 0%{ transform:scale(.4) translateY(0); opacity:0; } 30%{ opacity:1; } 100%{ transform:scale(1) translateY(20%); opacity:0; } }
 @keyframes eggSplatFadeOut { to { opacity:0; } }
 
-/* 蛋壳碎片——摔碎的关键信号，撞击那一刻（.3s）才出现，往 JS 传入的
-   --dx/--dy 方向甩出+旋转 --rot，快出慢停（cubic-bezier 前段陡后段
-   缓），模拟动量耗散而不是匀速平移。暗金渐变的小碎片，不是纯白方块。 */
-.egg-shell {
-  position:absolute; width:6px; height:7px;
+/* 蛋壳裂成两半——真实蛋裂开的关键信号，不是碎成一堆小方块四散（那是
+   confetti/爆炸的视觉语言，用户反馈 2026-08-12 明确指出过）。撞击那一
+   刻（.3s）才出现，clip-path 画出锯齿裂缝，两半各自往下方左右两侧
+   滑开并带轻微旋转，快出慢停模拟动量耗散。暗金渐变，不是纯白。 */
+.egg-shell { position:absolute; width:16px; height:14px; opacity:0; }
+.egg-shell--left {
+  clip-path:polygon(0 0, 100% 0, 55% 40%, 75% 65%, 40% 55%, 60% 100%, 0 100%);
   background:linear-gradient(135deg,#F0DC96,#C9900A);
-  clip-path:polygon(50% 0%, 100% 35%, 78% 100%, 15% 85%);
-  opacity:0; animation:eggFragFly .55s cubic-bezier(.15,.75,.3,1) .3s both;
+  animation:eggShellLeft .5s cubic-bezier(.2,.7,.3,1) .3s both;
 }
-/* 蛋液飞溅——比蛋壳碎片小、留存时间更长一点点，制造"碎片先甩出、液体
-   余韵稍晚淡出"的层次感。 */
+.egg-shell--right {
+  clip-path:polygon(0 0, 100% 0, 100% 100%, 45% 100%, 60% 60%, 30% 70%, 50% 35%);
+  background:linear-gradient(315deg,#E8CC6A,#A87200);
+  animation:eggShellRight .5s cubic-bezier(.2,.7,.3,1) .3s both;
+}
+@keyframes eggShellLeft {
+  0% { transform:translate(-2px,0) rotate(0deg); opacity:0; }
+  10% { opacity:1; }
+  100% { transform:translate(-15px,20px) rotate(-35deg); opacity:0; }
+}
+@keyframes eggShellRight {
+  0% { transform:translate(2px,0) rotate(0deg); opacity:0; }
+  10% { opacity:1; }
+  100% { transform:translate(15px,20px) rotate(35deg); opacity:0; }
+}
+/* 少量顺着裂缝几乎垂直下落的小滴，主水渍之外的点缀，dy 远大于 dx。 */
 .egg-drop {
-  position:absolute; width:5px; height:5px; border-radius:50%; background:#D4AF37; opacity:0;
-  animation:eggDropFly .68s cubic-bezier(.15,.8,.35,1) .3s both;
-}
-@keyframes eggFragFly {
-  0% { transform:translate(0,0) rotate(0deg) scale(1); opacity:0; }
-  8% { opacity:1; }
-  100% { transform:translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(.65); opacity:0; }
+  position:absolute; width:4px; height:4px; border-radius:50%; background:#D4AF37; opacity:0;
+  animation:eggDropFly .68s cubic-bezier(.15,.8,.35,1) .38s both;
 }
 @keyframes eggDropFly {
   0% { transform:translate(0,0) scale(1); opacity:0; }
   10% { opacity:1; }
   68% { opacity:.85; }
-  100% { transform:translate(var(--dx), var(--dy)) scale(.45); opacity:0; }
+  100% { transform:translate(var(--dx), var(--dy)) scale(.4); opacity:0; }
 }
 
 /* ② 撞击的物理反馈——整个座位跟着震一下，跟①落地时刻（.3s）严格对齐，
