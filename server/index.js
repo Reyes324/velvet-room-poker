@@ -597,6 +597,41 @@ function createServer({
       }
     });
 
+    // 反馈进展可见 + 批注（用户反馈，2026-08-12）——列表直接读 GitHub Issue
+    // （连各自的评论一起，客户端要求整页展示、不做二级详情导航），不建独
+    // 立存储，见 feedbackReporter.js 顶部注释。
+    socket.on('feedback:list', async (_payload, callback) => {
+      if (!feedbackReporter.isConfigured()) {
+        return callback?.({ error: '反馈服务暂时不可用，请稍后再试' });
+      }
+      try {
+        const issues = await feedbackReporter.listFeedbackWithComments();
+        callback?.({ ok: true, issues });
+      } catch (e) {
+        console.error('[feedback] listFeedbackWithComments failed:', e.message);
+        callback?.({ error: '获取反馈列表失败，请稍后再试' });
+      }
+    });
+
+    socket.on('feedback:comment', async ({ issueNumber, authorName, text } = {}, callback) => {
+      if (!feedbackReporter.isConfigured()) {
+        return callback?.({ error: '反馈服务暂时不可用，请稍后再试' });
+      }
+      const trimmed = (text || '').trim();
+      if (!trimmed) return callback?.({ error: '请输入评论内容' });
+      if (trimmed.length > FEEDBACK_MAX_TEXT_LENGTH) {
+        return callback?.({ error: `评论太长（最多 ${FEEDBACK_MAX_TEXT_LENGTH} 字）` });
+      }
+      if (!Number.isInteger(issueNumber)) return callback?.({ error: '缺少反馈编号' });
+      try {
+        const comment = await feedbackReporter.addFeedbackComment(issueNumber, authorName, trimmed);
+        callback?.({ ok: true, comment });
+      } catch (e) {
+        console.error('[feedback] addFeedbackComment failed:', e.message);
+        callback?.({ error: '评论发送失败，请稍后再试' });
+      }
+    });
+
     socket.on('room:create', ({ playerId, playerName }) => {
       myPlayerId = playerId;
       clearTimeout(pendingRemovals.get(playerId));

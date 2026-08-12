@@ -26,6 +26,12 @@ beforeEach(async () => {
   fakeReporter = {
     isConfigured: vi.fn(() => true),
     createFeedbackIssue: vi.fn(async () => ({ issueNumber: 7, issueUrl: 'https://github.com/x/y/issues/7' })),
+    listFeedbackWithComments: vi.fn(async () => ([
+      { number: 23, title: '断线问题', body: '正文', state: 'closed', labels: ['feedback'], createdAt: 't1', url: 'u1', comments: [] },
+    ])),
+    addFeedbackComment: vi.fn(async (issueNumber, authorName, text) => ({
+      id: 1, body: `**${authorName}**：${text}`, createdAt: 't',
+    })),
   };
   const created = createServer({ feedbackReporter: fakeReporter });
   server = created.server;
@@ -132,6 +138,81 @@ describe('feedback:submit', () => {
     fakeReporter.createFeedbackIssue = vi.fn(async () => { throw new Error('GitHub 502'); });
     const c = await connect();
     const res = await emitWithAck(c, 'feedback:submit', { text: '正常反馈' });
+    expect(res.error).toBeTruthy();
+    expect(c.connected).toBe(true);
+  });
+});
+
+// 反馈进展可见 + 批注（2026-08-12，用户反馈）
+describe('feedback:list', () => {
+  it('正常调用：透传 listFeedbackWithComments 的结果', async () => {
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:list');
+    expect(fakeReporter.listFeedbackWithComments).toHaveBeenCalled();
+    expect(res).toEqual({
+      ok: true,
+      issues: [{ number: 23, title: '断线问题', body: '正文', state: 'closed', labels: ['feedback'], createdAt: 't1', url: 'u1', comments: [] }],
+    });
+  });
+
+  it('isConfigured() 返回 false：直接回错误，不调用 listFeedbackWithComments', async () => {
+    fakeReporter.isConfigured = vi.fn(() => false);
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:list');
+    expect(res.error).toBeTruthy();
+    expect(fakeReporter.listFeedbackWithComments).not.toHaveBeenCalled();
+  });
+
+  it('listFeedbackWithComments 抛错：回调 { error }，不让异常冒泡把 socket 断掉', async () => {
+    fakeReporter.listFeedbackWithComments = vi.fn(async () => { throw new Error('GitHub 502'); });
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:list');
+    expect(res.error).toBeTruthy();
+    expect(c.connected).toBe(true);
+  });
+});
+
+describe('feedback:comment', () => {
+  it('正常调用：issueNumber/authorName/text 原样透传给 addFeedbackComment', async () => {
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: '我也遇到了' });
+    expect(fakeReporter.addFeedbackComment).toHaveBeenCalledWith(23, 'Alice', '我也遇到了');
+    expect(res).toEqual({ ok: true, comment: { id: 1, body: '**Alice**：我也遇到了', createdAt: 't' } });
+  });
+
+  it('缺少 issueNumber：直接回错误，不调用 addFeedbackComment', async () => {
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:comment', { authorName: 'Alice', text: '文字' });
+    expect(res.error).toBeTruthy();
+    expect(fakeReporter.addFeedbackComment).not.toHaveBeenCalled();
+  });
+
+  it('评论内容为空：直接回错误，不调用 addFeedbackComment', async () => {
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: '   ' });
+    expect(res.error).toBeTruthy();
+    expect(fakeReporter.addFeedbackComment).not.toHaveBeenCalled();
+  });
+
+  it('评论内容超过 2000 字：直接回错误，不调用 addFeedbackComment', async () => {
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: 'x'.repeat(2001) });
+    expect(res.error).toBeTruthy();
+    expect(fakeReporter.addFeedbackComment).not.toHaveBeenCalled();
+  });
+
+  it('isConfigured() 返回 false：直接回错误，不调用 addFeedbackComment', async () => {
+    fakeReporter.isConfigured = vi.fn(() => false);
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: '文字' });
+    expect(res.error).toBeTruthy();
+    expect(fakeReporter.addFeedbackComment).not.toHaveBeenCalled();
+  });
+
+  it('addFeedbackComment 抛错：回调 { error }，不让异常冒泡把 socket 断掉', async () => {
+    fakeReporter.addFeedbackComment = vi.fn(async () => { throw new Error('GitHub 502'); });
+    const c = await connect();
+    const res = await emitWithAck(c, 'feedback:comment', { issueNumber: 23, authorName: 'Alice', text: '文字' });
     expect(res.error).toBeTruthy();
     expect(c.connected).toBe(true);
   });

@@ -1239,3 +1239,10 @@
   - 根因：邀请链接在本地房间码对不上时会走 `room:join`（而非更安全的 `room:sync`），`RoomManager.addPlayer` 只要发现同一 playerId 仍标记 `connected:true` 就拒绝为"重复加入"——但这个标记可能是过期的（切后台/锁屏，ping 超时还没判定真断线），`HomePage.jsx` 收到这个报错后只是显示文案，没有任何重试，人就卡住了
   - 修复（纯客户端）：`HomePage.jsx` 的 `game:error` 处理里，撞上"已在房间内"时自动改发 `room:sync`（这条路径本来就不做重复检查，直接按 playerId 重新关联），成功收到 `room:state` 就当正常加入处理；真的房间不在了（`room:gone`）才把原始报错亮出来。服务端未改动。
   - **验收**：抛弃式 Playwright 复现真实场景（一个 context 创建房间但不关闭，模拟服务端仍判定在线的旧连接；另一个只带同一 playerId、不带房间码打开邀请链接）确认不再卡死、能自动进房间；服务端既有单测（"同一玩家重复加入仍报错"）原样通过，确认没有削弱这道防重复检查本身；`cd client && npm run build` 通过；`npx eslint .` 39/30 与基线持平；既有 e2e S1 三条无回归
+
+- [x] **反馈进展可见 + 批注（2026-08-12，用户反馈：提交反馈后完全是单向黑箱，看不到后续，也不能补充说明）**
+  - 决策：不新建存储，直接读写已有的 GitHub Issue（反馈本来就存在这里，自动评估也是直接操作这些 issue，两份数据源分开会不同步）；状态直接从 issue 的 `state`/`labels` 推（closed→已处理，open+accepted/design→评估中，open+feedback→待处理）
+  - 入口不变（点"问题反馈"还是先看提交表单），表单上加"查看反馈进展"链接；列表**不做两级详情导航**，每条反馈是一张完整卡片（提交时间+状态+完整原文+图片+全部评论+评论输入框），复用 `HandHistoryModal` 已有的全屏侧滑面板样式
+  - 服务端 `feedbackReporter.js` 新增 `listFeedbackIssues`/`listFeedbackComments`/`listFeedbackWithComments`/`addFeedbackComment`，新增 socket 事件 `feedback:list`/`feedback:comment`；评论作者名字拼进正文前缀（`**名字**：`），客户端 `feedbackFormat.js` 负责解析回显示名字，`vr_feedbackName` 记住填过的名字
+  - **真机排查中顺带修了一个桌面端 bug**：`HomePage.jsx` 的 `.home` 容器从未参与 `global.css` 里"桌面端把移动端 UI 框成居中 460px 一列"的既有规则，导致新加的全屏面板在桌面视口下被 `.home` 自己的 `overflow:hidden` 裁切、完全点不到；修法是把 `.home` 加进那条既有选择器列表
+  - **验收**：服务端单测新增 20 条（`feedbackReporter.test.js`）+ 集成测试新增约 12 条（`feedback.integration.test.js`），全量 392/392 全过；客户端本地无真实 GitHub token，用真实 Playwright 拦截 socket 层直接回真实数据结构验证渲染（状态标签、图片摘出、自动评估签名识别、评论提交即时更新、返回按钮语义）；`cd client && npm run build` 通过；`npx eslint .` 39/30 与基线持平

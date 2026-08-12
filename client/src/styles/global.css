@@ -41,7 +41,7 @@ a { color: inherit; text-decoration: none; }
 /* ── Desktop: center the mobile-portrait game as a framed column ── */
 @media (min-width: 600px) {
   #root { align-items: center; }
-  .table-view, .lobby {
+  .table-view, .lobby, .home {
     width: 100%;
     max-width: 460px;
     box-shadow: 0 0 120px rgba(0,0,0,.65);

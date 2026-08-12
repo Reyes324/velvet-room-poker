@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { compressImage } from '../utils/compressImage';
+import FeedbackListPanel from './FeedbackListPanel';
 import './FeedbackModal.css';
 
 const MAX_TEXT_LENGTH = 2000;
@@ -17,6 +18,11 @@ export default function FeedbackModal({ onClose }) {
   const [images, setImages] = useState([]);
   const [status, setStatus] = useState('idle'); // idle | submitting | done | error
   const [error, setError] = useState('');
+  // 用户反馈（2026-08-12）：提交完全是单向的，看不到自己/别人提的反馈后
+  // 续处理到什么程度了。默认还是这个提交表单（不改变入口习惯），加一个
+  // 不起眼的小入口进反馈列表——列表本身是独立的全屏面板（见
+  // FeedbackListPanel），不是这个弹窗内部的另一个 tab。
+  const [showList, setShowList] = useState(false);
 
   async function handleImageChange(e) {
     const files = Array.from(e.target.files ?? []);
@@ -69,6 +75,11 @@ export default function FeedbackModal({ onClose }) {
     });
   }
 
+  // FeedbackListPanel 渲染在这个组件自己的 overlay 外面（兄弟节点，不是
+  // 子节点）——它有自己的背景点击关闭逻辑，嵌在里面的话，点它的背景会
+  // 冒泡触发外层这个 overlay 的 onClick，把两层一起关掉。
+  if (showList) return <FeedbackListPanel onClose={() => setShowList(false)} />;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal feedback-modal" onClick={(e) => e.stopPropagation()}>
@@ -109,6 +120,7 @@ export default function FeedbackModal({ onClose }) {
             </div>
             <p className="feedback-image-notice">图片会公开发布在 GitHub 上，注意不要包含隐私信息</p>
             {error && <p className="home-error">{error}</p>}
+            <div className="feedback-list-link" onClick={() => setShowList(true)}>查看反馈进展 ›</div>
             <div className="modal-btns">
               <div className="modal-btn modal-btn--secondary" onClick={onClose}>取消</div>
               <div
