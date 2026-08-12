@@ -2018,3 +2018,29 @@ for (const p of active) p.wasDisconnectedAtHandStart = p.connected === false;
 - 服务端：`server/__tests__/integration.test.js` 新增 2 条——`getLobbyState().bustDecisionEndsAt` 归零时是约 20 秒后的时间戳；20 秒无人决策后服务端真的自动 `markLeft`（真实等待 21 秒，不用假计时器——本项目刚在上一节因为假计时器 + 真实 socket 混用踩过一次时序噪声，这里的超时本身够短，直接真实等更可靠）。全量服务端单测 373/373 全过。
 - 客户端：抛弃式 Playwright 验证（未入库为正式 e2e，属一次性确认）——(1) 等待方弹窗里确实没有任何"退出"文案的可点元素，等待条 `pointer-events` 计算值为 `none`；(2) 两边的倒计时数字来自同一个 `bustDecisionEndsAt`，实测相差 ≤2 秒；(3) 无人点击的情况下，真实等待超过 20 秒，归零方的页面自己离开了牌桌（`.game-stage` 消失），单挑桌另一方的等待弹窗也随之消失、游戏正确结束回大厅。
 - `cd client && npm run build` 通过；`npx eslint .` 39/30，与基线持平，零新增；既有 e2e `game.spec.js` 全量 27/27 通过（含依赖 `BustDecisionModal`/`BustWaitModal` 的两条 S3 用例，验证新版弹窗没有破坏既有借一底/旁观留下流程）。
+
+## 修复：点邀请链接想重连，撞上"已在房间内"卡在首页出不去（用户反馈，2026-08-12，实现完成）
+
+### 起点
+
+在讨论上面"断线跨手自动离座"那条反馈（#23）的两个设计细节时，用户顺带报了一个真实遇到的问题："我试过点击链接回来，然后它报错显示'已在房间内'，可是我还停留在链接的主页。"——这不是设计取舍，是一个真的卡死用户的 bug。
+
+### 根因
+
+`App.jsx` 的会话恢复 effect：邀请链接 `/room/CODE` 打开时，只有本地 `vr_roomCode` 跟链接里的房间码**一致**才会走安全的 `room:sync` 恢复路径直接进 `RoomPage`；只要不一致（比如之前已经被清掉、或者点的是别人发来的另一个房间的链接），就会退回 `HomePage`（`autoJoinCode`），走 `room:join` 这条路。
+
+`room:join` 背后的 `RoomManager.addPlayer`（`server/RoomManager.js:106`）在同一个 `playerId` 已有房间记录、且 `existing.connected !== false` 时会拒绝，返回"已在房间内"——这个检查本意是防止真的重复加入，但 `connected` 这个标记完全可能是过期的：手机切后台/锁屏不会干净地关闭 socket，服务端要等 ping 超时才会判定真的断线，这段窗口期内点链接回来，读到的还是旧值。这明明是本人（`playerId` 是这台设备本地存的身份），只是想换一条新连接接上去。
+
+`HomePage.jsx` 收到这个 `game:error`后，只是把原始文案显示在表单上（`setError(msg)`），没有任何重试机制——用户就卡在这个报错的首页表单上，看不出下一步该做什么。
+
+### 修复
+
+`HomePage.jsx` 的 `game:error` 处理新增一个特判：如果错误正是"已在房间内"、且当前在加入流程里（`mode === 'join'`）、且填了房间码，就自动改发 `room:sync`（这条路径不做"是否已有活跃连接"的检查，只按 `playerId` 重新关联 socket——本来就是给真正的重连用的）。收到 `room:state` 说明重连成功，直接当成一次正常加入处理（写 localStorage、调用 `onJoined` 进房间）；如果收到的是 `room:gone`（房间是真的不在了，不是这次要兜的情况），才把原始报错亮出来。
+
+不需要改服务端——`room:sync` 本来就存在且行为完全匹配这个场景，缺的只是客户端在遇到这个特定错误时"换一条路再试一次"的这一步。
+
+### 测试
+
+抛弃式 Playwright 验证（真实两个浏览器 context：一个创建房间但不关闭，模拟"服务端仍判定为在线"的旧连接；另一个只带着同一个 `playerId`、不带 `vr_roomCode` 打开邀请链接，复现用户报的真实路径——`App.jsx` 因本地房间码对不上落到 `room:join`）：确认不再卡在错误提示上，能自动被带入房间，且 `vr_roomCode` 被正确写回本地。过程中一度误判修复没生效——原因是 Playwright 配置跑的是 `client/dist` 生产构建（`webServer.command: node server/index.js`），而不是 Vite dev server，改完 `HomePage.jsx` 忘了先 `npm run build` 就直接跑 e2e，验证的其实是旧代码；补跑 `npm run build` 后复测通过，记录在此避免下次重复踩同一个坑。
+
+服务端行为完全未改动（`server/__tests__/RoomManager.test.js` 里"同一玩家重复加入（仍在线）→ 返回'已在房间内'"这条既有单测原样通过，说明这条防重复检查本身没被削弱——只是客户端多了一步"失败后换个安全的路径自动重试"）；`cd client && npm run build` 通过；`npx eslint .` 39/30，与基线持平；既有 e2e S1 三条通过，无回归。

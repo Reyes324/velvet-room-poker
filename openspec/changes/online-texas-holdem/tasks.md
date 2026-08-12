@@ -1234,3 +1234,8 @@
   - `server/index.js`：`BUST_DECISION_TIMEOUT_MS` 5 分钟 → 20 秒；新增 `room.bustDecisionEndsAt`（绝对时间戳）随 `maybeArmBustTimer` 的生命周期维护，经 `getLobbyState()` 广播——跟 `turnClock`/结算倒计时同一套模式，两边看到的数字天然同步
   - 客户端抽出共享 hook `client/src/hooks/useSecondsLeft.js`（原来只在 `SettlementModal.jsx` 内部定义），`BustDecisionModal.jsx` 用它显示倒计时+归零时自动 `onLeave`，`BustWaitModal.jsx` 去掉退出按钮换成不可点的等待条；`PvePage.jsx` 未受影响（不传 `bustDecisionEndsAt`，prop 默认 `null`）
   - **验收**：服务端单测新增 2 条（`bustDecisionEndsAt` 字段正确性、20 秒真实超时后自动 `markLeft`），全量 373/373 全过；`cd client && npm run build` 通过；`npx eslint .` 39/30 与基线持平；既有 e2e `game.spec.js` 27/27 通过；抛弃式 Playwright 验证确认等待方弹窗真的没有任何可点的退出元素（`pointer-events:none` 实测）、两边倒计时数字同步（≤2 秒误差）、无人点击时归零方 20 秒后真的自动离开牌桌、单挑桌对局正确结束
+
+- [x] **修复：点邀请链接想重连撞上"已在房间内"，卡在首页出不去（2026-08-12，用户真实遇到）**
+  - 根因：邀请链接在本地房间码对不上时会走 `room:join`（而非更安全的 `room:sync`），`RoomManager.addPlayer` 只要发现同一 playerId 仍标记 `connected:true` 就拒绝为"重复加入"——但这个标记可能是过期的（切后台/锁屏，ping 超时还没判定真断线），`HomePage.jsx` 收到这个报错后只是显示文案，没有任何重试，人就卡住了
+  - 修复（纯客户端）：`HomePage.jsx` 的 `game:error` 处理里，撞上"已在房间内"时自动改发 `room:sync`（这条路径本来就不做重复检查，直接按 playerId 重新关联），成功收到 `room:state` 就当正常加入处理；真的房间不在了（`room:gone`）才把原始报错亮出来。服务端未改动。
+  - **验收**：抛弃式 Playwright 复现真实场景（一个 context 创建房间但不关闭，模拟服务端仍判定在线的旧连接；另一个只带同一 playerId、不带房间码打开邀请链接）确认不再卡死、能自动进房间；服务端既有单测（"同一玩家重复加入仍报错"）原样通过，确认没有削弱这道防重复检查本身；`cd client && npm run build` 通过；`npx eslint .` 39/30 与基线持平；既有 e2e S1 三条无回归

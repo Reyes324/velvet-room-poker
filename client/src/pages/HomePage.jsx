@@ -64,7 +64,34 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
       localStorage.setItem('vr_roomCode', roomCode);
       onJoined(roomCode, playerId, name, mode !== 'join');
     },
-    'game:error': (msg) => setError(msg),
+    // 用户反馈（2026-08-12）：点邀请链接想回到自己的房间，却收到"已在房间
+    // 内"报错，人卡在首页出不去。根因：`room:join`（走这条链接、且本地
+    // `vr_roomCode` 跟链接里的房间码对不上时，App.jsx 会落到这个 join 流
+    // 程，不是更安全的 `room:sync` 恢复流程——见 App.jsx 的路由 effect）
+    // 里 `RoomManager.addPlayer` 只要发现同一个 playerId 的房间记录仍标
+    // 记着 `connected:true` 就会拒绝，视为"重复加入"。但这个标记完全可能
+    // 是过期的——手机切后台、锁屏没有干净地关闭 socket，服务端还没等到
+    // ping 超时判定真的掉线，这时候点链接回来，`connected` 读到的还是旧
+    // 值。这明明就是本人（playerId 是这台设备本地存的身份），只是想拿新
+    // 连接接上去——`room:sync` 走的正是"直接按 playerId 重新关联 socket"
+    // 这条路，不做这个重复检查，天生就适合兜住这种情况。
+    'game:error': (msg) => {
+      if (msg === '已在房间内' && mode === 'join' && code.trim()) {
+        const retryId = getPlayerId();
+        const retryCode = code.trim().toUpperCase();
+        socket.emit('room:sync', { playerId: retryId });
+        socket.once('room:state', () => {
+          localStorage.setItem('vr_playerId', retryId);
+          localStorage.setItem('vr_roomCode', retryCode);
+          onJoined(retryCode, retryId, name, false);
+        });
+        // 房间真的不在了（不是这里要兜的情况）——把原始报错亮出来，比假装
+        // 什么都没发生更诚实。
+        socket.once('room:gone', () => setError(msg));
+        return;
+      }
+      setError(msg);
+    },
   });
 
   // Deep-link arrival ("XXX invited you") — read-only peek, doesn't join.
