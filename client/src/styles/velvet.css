@@ -168,6 +168,12 @@
   text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   min-width:0; flex:0 1 auto;
 }
+/* avatar-card 本身可能被 .is-folded 加一层 grayscale/brightness 的
+   filter（弃牌变灰）。.egg-splat 需要挂在 avatar-card 外面（PlayerSeat.jsx
+   的 avatar-card-wrap，理由见那边注释），这层 wrap 只是把 avatar-card
+   自己的定位/尺寸原样透传出来，让 .egg-splat 的 inset:0 精确贴合原来的
+   头像区域，不引入任何视觉差异。 */
+.avatar-card-wrap { position:relative; width:56px; }
 .avatar-card {
   width:56px; border-radius:10px; position:relative;
   border:2px solid rgba(212,175,55,.18); background:#0A1A0E;
