@@ -263,19 +263,22 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             （egg-splat.png）——落地瞬间蛋图标挤压消失（squash+闪光+座位
             震动，物理反馈这部分手感是对的，保留），紧接着淡入这张真实
             的蛋壳+蛋黄+蛋液图，比继续手画更可信。
-            2026-08-13：蛋图标原本是"从正上方掉落"，用户反馈想要"从页面
-            中心被扔过去"的感觉。GameTable.jsx 算好了从牌桌中心（
-            DEAL_ORIGIN，跟发牌动画共用同一个原点）到这个座位的偏移量，
-            通过 pokeThrowFrom 传下来，用跟发牌动画（.card-deal 的
-            --dx/--dy）完全一样的技术：起点是"中心到这里的反向偏移"，终
-            点是 (0,0)，读起来就是"从桌子中心飞过来"，不是发明新技术。 */}
+            2026-08-13：蛋图标原本是"从正上方掉落"，先改成"从桌子中心被
+            扔过去"，用户又反馈想要"真的从发起人头像扔到接收人头像"的抛
+            物线。GameTable.jsx 现在按【发起人 pokedSeat.fromId 的座位坐
+            标】（查不到才退回桌子中心）算 pokeThrowFrom，同样是"起点是
+            反向偏移、终点是 (0,0)"这套跟发牌动画共用的技术，只是原点从
+            固定的 DEAL_ORIGIN 换成了动态的发起人座位。--throw-arc 是抛
+            物线弧顶高度（随距离缩放，GameTable.jsx 算好传下来），真正
+            的弧线路径在 velvet.css 的 eggFall 关键帧里用 --throw-dx/
+            --throw-dy/--throw-arc 三个变量算出来，不是简单直线位移。 */}
         {poked && pokeEmoji === '🥚' && (
           <div className="egg-splat" aria-hidden="true">
             <div className="egg-splat__flash" />
             <img className="egg-splat__img" src={eggSplatImg} alt="" />
             <div
               className="egg-splat__icon"
-              style={pokeThrowFrom ? { '--throw-dx': `${pokeThrowFrom.dx}px`, '--throw-dy': `${pokeThrowFrom.dy}px` } : undefined}
+              style={pokeThrowFrom ? { '--throw-dx': `${pokeThrowFrom.dx}px`, '--throw-dy': `${pokeThrowFrom.dy}px`, '--throw-arc': `${pokeThrowFrom.arc ?? 42}px` } : undefined}
             >🥚</div>
           </div>
         )}

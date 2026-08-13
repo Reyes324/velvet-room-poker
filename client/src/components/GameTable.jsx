@@ -253,6 +253,36 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
 
+  // 2026-08-13：拍一拍带蛋（🥚）的抛出起点从"桌子中心固定原点"改成"发起
+  // 人自己的头像"（用户反馈：想要"从发起人扔到接收人"的抛物线，而不是
+  // 所有蛋都从桌子中心冒出来）。每个客户端的 hero 固定在底部、对手的排布
+  // 顺序因人而异，所以只能用【这次渲染自己算出来的】heroSeatPos/pos，不
+  // 能假设所有客户端的坐标系一致——这里建一张"这一帧、这个客户端视角下
+  // 每个座位 id 对应的画布坐标"的表，跟下面渲染每个座位用的是同一份数据。
+  const seatPosById = {};
+  if (amPlaying) seatPosById[me.id] = heroSeatPos;
+  opponents.forEach((p, i) => { seatPosById[p.id] = pos[i]; });
+
+  // 算某个目标座位（targetX/targetY）这次该收到的 pokeThrowFrom：起点是
+  // 发起人（pokedSeat.fromId）的座位坐标，查不到（理论上不该发生，比如
+  // 发起人这一帧还没进当前渲染的座位表）就退回原来的桌子中心，不让动画
+  // 直接跑不出来。
+  // arc：抛物线弧顶相对直线路径的额外高度，随抛掷距离缩放——两个相邻座
+  // 位之间扔，弧线不该跟横跨整张桌子扔一样夸张；min/max 两头封顶避免距
+  // 离极端时弧顶要么看不出来、要么"飞"得离谱高。具体用法见 velvet.css 的
+  // eggFall 关键帧（拿 --throw-dx/--throw-dy/--throw-arc 算真正的抛物线
+  // 路径，不是简单的直线位移）。
+  function throwOffsetTo(targetX, targetY) {
+    const fromPos = pokedSeat?.fromId ? seatPosById[pokedSeat.fromId] : null;
+    const originX = fromPos ? fromPos.x : DEAL_ORIGIN_X;
+    const originY = fromPos ? fromPos.y : DEAL_ORIGIN_Y;
+    const dx = originX - targetX;
+    const dy = originY - targetY;
+    const dist = Math.hypot(dx, dy);
+    const arc = Math.min(90, Math.max(26, dist * 0.4));
+    return { dx, dy, arc };
+  }
+
   // Seats are fixed — they should NOT replay an entrance animation every new
   // hand, only when a genuinely new player takes a seat (user feedback,
   // GitHub #18/#6: "玩家头像应该是固定的呀，除非有新人加入才会变动呀").
@@ -873,7 +903,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             getVoiceVolume={getVoiceVolume}
             paused={paused}
             disconnected={!!disconnectedIds?.has(me.id)}
-            pokeThrowFrom={{ dx: DEAL_ORIGIN_X - heroSeatPos.x, dy: DEAL_ORIGIN_Y - heroSeatPos.y }}
+            pokeThrowFrom={throwOffsetTo(heroSeatPos.x, heroSeatPos.y)}
           />
         </div>
       )}
@@ -913,7 +943,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               poked={pokedSeat?.targetId === p.id}
               pokeEmoji={pokedSeat?.targetId === p.id ? pokedSeat.emoji : null}
               pokeFromName={pokedSeat?.targetId === p.id ? pokedSeat.fromName : null}
-              pokeThrowFrom={{ dx: DEAL_ORIGIN_X - s.x, dy: DEAL_ORIGIN_Y - s.y }}
+              pokeThrowFrom={throwOffsetTo(s.x, s.y)}
               bubbleAnchorTop={s.y <= TOP_ZONE.end}
               turnEndsAt={turnClock?.playerId === p.id ? turnClock.endsAt : null}
               turnStartedAt={turnClock?.playerId === p.id ? turnClock.startedAt : null}

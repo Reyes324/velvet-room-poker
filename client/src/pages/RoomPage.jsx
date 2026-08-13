@@ -113,7 +113,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     'player:poked': ({ fromId, targetId, emoji }) => {
       const key = Date.now();
       const fromName = roomState?.players?.find(p => p.id === fromId)?.name ?? null;
-      setPokedSeat({ targetId, key, emoji: emoji ?? null, fromName });
+      setPokedSeat({ targetId, fromId, key, emoji: emoji ?? null, fromName });
       // 700ms 太短，表情还没看清就没了（用户反馈，2026-08-11）——拉到
       // 1.6s，跟 velvet.css 里 .poke-bubble 的淡出时机（pokeBubbleOut
       // 延迟到 1.3s 才开始）对齐，动画本身走完了这里才清状态，不会提前

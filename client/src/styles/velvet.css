@@ -185,18 +185,34 @@
       250ms 淡出，跟 .poke-bubble 的收场时机对齐。 */
 .egg-splat { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; overflow:visible; pointer-events:none; z-index:9; animation:eggSplatFadeOut .25s ease-in 1.35s forwards; }
 
-/* ① 蓄力下落——蛋图标本身，从牌桌中心（--throw-dx/--throw-dy，
-   GameTable.jsx 用跟发牌动画同一个 DEAL_ORIGIN 算出来的偏移量）飞向这
-   个座位，途中轻微自转，落地瞬间挤压（squash）后透明度归零，交给③的
-   真实素材图接管，不是单纯"缩小消失"。2026-08-13 用户反馈把原来的
-   "正上方掉落"（固定 translateY(-42px)）改成"从桌子中心扔过来"——没
-   传 --throw-dx/--throw-dy 时退回原来的正上方掉落，不强依赖 GameTable
-   一定要传这两个变量。 */
+/* ① 蓄力下落——蛋图标本身，从发起人的头像（--throw-dx/--throw-dy，
+   GameTable.jsx 按 pokedSeat.fromId 那个座位的实际坐标算出的偏移量，查
+   不到发起人时退回桌子中心 DEAL_ORIGIN）飞向这个座位，途中轻微自转，
+   落地瞬间挤压（squash）后透明度归零，交给③的真实素材图接管，不是单纯
+   "缩小消失"。
+   2026-08-13 三次迭代：先是"正上方掉落"（固定 translateY(-42px)），改成
+   "从桌子中心扔过来"（直线位移），最后用户反馈想要真正"从发起人扔到接
+   收人"的抛物线——直线飞行不像"扔"，像"平移"。现在用 5 个关键帧手动插
+   值出抛物线：水平方向（--throw-dx 那一路）线性推进到 0；垂直方向在线
+   性推进的基础上，中途额外减去一段"弧顶高度"（--throw-arc，GameTable.jsx
+   按抛掷距离算好传下来，越远弧顶越高但封顶），4t(1-t) 在 t=.5 时最大、
+   两端归零，画出的正是标准抛物线的形状。没传这三个变量时退回一个小幅
+   度的原地上抛（dx:0 dy:-42px arc:16px），不强依赖 GameTable 一定要传。
+   缓动函数从原来的 cubic-bezier(.55,0,.85,.35)（为直线掉落调的"慢起快
+   落"）换成 ease-in-out——形状已经由关键帧本身的抛物线决定，缓动只负责
+   沿这条路径走的快慢节奏，ease-in-out 读起来是"出手快、顶点稍停、落点
+   前再加速"，比直线时期的曲线更适合"扔"这个动作。 */
 .egg-splat__icon {
   position:relative; font-size:24px; line-height:1; transform-origin:50% 85%;
-  animation:eggFall .3s cubic-bezier(.55,0,.85,.35) both, eggSquashVanish .09s ease-in .3s forwards;
+  animation:eggFall .3s ease-in-out both, eggSquashVanish .09s ease-in .3s forwards;
 }
-@keyframes eggFall { 0%{ transform:translate(var(--throw-dx,0px),var(--throw-dy,-42px)) rotate(-8deg) scale(.7); opacity:1; } 100%{ transform:translate(0,0) rotate(6deg) scale(1); opacity:1; } }
+@keyframes eggFall {
+  0%   { transform:translate(var(--throw-dx,0px), var(--throw-dy,-42px)) rotate(-12deg) scale(.55); opacity:1; }
+  25%  { transform:translate(calc(var(--throw-dx,0px) * .75), calc(var(--throw-dy,-42px) * .75 - var(--throw-arc,16px) * .75)) rotate(-4deg) scale(.85); }
+  50%  { transform:translate(calc(var(--throw-dx,0px) * .5), calc(var(--throw-dy,-42px) * .5 - var(--throw-arc,16px))) rotate(4deg) scale(1.1); }
+  75%  { transform:translate(calc(var(--throw-dx,0px) * .25), calc(var(--throw-dy,-42px) * .25 - var(--throw-arc,16px) * .75)) rotate(10deg) scale(1.05); }
+  100% { transform:translate(0,0) rotate(6deg) scale(1); opacity:1; }
+}
 @keyframes eggSquashVanish { 0%{ transform:scaleX(1.35) scaleY(.55); opacity:1; } 100%{ transform:scaleX(.3) scaleY(.15); opacity:0; } }
 
 /* 撞击闪光——本项目里"这一下砸中了"专属的强调信号，金色而不是刺眼纯
