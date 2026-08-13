@@ -895,6 +895,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             color={colorForId(me.id)}
             bubble={visibleBubble(me.id)}
             poked={pokedSeat?.targetId === me.id}
+            pokeKey={pokedSeat?.targetId === me.id ? pokedSeat.key : null}
             pokeEmoji={pokedSeat?.targetId === me.id ? pokedSeat.emoji : null}
             pokeFromName={pokedSeat?.targetId === me.id ? pokedSeat.fromName : null}
             turnEndsAt={turnClock?.playerId === me.id ? turnClock.endsAt : null}
@@ -941,6 +942,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               bubbleSide={bubbleSide}
               onPoke={emoji => onPoke?.(p.id, emoji)}
               poked={pokedSeat?.targetId === p.id}
+              pokeKey={pokedSeat?.targetId === p.id ? pokedSeat.key : null}
               pokeEmoji={pokedSeat?.targetId === p.id ? pokedSeat.emoji : null}
               pokeFromName={pokedSeat?.targetId === p.id ? pokedSeat.fromName : null}
               pokeThrowFrom={throwOffsetTo(s.x, s.y)}

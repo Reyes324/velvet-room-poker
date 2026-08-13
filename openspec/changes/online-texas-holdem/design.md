@@ -2255,3 +2255,14 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 ### 验证
 
 项目规则明确要求"两个改动是否互相影响"类问题不接受手算 CSS 就下结论——这次直接上 Playwright 量真实渲染出来的 `getComputedStyle`：起点 `--throw-dx`/`--throw-dy` 对应的真实屏幕坐标应该落在发起人座位而不是桌子中心附近；动画播放到中途（`animation-play-state` 暂停在某个百分比）时的真实 `transform` 矩阵应该比"起点终点连线"在该时间点上的直线插值更靠上（即真的有一段抛物线弧顶偏移，不是纯线性）。`cd client && npm run build` 通过；`npx eslint .` 与基线持平；服务端测试无改动、全量通过。
+
+### Bug 修复：连续拍同一个人两下，第一下的效果会"卡住"（用户反馈，2026-08-13）
+
+用户反馈"第一次点鸡蛋会卡住，第二次才能好"。真机 Playwright 复现（同一个目标短时间内连续拍两下，间隔小于 `pokedSeat` 1.6s 的自动清空窗口）后确认：根因不是抛物线本身，是这次改动之前就存在、这次改动只是让用户第一次认真盯着这个动画看才注意到的一个更老的问题——`.egg-splat`/`.poke-bubble` 这两层特效节点都只在 `poked` 为真时挂载，同一个人被连续拍两下时 `poked`（`pokedSeat?.targetId === player.id`）全程为真、没有经过 `false` 的间隙，React 认为这个节点没变化，不会卸载重挂载，而 CSS 的 `eggFall`/`eggSquashVanish`/`pokeBubbleIn`/`pokeBubbleOut` 这些 keyframe 动画只在元素被"新插入"DOM 时才会播放——同一个还在的节点第二次只是 `style` 里的 `--throw-dx` 等变量换了新值，动画不会重播，停在上一次播完的最终帧（蛋图标挤扁、透明度 0），看起来就是"卡住不动"。`.seat.is-egg-hit .avatar-card` 的撞击震动是同一个根因的第三处：这次是加在常驻的 `.seat` 外层 div 上的一个 class，字符串本身没变化，同样不会重播。
+
+**修复**（跟"哪里疼医哪里"式打补丁不同，是同一个根因、两种匹配的手法）：
+
+1. `.egg-splat`/`.poke-bubble`（两个变体）现在都挂 `key={pokeKey}`——`pokeKey` 是 `GameTable.jsx` 新传下来的 `pokedSeat.key`（服务端/PVE 每次广播一个新的 `Date.now()`）。`key` 一变，React 保证卸载旧节点、挂载全新节点，动画必然从头播。这跟这个文件里 `.action-bubble` 用 `key={bubble.key}`、走线环用 `key={clock.key}` 强制重播是同一个已有套路，不是新发明的写法。
+2. `.seat.is-egg-hit .avatar-card` 那层震动没法用同一招——它是持续挂载的节点上的一个 class，不能靠换 `key` 卸载重挂（连带 `speak-glow`/`turn-ring` 这些兄弟节点也会跟着重挂，代价明显更大）。改成一个监听 `pokeKey` 变化的 `useEffect`，通过 ref 直接对 `.avatar-card` 做 `animation:none` → 强制 reflow（读一次 `offsetWidth`）→ 清空回 `''`，让浏览器重新从 CSS 规则里取一遍 `animation`，等同于强制重播，不需要真的卸载节点。
+
+**验证**：真机 Playwright 复现"连续拍同一个目标两下"，在 `.egg-splat` 节点上打一个 `dataset` 探针——修复前第二次点击探针显示 `reused: true`（同一个 DOM 实例）、`transform` 全程停在 `matrix(0.3,0,0,0.15,0,0)`（squash 收尾的最终帧）纹丝不动；修复后第二次点击探针显示 `reused: false`（全新节点），逐帧采样确认 `transform` 完整重新走了一遍抛物线到 squash 收尾的全过程，跟第一次点击的曲线形状一致。`cd client && npm run build` 通过；`npx eslint .` 与基线持平（38/29）；服务端全量 376/376。
