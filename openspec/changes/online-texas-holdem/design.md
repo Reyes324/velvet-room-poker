@@ -2367,9 +2367,13 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 
 **音效播放时机：从"等气泡"改成"点击即响"（用户反馈，2026-08-14）**：原本所有下注类音效都挂在 `GameTable.jsx` 那个监听服务端广播的 `lastActionSeq` effect 上——对自己的操作来说，这意味着音效要等"点击→服务端处理→广播→客户端收到"整个往返都走完才响，用户反馈"感觉声音后置了"。改法：`ActionBar.jsx` 的 `act()` 点击时立刻调用新增的 `playOwnActionSfx()`，不等服务端确认；`GameTable.jsx` 那个广播驱动的 effect 加一层 `actorId !== myId` 判断，只在播报**别人**的动作时才响（自己的已经在点击那一刻响过，不能重复播）。加注/all-in 在点击这一刻还分不清最终会不会判定成 all-in（取决于金额是否吃光全部筹码），客户端按 `val >= me.chips + me.bet` 提前判断，跟服务端 `GameEngine.raise()` 里 `p.status === 'allin'` 的判定条件对齐（注意不能直接拿 `maxRaise` 判断——`maxRaise` 可能被筹码更少的对手封顶，够到 `maxRaise` 未必等于自己全下）。对手的动作没有"自己点击"这个时机可用，仍然只能等广播，这个延迟本质上没法消除（不可能预判对手的操作）。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平（新增依赖 `myId` 触发了一条 exhaustive-deps 警告，补进依赖数组解决，不是抑制掉）。
 
-## 加注动作气泡专属样式（用户反馈，2026-08-14，实现完成）
+## 加注动作气泡专属样式（用户反馈，2026-08-14，实现后又撤回）
 
-跟注/加注共用同一套朴素暗金气泡（`.action-bubble`），看不出加注的分量。用 `frontend-design` skill 定义了一档介于"平淡跟注"和"烧起来的 all-in"（`.action-bubble--allin`，红色渐变+脉动光晕）之间的样式——不脉动（脉动是 all-in 专属信号）、不用红色（红色是 all-in 专属危险色），复用设计系统已有的金色色阶（`tokens.css` 的 `--gold-900~100`）把底色从"深底浅字"反转成"亮金实底+深字"（`--gold-700→--gold-500` 渐变 + `#241400` 深墨字），靠色值倒转本身制造"分量变重"的视觉跳跃。三级序列：跟注/过牌（暗底浅金字，不变）→ 加注（亮金实底，新增，静态）→ 全下（红底脉动，不变）。实现：`velvet.css` 新增 `.action-bubble--raise`；`GameTable.jsx` 的气泡生成逻辑给 `label.type === 'raise'` 标记 `raise: true`；`PlayerSeat.jsx` 的气泡 className 拼接加一段 `bubble.raise` 判断。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+跟注/加注共用同一套朴素暗金气泡（`.action-bubble`），看不出加注的分量。用 `frontend-design` skill 定义了一档介于"平淡跟注"和"烧起来的 all-in"（`.action-bubble--allin`，红色渐变+脉动光晕）之间的样式——不脉动、不用红色，复用设计系统已有的金色色阶（`tokens.css` 的 `--gold-900~100`）把底色从"深底浅字"反转成"亮金实底+深字"，靠色值倒转制造"分量变重"的视觉跳跃。
+
+第一版用 `--gold-700→--gold-500`（色阶中段，偏暗）配 `#241400`，用户反馈"有点丑""文字对比度不够强"——那两个颜色明度都不够高，深字压上去糊在一起。改用色阶亮端 `--gold-400→--gold-200` 配纯黑字，Playwright 真机截图验证过对比度确实好了很多。
+
+但用户看完最终决定**整体撤回这次改动**，说"加注样式不要特殊化了，还是按照原来的吧"——不是嫌顏色不对，是回退到"不需要这个区分"的原始判断。`velvet.css` 的 `.action-bubble--raise` 规则、`GameTable.jsx` 的 `raise` 标记、`PlayerSeat.jsx` 的 `bubble.raise` className 判断全部撤回，加注气泡跟跟注共用回原来那套朴素样式。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
 
 **翻牌音效（2026-08-14 确认+实现）**：Kenney `card-slide-6.ogg`，一个音效复用在两处翻牌时机——(1) 自己底牌翻面（`GameTable.jsx` 的 `justRevealed`，`heroRevealed` 从 false→true 那一刻）；(2) 每条街公共牌揭晓（翻牌/转牌/河牌），接在已有的 `newCardFrom` effect（约L433-440）里 `cardCount > newCardFrom` 判断为真的那一刻——这个 effect 本来就是"新公共牌开始翻面动画"的唯一触发点（`newCardFrom` 之后950ms才追上 `cardCount`，对应 flipIn 动画时长），且只依赖 `[cardCount]`，不会在无关重渲染时重复触发，一条街一次。`sfx.js` 新增通用 `playSfx(name)`，`playActionSfx` 现在只是它的一个别名，避免下注类和翻牌类各自维护一套播放逻辑。
 

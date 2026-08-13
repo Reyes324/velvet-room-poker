@@ -360,7 +360,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
       {bubble && (
         <div
           key={bubble.key}
-          className={`action-bubble${bubble.folded ? ' action-bubble--folded' : ''}${bubble.allIn ? ' action-bubble--allin' : ''}${bubble.raise ? ' action-bubble--raise' : ''}`}
+          className={`action-bubble${bubble.folded ? ' action-bubble--folded' : ''}${bubble.allIn ? ' action-bubble--allin' : ''}`}
           style={bubbleStyle(bubbleSide, bubbleAnchorTop)}
         >
           {bubble.text}
