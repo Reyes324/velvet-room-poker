@@ -51,7 +51,10 @@ async function joinRoom(page, name, code) {
 }
 
 async function startGame(page) {
+  // "开始游戏"/"计时游戏"合并成一个入口后（2026-08-13），点 .lobby-btn
+  // 只会弹出选择器，不再直接开局——多一步点"直接开始"才是真正开局。
   await page.locator(S.startBtn).click();
+  await page.locator('.timer-picker-option--untimed').click();
   await expect(page.locator(S.gameStage)).toBeVisible({ timeout: 8000 });
 }
 

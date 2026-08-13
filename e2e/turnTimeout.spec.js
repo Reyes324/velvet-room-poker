@@ -36,7 +36,10 @@ test('倒计时到点自动弃牌 → 动作气泡照常出现（与手动弃牌
   await pB.click(S.joinSubmit);
   await expect(pB.locator(S.roomCode)).toBeVisible({ timeout: 10000 });
 
+  // "开始游戏"/"计时游戏"合并成一个入口后（2026-08-13），点 .lobby-btn
+  // 只会弹出选择器，不再直接开局——多一步点"直接开始"才是真正开局。
   await pA.locator(S.startBtn).click();
+  await pA.locator('.timer-picker-option--untimed').click();
   await Promise.race([
     pA.locator(S.actionBar).waitFor({ state: 'visible', timeout: 15000 }),
     pB.locator(S.actionBar).waitFor({ state: 'visible', timeout: 15000 }),
@@ -76,7 +79,10 @@ test('倒计时到点自动过牌 → 动作气泡照常出现（牌局继续，
   await pB.click(S.joinSubmit);
   await expect(pB.locator(S.roomCode)).toBeVisible({ timeout: 10000 });
 
+  // "开始游戏"/"计时游戏"合并成一个入口后（2026-08-13），点 .lobby-btn
+  // 只会弹出选择器，不再直接开局——多一步点"直接开始"才是真正开局。
   await pA.locator(S.startBtn).click();
+  await pA.locator('.timer-picker-option--untimed').click();
   await Promise.race([
     pA.locator(S.actionBar).waitFor({ state: 'visible', timeout: 15000 }),
     pB.locator(S.actionBar).waitFor({ state: 'visible', timeout: 15000 }),
@@ -124,7 +130,10 @@ test('倒计时视觉：环形描边渲染且在走，不与旧的呼吸边框�
   await pB.click(S.joinSubmit);
   await expect(pB.locator(S.roomCode)).toBeVisible({ timeout: 10000 });
 
+  // "开始游戏"/"计时游戏"合并成一个入口后（2026-08-13），点 .lobby-btn
+  // 只会弹出选择器，不再直接开局——多一步点"直接开始"才是真正开局。
   await pA.locator(S.startBtn).click();
+  await pA.locator('.timer-picker-option--untimed').click();
   await Promise.race([
     pA.locator(S.actionBar).waitFor({ state: 'visible', timeout: 15000 }),
     pB.locator(S.actionBar).waitFor({ state: 'visible', timeout: 15000 }),

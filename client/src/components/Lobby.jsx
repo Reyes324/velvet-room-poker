@@ -73,12 +73,20 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
           </div>
         </div>
       )}
+      {/* "开始游戏"（不限时）和"计时游戏"原来是两个入口——用户反馈
+          （2026-08-13）想合并成一个，点"开始游戏"统一先弹这个选择器。
+          弹窗内部分两组，不是四个平铺的按钮：第一组"选时间"标签 +
+          15/30/60 分钟（对应原来的"计时游戏"，onStart(min)）；"直接开始"
+          （对应原来的"开始游戏"，onStart() 不传参）单独放在"取消"下面、
+          整个弹窗最底部——用户反馈这样最顺手点到的位置应该留给最常用的
+          "直接开始"，"取消"放在它上面而不是最下面。 */}
       {showTimerPicker && (
         <div className="modal-overlay" onClick={() => setShowTimerPicker(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">计时游戏</div>
-            <div className="modal-body">选择本局时长，时间到会提醒房主决定是否结束</div>
+            <div className="modal-title">开始游戏</div>
+            <div className="modal-body">直接开始可以随时手动结束；选个时长，时间到会提醒房主决定是否结束</div>
             <div className="timer-picker-options">
+              <div className="timer-picker-group-label">选时间</div>
               {TIMER_OPTIONS.map(min => (
                 <div
                   key={min}
@@ -88,6 +96,17 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
                   {min < 60 ? `${min} 分钟` : `${min / 60} 小时`}
                 </div>
               ))}
+            </div>
+            {/* .modal 的 align-items:center 会让直接子节点按内容宽度收缩，
+                跟上面 .timer-picker-options 里那几个撑满宽度的按钮不一致——
+                "取消"本来就靠内联 style 撑宽度，这里跟着补上同一个，不然
+                "直接开始"会看起来比其它按钮窄一圈。 */}
+            <div
+              className="timer-picker-option timer-picker-option--untimed"
+              style={{ width: '100%' }}
+              onClick={() => { setShowTimerPicker(false); onStart?.(); }}
+            >
+              直接开始
             </div>
             <div className="modal-btn-cancel" style={{ width: '100%' }} onClick={() => setShowTimerPicker(false)}>取消</div>
           </div>
@@ -151,16 +170,13 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
 
         {isHost ? (
           <div className="lobby-footer">
-            {/* Explicit () => onStart() rather than passing onStart directly
-                as the handler — onClick hands the DOM event as the first
-                arg, which would otherwise leak in as `durationMinutes` and
-                corrupt gameTimerEndsAt (an Event, coerced to NaN). */}
-            <div className="lobby-btn" onClick={canStart ? () => onStart() : undefined} style={!canStart ? { opacity: .5, cursor: 'default' } : undefined}>
+            {/* 原来"开始游戏"（不限时，直接 onStart()）和"计时游戏"（弹
+                时长选择器）是两个并排按钮，合并成一个入口：点击统一弹
+                上面那个选择器，"不限时"是选择器里的第一个选项——不再有
+                直接调 onStart() 的路径留在这里了。 */}
+            <div className="lobby-btn" onClick={canStart ? () => setShowTimerPicker(true) : undefined} style={!canStart ? { opacity: .5, cursor: 'default' } : undefined}>
               {canStart ? '开始游戏' : '等待更多玩家…'}
             </div>
-            {canStart && (
-              <div className="lobby-timed-btn" onClick={() => setShowTimerPicker(true)}>计时游戏</div>
-            )}
             <div className="lobby-restart" onClick={() => setShowRestartConfirm(true)}>重新开始</div>
           </div>
         ) : (

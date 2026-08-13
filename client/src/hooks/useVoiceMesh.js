@@ -28,6 +28,29 @@ export function useVoiceMesh({ socket, emit, playerId }) {
   const enabledRef = useRef(false);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
+  // 远端音轨到达时创建的 <audio> 元素调 .play() 可能被浏览器的自动播放策略
+  // 拦下（NotAllowedError）——之前这里是 `.catch(() => {})` 直接吞掉，注释
+  // 写的是"不影响拉流"，这话只对了一半：ontrack/WebRTC 层确实不受影响，但
+  // 播放本身失败意味着这个人的声音真的听不见，且没有任何重试，会一直哑到
+  // 页面刷新为止。3 人以上的 mesh 里，不同连接的音轨到达时间点不同，有的
+  // 落在浏览器允许自动播放的窗口内（能听见），有的落在窗口外（悄悄哑掉）——
+  // 这跟"整体连上了但某个人听不到某个人"的报告完全吻合。
+  // 修法：失败的 <audio> 元素记下来，下一次用户在页面上有任何真实交互
+  // （pointerdown）时统一重试——浏览器的自动播放限制本质上就是"要有一次
+  // 用户手势"，用户按下"说话"或者点别的什么都算，不需要专门为这件事再造一
+  // 个按钮。
+  const pendingPlayRef = useRef(new Set());
+  useEffect(() => {
+    if (!enabled) return;
+    const retry = () => {
+      for (const el of pendingPlayRef.current) {
+        el.play?.().then(() => pendingPlayRef.current.delete(el)).catch(() => { /* 还是不行，等下一次手势 */ });
+      }
+    };
+    document.addEventListener('pointerdown', retry);
+    return () => document.removeEventListener('pointerdown', retry);
+  }, [enabled]);
+
   // 实时音量（0..1），playerId -> 强度，自己和对方共用同一张表。刻意不进
   // React state——这是每帧都在变的数据，真做成 state 会在说话的整个过程
   // 里持续触发整棵树重渲染。改成 ref + 命令式 getVolume()，由用到它的组
@@ -95,6 +118,7 @@ export function useVoiceMesh({ socket, emit, playerId }) {
   const closePc = useCallback(socketId => {
     const entry = pcsRef.current.get(socketId);
     if (!entry) return;
+    if (entry.pc.__audioEl) pendingPlayRef.current.delete(entry.pc.__audioEl);
     try { entry.pc.__audioEl?.pause(); } catch { /* 已释放 */ }
     try { entry.pc.close(); } catch { /* 已关闭 */ }
     pcsRef.current.delete(socketId);
@@ -133,7 +157,7 @@ export function useVoiceMesh({ socket, emit, playerId }) {
       el.srcObject = stream;
       el.autoplay = true;
       el.playsInline = true;
-      el.play?.().catch(() => { /* 自动播放被拦不影响拉流 */ });
+      el.play?.().catch(() => { pendingPlayRef.current.add(el); });
       pc.__audioEl = el;
       attachAnalyser(remotePlayerId, stream);
     };

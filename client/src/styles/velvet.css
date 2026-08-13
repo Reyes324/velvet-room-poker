@@ -1057,22 +1057,32 @@
 /* Same min(vw, px) reasoning as .modal above — this one carries a 5-column
    table, so it gets a wider ceiling to give the numbers more room. */
 .ledger-modal { width:min(96vw, 400px); }
-/* .ledger-table is the single grid authority for the 5 columns; head row and
-   every player row are `subgrid` so they all share the SAME column tracks.
-   (Previously each row was its own independent grid with the same fr values
-   declared separately — but fr sizing is computed per-container from that
-   row's own content, so a row with a wide 5-6 digit amount (net/debt past
-   ¥10,000) would size its columns differently than its neighbors and the
-   header, and the whole row would silently drift out of alignment instead
-   of clipping. Subgrid makes misalignment structurally impossible: there is
-   only one set of column boundaries for the whole table.) */
-/* 列宽比例：玩家名字原来占 1.35fr，比"当前"/"盈亏"这两个真正重要、会
-   变化的数字还宽（用户反馈，2026-08-13）——昵称本来就有 ellipsis 兜底
-   截断（.ledger-name），缩窄不会破版。"初始"/"已借"两列现在只显示"N底"
-   这种两三个字符的短文本（见上面 LedgerModal.jsx 的改动），不再需要
-   之前显示"¥1,000"那么宽，一起收窄，把宽度让给"当前"/"盈亏"。 */
-.ledger-table { width:100%; display:grid; grid-template-columns:1fr 0.55fr 0.55fr 1fr 1.1fr; row-gap:6px; column-gap:0; }
-.ledger-head-row, .ledger-row { display:grid; grid-template-columns:subgrid; grid-column:1 / -1; gap:4px; align-items:center; }
+/* 5 列的宽度比例只在一处定义（下面这组 nth-child 规则），头行和每个玩家
+   行统一套用，不允许任何一行自己另算。
+   历史教训（曾经踩过、也曾用 subgrid 修过一次，见 git 历史）：早期每一行
+   是各自独立的 grid、各自声明一遍相同的 fr 值——但 fr 是按"这一行自己的
+   内容"算的，某一行如果有个 5-6 位数的金额（净输赢/欠款超过 ¥10,000）
+   就会把这一行自己的列宽撑得跟别的行、跟表头不一样，整行悄悄错位而不是
+   规规矩矩换行。当时改用 subgrid 让所有行强制共享同一套列宽解决过一次。
+   2026-08-13 用户反馈"标题和内容的对齐关系没统一"，怀疑是 subgrid 这个
+   相对新的 CSS 特性在某些真机浏览器（尤其可能是套壳的老版本 WebView）上
+   支持不完整——一旦 `grid-template-columns: subgrid` 不被识别，属性会
+   退回初始值，每一行又变回各管各的独立布局，等于绕回最早那个"按内容各自
+   撑开、行与行对不齐"的老问题。
+   这次换一种连"支持某个新特性"这个前提都不需要的做法：改用 flex，列宽用
+   固定百分比（不是内容撑开的 fr），配合下面这组同时选中表头和数据行第
+   N 个孩子的 nth-child 规则——百分比只跟"这一行自己的总宽度"有关（表头
+   行和每个数据行的总宽度本来就相等，都是 .ledger-table 的 100%），跟
+   "这一行自己塞了多长的内容"完全无关，所以永远不会因为内容宽度不同而
+   跑偏，也不依赖 subgrid 这种可能有兼容性坑的特性——比 subgrid 那版更
+   彻底地把"结构上不可能错位"这件事做到了，不是猜哪个浏览器支持什么。 */
+.ledger-table { width:100%; display:flex; flex-direction:column; row-gap:6px; }
+.ledger-head-row, .ledger-row { display:flex; gap:4px; align-items:center; }
+.ledger-head-row > *:nth-child(1), .ledger-row > *:nth-child(1) { flex:0 0 23.81%; min-width:0; }
+.ledger-head-row > *:nth-child(2), .ledger-row > *:nth-child(2) { flex:0 0 13.10%; }
+.ledger-head-row > *:nth-child(3), .ledger-row > *:nth-child(3) { flex:0 0 13.10%; }
+.ledger-head-row > *:nth-child(4), .ledger-row > *:nth-child(4) { flex:0 0 23.81%; }
+.ledger-head-row > *:nth-child(5), .ledger-row > *:nth-child(5) { flex:0 0 26.19%; }
 .ledger-head-row { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); letter-spacing:1px; padding:0 8px; }
 .ledger-row { padding:8px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:9px; }
 .ledger-row.hero { background:rgba(212,175,55,.08); border-color:rgba(212,175,55,.16); }
@@ -1401,15 +1411,18 @@
 .lobby-restart:active { opacity:.6; }
 .room-code { cursor:pointer; }
 
-/* 计时游戏 — secondary action next to the primary gold "开始游戏" pill,
-   same outline treatment as .modal-btn--secondary elsewhere (not filled
-   gold — plain "开始游戏" stays the one visually dominant choice, since
-   untimed is the default/expected path). */
-.lobby-timed-btn { height:44px; margin-bottom:10px; border-radius:22px; border:1.5px solid rgba(212,175,55,.35); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:13px; font-weight:700; color:#D4AF37; letter-spacing:1px; cursor:pointer; }
-.lobby-timed-btn:active { background:rgba(212,175,55,.08); }
+/* "开始游戏"/"计时游戏"合并成一个入口后（用户反馈，2026-08-13），原来
+   并排的第二个金边按钮 .lobby-timed-btn 不再需要——统一走下面这个选择
+   器，删掉整块规则，不留死代码。 */
 .timer-picker-options { display:flex; flex-direction:column; gap:8px; width:100%; }
 .timer-picker-option { height:46px; border-radius:14px; background:rgba(212,175,55,.06); border:1px solid rgba(212,175,55,.18); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--text-primary); cursor:pointer; }
 .timer-picker-option:active { background:rgba(212,175,55,.14); }
+/* "直接开始"是跟"选个具体时长"完全不同的一类选择（默认/预期路径），
+   用略深的底色区分；下面 .timer-picker-group-label 是纯文字小标签（不是
+   按钮），把"15/30/60 分钟"这组明确标成"选时间"一类，两组读起来是并列
+   的两个选择而不是四个同类选项堆在一起。 */
+.timer-picker-option--untimed { background:rgba(212,175,55,.1); border-color:rgba(212,175,55,.3); color:#D4AF37; }
+.timer-picker-group-label { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); letter-spacing:1px; text-align:center; padding-top:4px; }
 
 /* ── TOAST (position:fixed — outside .game-stage, relative to viewport) ─ */
 .toast { position:fixed; top:env(safe-area-inset-top,0px); top:max(env(safe-area-inset-top,0px),20px); left:50%; transform:translateX(-50%); white-space:nowrap; font-family:var(--font-body); font-size:15px; padding:10px 20px; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.5); z-index:200; animation:toastIn .25s cubic-bezier(.34,1.56,.64,1) both; }
