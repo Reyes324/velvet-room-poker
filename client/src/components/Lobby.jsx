@@ -74,25 +74,25 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
         </div>
       )}
       {/* "开始游戏"（不限时）和"计时游戏"原来是两个入口——用户反馈
-          （2026-08-13）想合并成一个。合并后点"开始游戏"统一先弹这个选择
-          器，"不限时"排在时长选项最前面、单独隔一条线，跟后面几个时长选
-          项区分开（不限时不是"0 分钟"，是完全不同的一类选择，不应该跟
-          "15/30/60 分钟"挤在同一排看起来像是同一种东西）。选"不限时"时
-          `onStart()` 不传参，跟原来"开始游戏"按钮的行为完全一致；选具体
-          时长时 `onStart(min)`，跟原来"计时游戏"选完之后的行为完全一
-          致——只是合并了入口，没有改变下面这两条路径本身的语义。 */}
+          （2026-08-13）想合并成一个，点"开始游戏"统一先弹这个选择器。
+          弹窗内部分两组，不是四个平铺的按钮：第一组"直接开始"单独一个
+          按钮（对应原来的"开始游戏"，onStart() 不传参）；下面用"选时间"
+          这个小标签隔开第二组——15/30/60 分钟（对应原来的"计时游戏"，
+          onStart(min)）。两组视觉上分开，读起来是"要不直接开始，要不选
+          个时间"，不是把"不限时"当成第 4 个时长选项塞进同一排。 */}
       {showTimerPicker && (
         <div className="modal-overlay" onClick={() => setShowTimerPicker(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">开始游戏</div>
-            <div className="modal-body">选择本局时长——不限时可以随时手动结束；选了时长，时间到会提醒房主决定是否结束</div>
+            <div className="modal-body">直接开始可以随时手动结束；选个时长，时间到会提醒房主决定是否结束</div>
             <div className="timer-picker-options">
               <div
                 className="timer-picker-option timer-picker-option--untimed"
                 onClick={() => { setShowTimerPicker(false); onStart?.(); }}
               >
-                不限时
+                直接开始
               </div>
+              <div className="timer-picker-group-label">选时间</div>
               {TIMER_OPTIONS.map(min => (
                 <div
                   key={min}

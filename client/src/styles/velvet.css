@@ -1417,11 +1417,12 @@
 .timer-picker-options { display:flex; flex-direction:column; gap:8px; width:100%; }
 .timer-picker-option { height:46px; border-radius:14px; background:rgba(212,175,55,.06); border:1px solid rgba(212,175,55,.18); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--text-primary); cursor:pointer; }
 .timer-picker-option:active { background:rgba(212,175,55,.14); }
-/* "不限时"是跟"选个具体时长"完全不同的一类选择（默认/预期路径，不是
-   "0 分钟"），用一条分隔线 + 略深的底色跟下面几个时长选项区分开，不会
-   看起来像是同一排里的第四个数字。 */
-.timer-picker-option--untimed { background:rgba(212,175,55,.1); border-color:rgba(212,175,55,.3); color:#D4AF37; margin-bottom:4px; position:relative; }
-.timer-picker-option--untimed::after { content:''; position:absolute; left:12px; right:12px; bottom:-6px; height:1px; background:rgba(212,175,55,.15); }
+/* "直接开始"是跟"选个具体时长"完全不同的一类选择（默认/预期路径），
+   用略深的底色区分；下面 .timer-picker-group-label 是纯文字小标签（不是
+   按钮），把"15/30/60 分钟"这组明确标成"选时间"一类，两组读起来是并列
+   的两个选择而不是四个同类选项堆在一起。 */
+.timer-picker-option--untimed { background:rgba(212,175,55,.1); border-color:rgba(212,175,55,.3); color:#D4AF37; }
+.timer-picker-group-label { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); letter-spacing:1px; text-align:center; padding-top:4px; }
 
 /* ── TOAST (position:fixed — outside .game-stage, relative to viewport) ─ */
 .toast { position:fixed; top:env(safe-area-inset-top,0px); top:max(env(safe-area-inset-top,0px),20px); left:50%; transform:translateX(-50%); white-space:nowrap; font-family:var(--font-body); font-size:15px; padding:10px 20px; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.5); z-index:200; animation:toastIn .25s cubic-bezier(.34,1.56,.64,1) both; }
