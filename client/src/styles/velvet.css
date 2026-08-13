@@ -223,12 +223,16 @@
 /* 自转——独立于上面的位置/缩放，也独立于撞击挤压，就是单纯 rotate(0deg)
    到 rotate(720deg)（两整圈），linear 匀速（不用 ease-in-out：甩出去的
    东西转速接近恒定，缓动反而会显得忽快忽慢）。inline-block 是因为默认
-   inline 的 <span> 不接受 transform。 */
+   inline 的 <span> 不接受 transform。
+   2026-08-13：转两圈（720deg/0.3s）用户反馈还是不太对味——60fps 下每帧
+   要转将近 60deg，对一个 24px 的小图标来说这个转速已经快到眼睛读不出
+   "平滑自转"，容易看成闪烁/跳帧而不是转圈。改成一圈（360deg），每帧约
+   30deg，读起来更像连续旋转。 */
 .egg-splat__spin {
   display:inline-block;
   animation: eggSpin .3s linear both;
 }
-@keyframes eggSpin { from { transform:rotate(0deg); } to { transform:rotate(720deg); } }
+@keyframes eggSpin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
 
 /* 撞击闪光——本项目里"这一下砸中了"专属的强调信号，金色而不是刺眼纯
    白，跟 .action-bubble--allin 的暖金脉动是同一支笔画出来的。只在②那
