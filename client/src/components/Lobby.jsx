@@ -97,7 +97,6 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
                 </div>
               ))}
             </div>
-            <div className="modal-btn-cancel" style={{ width: '100%' }} onClick={() => setShowTimerPicker(false)}>取消</div>
             {/* .modal 的 align-items:center 会让直接子节点按内容宽度收缩，
                 跟上面 .timer-picker-options 里那几个撑满宽度的按钮不一致——
                 "取消"本来就靠内联 style 撑宽度，这里跟着补上同一个，不然
@@ -109,6 +108,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
             >
               直接开始
             </div>
+            <div className="modal-btn-cancel" style={{ width: '100%' }} onClick={() => setShowTimerPicker(false)}>取消</div>
           </div>
         </div>
       )}
