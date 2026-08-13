@@ -225,6 +225,20 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             弃牌顶多省 20 秒，却让标签显得莫名其妙。 */}
         {disconnected && <span className="disconnect-badge">断线中</span>}
       </div>
+      {/* avatar-card-wrap：拍一拍蛋特效（.egg-splat）以前是 avatar-card 的
+          直接子节点，弃牌玩家的 .is-folded .avatar-card 会给整块头像加
+          grayscale/brightness 的 filter——filter 是按渲染出来的像素整体
+          处理的，不是靠 CSS 继承传下去的，子节点没法用自己的 filter:none
+          "撤销"父节点已经加上的效果，所以砸在弃牌玩家头上的蛋连同蛋壳图
+          一起被染灰、变暗了（用户反馈，2026-08-13："为啥对弃牌玩家扔，
+          鸡蛋也是灰的"）。拍一拍是独立于牌局折叠状态的社交反馈，不该被
+          "这个人弃牌了所以画面变灰"的规则连带影响。修法是结构性的，不是
+          给 .egg-splat 加一堆"取消变灰"的样式去对抗一个没法对抗的机制：
+          把 .egg-splat 挪到 avatar-card 外面、作为它的兄弟节点，两者一起
+          包在这层新的 avatar-card-wrap 里——wrap 跟 avatar-card 同宽
+          （见 velvet.css），.egg-splat 的 inset:0 现在是相对 wrap 定位，
+          视觉上完全贴合原来的头像区域，只是不再落在被弄灰的那棵子树里。 */}
+      <div className="avatar-card-wrap">
       <div ref={avatarCardRef} className={`avatar-card ${avClass}`} onClick={handleAvatarClick} onDoubleClick={handleAvatarDoubleClick} role={canPoke ? 'button' : undefined} aria-label={canPoke ? '单击选表情拍一拍，双击直接拍一拍' : undefined}>
         {/* 说话中指示：独立于 avatar-card 自身 border/box-shadow 的叠加层
             （做法跟下面的 turn-ring 一样是并列的兄弟节点），刻意不占用那两
@@ -318,16 +332,17 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             .egg-splat__spin 只管原地转两圈，两者互不干扰，也不用再关心
             "旋转基准点跟撞击挤压那个基准点是不是打架"这种问题——见
             velvet.css 里 eggFall/eggSpin 各自的注释。 */}
-        {poked && pokeEmoji === '🥚' && (
-          <div key={pokeKey} className="egg-splat" aria-hidden="true">
-            <div className="egg-splat__flash" />
-            <img className="egg-splat__img" src={eggSplatImg} alt="" />
-            <div
-              className="egg-splat__icon"
-              style={pokeThrowFrom ? { '--throw-dx': `${pokeThrowFrom.dx}px`, '--throw-dy': `${pokeThrowFrom.dy}px`, '--throw-arc': `${pokeThrowFrom.arc ?? 42}px` } : undefined}
-            ><span className="egg-splat__spin">🥚</span></div>
-          </div>
-        )}
+      </div>
+      {poked && pokeEmoji === '🥚' && (
+        <div key={pokeKey} className="egg-splat" aria-hidden="true">
+          <div className="egg-splat__flash" />
+          <img className="egg-splat__img" src={eggSplatImg} alt="" />
+          <div
+            className="egg-splat__icon"
+            style={pokeThrowFrom ? { '--throw-dx': `${pokeThrowFrom.dx}px`, '--throw-dy': `${pokeThrowFrom.dy}px`, '--throw-arc': `${pokeThrowFrom.arc ?? 42}px` } : undefined}
+          ><span className="egg-splat__spin">🥚</span></div>
+        </div>
+      )}
       </div>
 
       {pokePickerOpen && (
