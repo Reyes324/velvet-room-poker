@@ -309,7 +309,15 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             纹丝不动；加上 key={pokeKey}（pokedSeat.key，每次广播一个新
             的 Date.now()）后，每次拍都能拿到一个新节点，动画必定从头播。
             跟 .action-bubble 用 key={bubble.key}、turn-ring 用
-            key={clock.key} 强制重播是同一个套路，不是新发明的写法。 */}
+            key={clock.key} 强制重播是同一个套路，不是新发明的写法。
+            .egg-splat__icon 内层多包一个 .egg-splat__spin：旋转本来跟
+            "沿抛物线移动/缩放"、跟"落地挤压"完全是两件不相干的事，之前
+            把它们硬塞进同一个元素的同一个 transform 里（还要跟撞击挤压
+            共用同一个旋转基准点），改一次牵连一次，越改越绕。拆开之后
+            .egg-splat__icon 只管沿抛物线走的位置和缩放（不再有 rotate），
+            .egg-splat__spin 只管原地转两圈，两者互不干扰，也不用再关心
+            "旋转基准点跟撞击挤压那个基准点是不是打架"这种问题——见
+            velvet.css 里 eggFall/eggSpin 各自的注释。 */}
         {poked && pokeEmoji === '🥚' && (
           <div key={pokeKey} className="egg-splat" aria-hidden="true">
             <div className="egg-splat__flash" />
@@ -317,7 +325,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             <div
               className="egg-splat__icon"
               style={pokeThrowFrom ? { '--throw-dx': `${pokeThrowFrom.dx}px`, '--throw-dy': `${pokeThrowFrom.dy}px`, '--throw-arc': `${pokeThrowFrom.arc ?? 42}px` } : undefined}
-            >🥚</div>
+            ><span className="egg-splat__spin">🥚</span></div>
           </div>
         )}
       </div>
