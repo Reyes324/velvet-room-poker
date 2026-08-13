@@ -1066,7 +1066,12 @@
    header, and the whole row would silently drift out of alignment instead
    of clipping. Subgrid makes misalignment structurally impossible: there is
    only one set of column boundaries for the whole table.) */
-.ledger-table { width:100%; display:grid; grid-template-columns:1.35fr 0.7fr 0.7fr 0.85fr 0.9fr; row-gap:6px; column-gap:0; }
+/* 列宽比例：玩家名字原来占 1.35fr，比"当前"/"盈亏"这两个真正重要、会
+   变化的数字还宽（用户反馈，2026-08-13）——昵称本来就有 ellipsis 兜底
+   截断（.ledger-name），缩窄不会破版。"初始"/"已借"两列现在只显示"N底"
+   这种两三个字符的短文本（见上面 LedgerModal.jsx 的改动），不再需要
+   之前显示"¥1,000"那么宽，一起收窄，把宽度让给"当前"/"盈亏"。 */
+.ledger-table { width:100%; display:grid; grid-template-columns:1fr 0.55fr 0.55fr 1fr 1.1fr; row-gap:6px; column-gap:0; }
 .ledger-head-row, .ledger-row { display:grid; grid-template-columns:subgrid; grid-column:1 / -1; gap:4px; align-items:center; }
 .ledger-head-row { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); letter-spacing:1px; padding:0 8px; }
 .ledger-row { padding:8px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:9px; }
