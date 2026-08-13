@@ -3,6 +3,11 @@ const { GameEngine } = require('./GameEngine');
 const STARTING_CHIPS = 1000;
 const BIG_BLIND = 20;
 const POKE_COOLDOWN_MS = 2000;
+// 断线跨手自动离座（nextRound）的最短持续时长——见 setConnected 上方注释，
+// 一次瞬时的 disconnect 事件不代表人真的走了，只有断线撑过这个时长才在手
+// 牌边界移出。2026-08-14 用户定的值：长到能滤掉正常网络抖动/切后台，又不
+// 会让真的走了的人拖太久（备选过 15/30 秒，权衡后选了更保守的一档）。
+const DISCONNECT_PURGE_MS = 60_000;
 
 function randomCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -106,6 +111,7 @@ class Room {
       if (!existing.left && existing.connected !== false) return { error: '已在房间内' };
       existing.left = false;
       existing.connected = true;
+      existing.disconnectedAt = null;
       existing.socketId = socketId;
       existing.name = name;
       return { ok: true, id: existing.id };
@@ -128,11 +134,12 @@ class Room {
     if (sameName) {
       sameName.left = false;
       sameName.connected = true;
+      sameName.disconnectedAt = null;
       sameName.socketId = socketId;
       return { ok: true, id: sameName.id };
     }
     if (this.players.length >= 9) return { error: '房间已满，无法加入' };
-    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0, connected: true, left: false });
+    this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0, connected: true, disconnectedAt: null, left: false });
     return { ok: true, id };
   }
 
@@ -220,9 +227,26 @@ class Room {
   // never cleared on disconnect and so doesn't reflect live status). Set
   // false on disconnect, true on room:create/room:join/room:sync — see
   // server/index.js.
+  //
+  // `connected` alone is a twitchy, instant signal — a raw socket.io
+  // 'disconnect' event fires on routine blips (WiFi handoff, PWA
+  // backgrounding, tab switch) that usually self-heal within seconds (see
+  // markDisconnectedIfCurrent's own comment). `disconnectedAt` records WHEN
+  // this disconnect actually started, so nextRound()'s auto-leave purge can
+  // require a minimum elapsed duration instead of trusting the instant flag
+  // alone — see design.md "断线跨手自动离座" for why an instant check alone
+  // reintroduces the exact Bug C risk this project already got burned by
+  // once (2026-08-14 user feedback: a real network blip shouldn't get
+  // someone kicked just because it happened to straddle a hand boundary).
   setConnected(playerId, connected) {
     const p = this.players.find(p => p.id === playerId);
-    if (p) p.connected = connected;
+    if (!p) return;
+    p.connected = connected;
+    if (!connected) {
+      if (p.disconnectedAt == null) p.disconnectedAt = Date.now();
+    } else {
+      p.disconnectedAt = null;
+    }
   }
 
   // 标记断线，但只在 socketId 仍然是该玩家当前连接时才生效；返回是否真的
@@ -245,6 +269,7 @@ class Room {
     // 记录缺失就永远不标记（否则这个防护会变成"再也不显示断线"）。
     if (p.socketId && p.socketId !== socketId) return false;
     p.connected = false;
+    if (p.disconnectedAt == null) p.disconnectedAt = Date.now();
     return true;
   }
 
@@ -262,9 +287,6 @@ class Room {
     this.clearTurnClock();
     this.gameTimerEndsAt = durationMinutes ? Date.now() + durationMinutes * 60_000 : null;
     this.awaitingTimerDecision = false;
-    // 断线跨手自动离座（见 nextRound）的快照也要从第一手就开始记，否则
-    // 第一手全程断线的玩家永远不会被 nextRound() 的判定捕捉到。
-    for (const p of seated) p.wasDisconnectedAtHandStart = p.connected === false;
     return { ok: true };
   }
 
@@ -291,17 +313,19 @@ class Room {
 
   nextRound() {
     this.syncChipsFromGame();
-    // 断线跨手自动离座：本手断线不受影响（沿用下面的"不看 connected"逻
-    // 辑），但如果开始上一手的时候他就已经断线、到了这一手开局时仍然断
-    // 线，就视为离开——账本保留，重连后走跟新加入一样的"旁观当前这
-    // 手→下一手重新入座"流程（addPlayer 已有的 left 重置逻辑）。用户反
-    // 馈（2026-08-12）：长时间掉线的朋友每一手都要被干等一次完整倒计时，
-    // 体验很差。
+    // 断线跨手自动离座：本手断线不受影响，但如果到了这一手结束这一刻仍然
+    // 断线**且断线已经持续了 DISCONNECT_PURGE_MS**，就视为离开——账本保
+    // 留，重连后走跟新加入一样的"旁观当前这手→下一手重新入座"流程
+    // （addPlayer 已有的 left 重置逻辑）。用户反馈（2026-08-12）：长时间
+    // 掉线的朋友每一手都要被干等一次完整倒计时，体验很差。
     //
-    // 用 wasDisconnectedAtHandStart（上一手开局时的断线快照）而不是直接
-    // 判"现在 connected===false"，是为了不重蹈 Bug C 的覆辙（见下方注释）
-    // ——一次跨越了整手的断线才会触发，手牌进行中途/交界瞬间的网络闪断
-    // 不会被误判。
+    // 不能只判"现在 connected===false"——这个字段是 socket.io 原始
+    // disconnect 事件一触发就立刻置 false（见 setConnected 上方注释：手机
+    // 切后台、WiFi 抖动都会触发，通常几秒内自愈），拿这个瞬时状态单独在
+    // 手牌边界判断去留，会把网络抖了一下的人也误伤成"真的走了"，重蹈 Bug
+    // C 的覆辙。所以额外要求 disconnectedAt 记录的断线时长跨过阈值，两个
+    // 条件都满足才移出（2026-08-14 用户反馈"感觉会离开，但不是下一手"追
+    // 问后定的方案，见 design.md 同名 Bug 修复小节）。
     //
     // 额外保底：这一批离座绝不能让剩下的人数掉到 2 以下——同一间房里的人
     // 往往共享网络（同一个 WiFi/路由器重启），一次集体瞬断跨越了整手边
@@ -310,7 +334,9 @@ class Room {
     // 归零/退出没区别，下面 active.length < 2 的分支本来就会正确收尾）；
     // 危险的只是"一次性judge一大批人都走"。
     const stillPresent = this.players.filter(p => !p.left);
-    const purgeCandidates = stillPresent.filter(p => p.wasDisconnectedAtHandStart && p.connected === false);
+    const purgeCandidates = stillPresent.filter(p =>
+      p.connected === false && p.disconnectedAt != null && Date.now() - p.disconnectedAt >= DISCONNECT_PURGE_MS
+    );
     if (purgeCandidates.length > 0 && stillPresent.length - purgeCandidates.length >= 2) {
       for (const p of purgeCandidates) this.markLeft(p.id);
     }
@@ -349,8 +375,6 @@ class Room {
     this.dealerId = active[dealerIndex].id;
     this.game = new GameEngine(active, dealerIndex, BIG_BLIND);
     this.clearTurnClock();
-    // 为这一手实际入座的玩家刷新断线快照，供下一次 nextRound() 判定用。
-    for (const p of active) p.wasDisconnectedAtHandStart = p.connected === false;
     return { ok: true };
   }
 
@@ -388,7 +412,32 @@ class Room {
       // 的人"，而他永远不会再点。在无条件超时推进落地之前，这会让整桌永久
       // 卡死（旧的兜底定时器只在名单里有人被标成断线时才启动，而主动退出
       // 的人 socket 往往还活着，connected 仍是 true）。
-      eligiblePlayerIds: new Set(this.players.filter(p => p.socketId && !p.left).map(p => p.id)),
+      //
+      // `p.connected !== false` 是同一类问题的另一半（用户反馈 #44，2026-
+      // 08-14）：一个在结算这一刻已经断线、但还没被 nextRound() 判定"离
+      // 开"的玩家，同样永远不会点确认——之前只排除了 left，没排除断线，
+      // 导致哪怕在场的人全点了确认，也因为分母里这个断线的幽灵名额凑不齐
+      // 而只能干等整段倒计时结束才推进（跟 UI 上"X秒后自动继续(2/3)"里那
+      // 个永远卡在 2/3 不动的分子对得上）。只排除"这一刻已经断线"的初始快
+      // 照，不追踪等待过程中途才断线的人（那是 Bug 3 修复特意避开的路
+      // 径——见 dropFromSettlementWait 调用点的注释，中途断线不重新计算，
+      // 靠固定时长的兜底计时器推进，不在这次改动范围内）。
+      //
+      // 第三个同类漏洞（用户同一轮反馈继续追问后发现）：`this.players` 是
+      // 整个房间名单，包括手牌进行中途才加入、这一手根本没被发进
+      // `this.game.players` 的旁观新玩家——客户端 amPlaying=false 时结算
+      // 弹窗根本不会渲染给他们看（见 GameTable.jsx 的 amPlaying 分支），
+      // 他们在结构上就不可能点确认，却一样被算进了分母。改成先跟这一手
+      // 实际发牌的名单（this.game.players 的 id 集合）取交集，只有真正在
+      // 这一手里的人才需要确认。
+      eligiblePlayerIds: (() => {
+        const dealtInIds = new Set((this.game?.players ?? []).map(p => p.id));
+        return new Set(
+          this.players
+            .filter(p => dealtInIds.has(p.id) && p.socketId && !p.left && p.connected !== false)
+            .map(p => p.id)
+        );
+      })(),
       readyPlayerIds: new Set(),
     };
   }

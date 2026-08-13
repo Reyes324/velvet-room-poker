@@ -579,12 +579,17 @@ describe('Room — 结算等待期（settlementWait）', () => {
     rooms.join(room.code, 'p2', 'Bob', 's2');
     room.updateSocket('p1', 's1');
     room.updateSocket('p2', 's2');
+    // beginSettlementWait 生产环境里永远是摊牌之后才调用，这时 this.game
+    // 一定有值（eligiblePlayerIds 要跟这一手实际发牌的名单取交集，见其
+    // 上方注释）——这里真实开一局，让测试环境跟生产的调用时机对齐，不是
+    // 凭空造一个"没有进行中游戏"的场景。
+    room.startGame();
     return room;
   }
 
-  it('beginSettlementWait 后 isAwaitingSettlementAck 为 true，只包含有 socketId 的玩家', () => {
+  it('beginSettlementWait 后 isAwaitingSettlementAck 为 true，只包含有 socketId 且被发进这一手的玩家', () => {
     const room = setupTwoConnectedPlayers();
-    // p3 加入但从未连上 socket（socketId 仍是 join 时传入的值，这里模拟未连接）
+    // p3 加入但从未连上 socket、也没被发进这一手（模拟手牌进行中途才加入的旁观新玩家）
     room.players.push({ id: 'p3', name: 'Charlie', chips: 1000, socketId: null, debt: 0 });
 
     expect(room.isAwaitingSettlementAck()).toBe(false);
@@ -799,13 +804,14 @@ describe('RoomManager — 断线跨手自动离座', () => {
     expect(room.players.find(p => p.id === 'p2').left).toBe(false);
   });
 
-  it('开局时就已断线、下一手仍未恢复 → 被移出牌桌（markLeft），账本记录保留', () => {
+  it('开局时就已断线、断线持续超过阈值、下一手仍未恢复 → 被移出牌桌（markLeft），账本记录保留', () => {
     const room = rooms.create('p1', 'Alice');
     rooms.join(room.code, 'p2', 'Bob', 'socket2');
     rooms.join(room.code, 'p3', 'Carol', 'socket3');
     room.setConnected('p2', false);
     room.startGame(); // p2 在开局这一刻就已经断线 → 这一手打完后触发离座判定
-    room.nextRound(); // 进入第二手：p2 仍断线，触发 markLeft
+    room.players.find(p => p.id === 'p2').disconnectedAt = Date.now() - 61_000; // 断线已持续超过 60 秒阈值
+    room.nextRound(); // 进入第二手：p2 仍断线且已超阈值，触发 markLeft
     expect(room.players.find(p => p.id === 'p2').left).toBe(true);
     expect(room.players.find(p => p.id === 'p2').chips).toBeGreaterThanOrEqual(0); // 账本没被清
     const dealtIds = room.game.players.map(p => p.id);
@@ -832,6 +838,7 @@ describe('RoomManager — 断线跨手自动离座', () => {
     rooms.join(room.code, 'p3', 'Carol', 'socket3');
     room.setConnected('p2', false);
     room.startGame();
+    room.players.find(p => p.id === 'p2').disconnectedAt = Date.now() - 61_000;
     room.nextRound(); // p2 被移出
     expect(room.players.find(p => p.id === 'p2').left).toBe(true);
 
@@ -854,6 +861,8 @@ describe('RoomManager — 断线跨手自动离座', () => {
     room.setConnected('p2', false);
     room.setConnected('p3', false);
     room.startGame();
+    room.players.find(p => p.id === 'p2').disconnectedAt = Date.now() - 61_000;
+    room.players.find(p => p.id === 'p3').disconnectedAt = Date.now() - 61_000;
     const result = room.nextRound();
     expect(room.players.find(p => p.id === 'p2').left).toBe(false);
     expect(room.players.find(p => p.id === 'p3').left).toBe(false);
@@ -869,9 +878,22 @@ describe('RoomManager — 断线跨手自动离座', () => {
     rooms.join(room.code, 'p3', 'Carol', 'socket3');
     room.setConnected('p2', false);
     room.startGame();
+    room.players.find(p => p.id === 'p2').disconnectedAt = Date.now() - 61_000;
     room.nextRound();
     expect(room.players.find(p => p.id === 'p2').left).toBe(true);
     const dealtIds = room.game.players.map(p => p.id);
     expect(dealtIds).toEqual(expect.arrayContaining(['p1', 'p3']));
+  });
+
+  it('断线未超过阈值（比如刚断线几秒）→ 不会被移出，哪怕跨过了手牌边界', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame();
+    room.setConnected('p2', false); // disconnectedAt 刚设成 Date.now()，远没到 60 秒
+    room.nextRound();
+    expect(room.players.find(p => p.id === 'p2').left).toBe(false);
+    const dealtIds = room.game.players.map(p => p.id);
+    expect(dealtIds).toContain('p2');
   });
 });

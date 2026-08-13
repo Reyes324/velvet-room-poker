@@ -4,6 +4,7 @@ import ActionBar from './ActionBar';
 import Card from './Card';
 import Pot from './Pot';
 import { useTableScale } from '../hooks/useTableScale';
+import { playActionSfx, playDealSfx, playSfx, playCheckSfx } from '../utils/sfx';
 
 // Fixed design canvas for just the table scene (felt + seats + hero cards) —
 // the single source of truth for both .table-canvas's inline size and
@@ -340,7 +341,10 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const [revealPhase, setRevealPhase] = useState(gameState.phase);
   useEffect(() => {
     if (gameState.phase === 'showdown' && revealPhase !== 'showdown') {
-      const t = setTimeout(() => setRevealPhase('showdown'), SHOWDOWN_REVEAL_HOLD_MS);
+      const t = setTimeout(() => {
+        setRevealPhase('showdown');
+        playSfx('showdownReveal');
+      }, SHOWDOWN_REVEAL_HOLD_MS);
       return () => clearTimeout(t);
     }
     if (gameState.phase !== 'showdown') setRevealPhase(gameState.phase);
@@ -376,6 +380,22 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // modal appeared).
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled && !isShowdown;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
+
+  // Turn-notify sfx: only on the false→true edge, not on every render where
+  // myTurn happens to be true (it's a derived value, recomputed every
+  // render, not a one-shot event).
+  const prevMyTurnRef = useRef(false);
+  useEffect(() => {
+    if (myTurn && !prevMyTurnRef.current) playSfx('turnNotify');
+    prevMyTurnRef.current = myTurn;
+  }, [myTurn]);
+
+  // Win-pot sfx: same false→true edge pattern, on the settlement sheet prop.
+  const prevSettlementOpenRef = useRef(false);
+  useEffect(() => {
+    if (settlementOpen && !prevSettlementOpenRef.current) playSfx('winPot');
+    prevSettlementOpenRef.current = settlementOpen;
+  }, [settlementOpen]);
 
   // 说话按钮要跟玩家自己的座位在同一条水平线上——但座位的实际屏幕位置是
   // 一套参考画布坐标（heroSeatPos）经过 tableScaleX/Y 缩放算出来的，缩放
@@ -431,6 +451,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const [newCardFrom, setNewCardFrom] = useState(gameState.communityCards.length);
   useEffect(() => {
     if (cardCount > newCardFrom) {
+      playSfx('heroFlip'); // same flip sound as hero's own reveal — this effect only re-fires once per distinct cardCount, so one play per street
       const t = setTimeout(() => setNewCardFrom(cardCount), 950);
       return () => clearTimeout(t);
     }
@@ -470,7 +491,15 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const dealing = !heroRevealed;
   const prevHeroRevealedRef = useRef(true);
   const justRevealed = !prevHeroRevealedRef.current && heroRevealed;
-  useEffect(() => { prevHeroRevealedRef.current = heroRevealed; }, [heroRevealed]);
+  useEffect(() => {
+    // Compares the ref's own current value from inside the effect, rather
+    // than closing over the outer `justRevealed` — that one is computed
+    // during render from a ref read (flagged separately, pre-existing), and
+    // referencing it here as well trips the same ref-access lint check a
+    // second time for no benefit.
+    if (!prevHeroRevealedRef.current && heroRevealed) playSfx('heroFlip');
+    prevHeroRevealedRef.current = heroRevealed;
+  }, [heroRevealed]);
 
   useEffect(() => {
     // gameState.phase (not `dealing`, which this effect itself sets) only changes
@@ -478,7 +507,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     if (gameState.phase !== 'preflop') return;
     setHeroRevealed(false);
     const t = setTimeout(() => setHeroRevealed(true), (totalDealTime + 0.15) * 1000);
-    return () => clearTimeout(t);
+    const cancelDealSfx = playDealSfx(totalDealTime);
+    return () => { clearTimeout(t); cancelDealSfx?.(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.phase]);
 
@@ -515,6 +545,17 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         else if (label.type === 'raise') text = `加注 ¥${label.amount.toLocaleString()}`;
         else if (label.type === 'call') text = `跟注 ¥${label.amount.toLocaleString()}`;
         else text = '过牌'; // check
+        // Chip sfx only for actions that actually move chips into the pot —
+        // fold stays silent (2026-08-14 design decision, see design.md
+        // "音效系统"). Check gets its own two-knock sfx instead of a chip
+        // sound, since no chips move.
+        if (label.type === 'call' || label.type === 'raise' || label.type === 'allin') {
+          playActionSfx(label.type);
+        } else if (label.type === 'check') {
+          playCheckSfx();
+        } else if (label.type === 'fold') {
+          playSfx('fold');
+        }
         // Persistent now — no self-clearing timeout. The bubble stays until
         // this same player's status/bet changes again (this effect re-fires
         // and overwrites their entry) or a new street/hand clears everyone

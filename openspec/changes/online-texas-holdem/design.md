@@ -2003,6 +2003,62 @@ for (const p of active) p.wasDisconnectedAtHandStart = p.connected === false;
 
 `server/__tests__/RoomManager.test.js` 新增 6 条单测，覆盖：本手中途断线不受影响、跨手未恢复被移出、跨手前重连不受影响、被移出后重新加入能回到牌桌、两人同时断线时保底不清出、只有一人断线时保底不生效（正常单独移出）。全量服务端单测（`server/__tests__`，372 条）跑过，含上述因假定时器噪声暴露又被保底修复的既有 `reconnect.test.js`。
 
+### Bug 修复：实际要多等一整手才会被移出，不是"下一手"（用户反馈，2026-08-14）
+
+用户反馈"感觉会离开，但不是下一手"。真人复测 + 读代码确认：跟上面文档描述的"跨手未恢复即移出"不符，实际行为是**要跨两手边界**才会被移出。
+
+**根因**：`nextRound()` 里两个快照时机没对齐——
+
+1. 判断要不要移出用的是`wasDisconnectedAtHandStart`，这个值是在**上一次** `nextRound()` 调用的**最后面**才写入的（"这一手要开局了，记一下现在断没断线"）。
+2. 但玩家往往是在**手牌进行中途**才断线的（不是在"这一手开局"那一刻断的）——所以那一手结束时，判断用的快照记的还是"在线"，不会被移出（这一步本身是对的，故意排除中途瞬断）。
+3. 问题在下一步：这一手结束、进入下一手时，快照被**重新刷新**成"现在断没断线"（这时候确实还断着），但这个新快照要等到*再下一手*结束时才会被拿去做移出判断——也就是说断线者会被完整地拖进"再下一手"整手陪打（其他人依然要陪他等一轮 20 秒超时兜底弃牌），移出真正生效要再晚一整手。
+
+跟最初 2026-08-12 那条反馈"长时间掉线的朋友每一手都要被干等一次完整倒计时"想解决的问题相比，这个实现只是把"每一手都等"缓解成了"多等一手才不用等"，没有真正做到"下一手就不用等"。
+
+**第一版修复尝试（已推翻）**：最初想直接把移出判断改成"这一手结束这一刻是否还断线"的即时状态检查，去掉旧快照那层缓冲。跑测试才发现这个方向本身有问题——不只是打破了"本手中途才断线：这一手不受影响"这条测试，还打破了更早、更基础的 **Bug C 修复**那条测试（`nextRound 不再因断线跳过玩家`：断线不等于淘汰，哪怕手牌边界那一刻正好断着线也不该被跳过）。用户追问后确认了真正的顾虑：`connected` 这个字段是 socket.io 原始 `disconnect` 事件一触发就立刻置 `false`（`server/RoomManager.js` `setConnected` 上方注释已经写明：手机切后台、WiFi 抖动、切标签页都可能触发），没有任何缓冲，重连往往几秒内自动完成——拿这个瞬时状态直接在手牌边界做去留判断，会把"网络抖了一下"的人也误伤成"真的走了"，这正是 Bug C 想防的同一类风险，不能这么改。
+
+**真正的修复方向**：区分"现在断没断线"（瞬时、不可靠）和"断线持续了多久"（更能反映真实情况）——新增 `disconnectedAt` 时间戳，`setConnected(false)` 第一次触发时记录，重连（`setConnected(true)`）时清空。移出判断改成"现在还断着 **且** 断线持续时间 ≥ 60 秒"，两个条件都满足才在下一手边界移出。60 秒是用户跟"能过滤掉正常网络抖动，又不会让真的走了的人拖太久"这个权衡下选定的（备选过 15 秒/30 秒，跟回合超时倒计时 20 秒的量级对比后选了更保守的一档）。
+
+这个方向比"按手数计数"更准确——手数长短本身跟真实经过的时间没有稳定关系（有的手几秒打完，有的几分钟），直接量时间戳更贴近"断线多久"这个真正想问的问题，也不需要再靠"跨几手快照"这种代理指标。`wasDisconnectedAtHandStart` 字段连带 `startGame()`/`nextRound()` 里两处快照写入代码一并删除（不再被任何地方读取），换成 `disconnectedAt` 时间戳。"不能一次性把剩余人数打到2人以下"（Bug C 同源保底）逻辑不受影响，照旧保留。
+
+### 最终实现
+
+- `Room` 新增常量 `DISCONNECT_PURGE_MS = 60_000`。
+- `setConnected(playerId, connected)`：`connected` 变 `false` 时（且 `disconnectedAt` 尚未记录）写入 `disconnectedAt = Date.now()`；变 `true` 时清空回 `null`。
+- `markDisconnectedIfCurrent`（真实 socket `disconnect` 事件的入口，绕开 `setConnected` 直接改字段）同步补了同样的 `disconnectedAt` 写入逻辑，否则真实断线走的是这条路径，时间戳永远不会被记录。
+- `addPlayer` 的两条重连分支（同 id 重连 / 同名冷却重连）都补了 `disconnectedAt = null`，跟 `connected = true` 一起清空，保持字段语义一致（`connected===false` 时 `disconnectedAt` 一定有值，`connected===true` 时一定是 `null`）。
+- `nextRound()` 的移出判定改成 `p.connected === false && p.disconnectedAt != null && Date.now() - p.disconnectedAt >= DISCONNECT_PURGE_MS`——两个条件都满足才移出。
+
+### 测试
+
+`server/__tests__/RoomManager.test.js`「断线跨手自动离座」这组测试全部改用 `disconnectedAt = Date.now() - 61_000` 直接回填时间戳来模拟"持续断线超过阈值"，而不是像早前那样单纯断线后立刻调用 `nextRound()`（那样现在不会触发移出了，属于预期行为变化，不是测试挂了随手改）。新增一条"断线未超过阈值（刚断线几秒）→ 不会被移出，哪怕跨过了手牌边界"，直接覆盖这次修复真正要保护的场景。全量服务端单测（`server/__tests__`，377 条）跑过。
+
+## Bug 修复：结算确认"X/Y"分母算错人，导致点完确认还要死等倒计时（用户反馈 #44，2026-08-14）
+
+### 起点
+
+用户反馈"每局结束时，各位玩家点确认后系统没有自动继续，而是等读秒完毕才自动继续"，并配了一张截图："3s 后自动继续（2/3）"——圈出了这个"2/3"，怀疑分母多算了一个人。
+
+### 根因：跟"断线跨手自动离座"是同一个病灶的第二、第三个病灶
+
+`beginSettlementWait()`（`server/RoomManager.js`）负责算"这一手结束时谁需要点确认"，原本只筛了 `p.socketId && !p.left`——跟本节上面"断线跨手自动离座"那次修复揭发的问题是**同一类**：分母里混进了实际上永远不会点确认的"幽灵名额"，导致哪怕在场的真人全点了确认，也因为凑不齐分母而只能干等整段固定时长的倒计时兜底，而不是像设计原意那样"全员确认就立刻推进"（`ackReady()` 本来就会在 `_allSettlementAcksIn()` 为真时让调用方立刻 `advanceRoom`，这条快速路径本身没坏，坏的是分母）。
+
+顺着这个思路一次性排查出三个同源漏洞（用户追问"多了一个人感觉"、"你要全盘理一下"后确认要一起处理，不是挨个开新 issue 补丁）：
+
+1. **已退出房间的玩家**——早前就已经修过（`settlementWaitEligibility.test.js` 开头注释记录的旧发现），`!p.left` 这条筛选已经在。
+2. **结算这一刻已经断线（但还没被 `nextRound()` 判定"离开"）的玩家**——之前没排除，这次一并补上 `p.connected !== false`。
+3. **手牌进行中途才加入的旁观新玩家**——`this.players` 是整个房间名单，包含中途加入、根本没被发进这一手 `this.game.players` 的新玩家；客户端 `amPlaying=false` 时结算弹窗结构上就不会渲染给他们看（`GameTable.jsx` 的 `amPlaying` 分支），他们不可能点确认，却一样被算进分母。改成先跟这一手实际发牌的名单（`this.game.players` 的 id 集合）取交集，只有真正在这一手里的人才需要确认。
+
+三条一起改成一个复合筛选：`dealtInIds.has(p.id) && p.socketId && !p.left && p.connected !== false`。
+
+### 范围边界（不是本次改动）
+
+只修正 `beginSettlementWait()` 调用那一刻的**初始快照**，不追踪等待过程中途才发生的新断线——`dropFromSettlementWait` 目前只在房主手动踢人（`room:kick`）时调用，中途断线不会触发它。这是 2026-08-12 之前"Bug 3"修复时特意做的取舍（"结算的推进由 beginSettlementWait 时就已经起好的固定时长计时负责，这里不重新计算"，避免中途断线在人机对战/双人局把整局判成提前结束），这次不动它，维持现状。
+
+### 测试
+
+`settlementWaitEligibility.test.js` 里所有测试的前置从"不真实开局"改成先调用 `room.startGame()`——生产环境 `beginSettlementWait()` 只在摊牌之后调用，这时 `this.game` 必然有值，测试前置状态跟生产不一致是能让上面这类 bug 藏这么久的原因之一。新增覆盖断线（第2点）和旁观新玩家（第3点）两类场景各两条测试（"不该被计入分母" + "被正确排除后在场的人全确认就能推进"），跟第1点已有的 `left` 测试对称。`RoomManager.test.js` 里另一组结算等待测试的 `setupTwoConnectedPlayers()` 同样补了 `room.startGame()`。全量服务端单测（`server/__tests__`，381 条）跑过。
+
 ## 破产决策弹窗超时重设计（用户反馈，2026-08-12，实现完成）
 
 ### 起点
@@ -2283,3 +2339,42 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 2. `.seat.is-egg-hit .avatar-card` 那层震动没法用同一招——它是持续挂载的节点上的一个 class，不能靠换 `key` 卸载重挂（连带 `speak-glow`/`turn-ring` 这些兄弟节点也会跟着重挂，代价明显更大）。改成一个监听 `pokeKey` 变化的 `useEffect`，通过 ref 直接对 `.avatar-card` 做 `animation:none` → 强制 reflow（读一次 `offsetWidth`）→ 清空回 `''`，让浏览器重新从 CSS 规则里取一遍 `animation`，等同于强制重播，不需要真的卸载节点。
 
 **验证**：真机 Playwright 复现"连续拍同一个目标两下"，在 `.egg-splat` 节点上打一个 `dataset` 探针——修复前第二次点击探针显示 `reused: true`（同一个 DOM 实例）、`transform` 全程停在 `matrix(0.3,0,0,0.15,0,0)`（squash 收尾的最终帧）纹丝不动；修复后第二次点击探针显示 `reused: false`（全新节点），逐帧采样确认 `transform` 完整重新走了一遍抛物线到 squash 收尾的全过程，跟第一次点击的曲线形状一致。`cd client && npm run build` 通过；`npx eslint .` 与基线持平（38/29）；服务端全量 376/376。
+
+## 音效系统（用户需求，2026-08-14，全部10个场景已实现）
+
+用户反馈游戏整体缺音效（发牌、洗牌、下注、翻牌等动作全程无声）。目前处于**素材选型阶段**，尚未接入代码。
+
+**素材来源结论**：
+- **Kenney Casino Audio Pack**（CC0，作者 Kenney.nl）——最终选定的主力来源，本次全部音效指派都出自这个包。作者统一、风格一致，卡牌类23个+筹码类19个（骰子12个本项目用不上，已排除）。
+  - 下载页（OpenGameArt 镜像）：https://opengameart.org/content/54-casino-sound-effects-cards-dice-chips
+  - 直接 zip 链接：https://opengameart.org/sites/default/files/kenney_casino-audio.zip
+  - Kenney 官方页（同一套资源）：https://kenney.nl/assets/casino-audio
+  - 已下载到本地并做成试听页 `~/Desktop/poker-sounds-preview.html`（本地文件，用 `open` 命令打开，不要用 Claude in Chrome——它不支持 `file://`）。
+- **Pixabay**（`pixabay.com/sound-effects/search/poker...`）——License 没问题（Pixabay Content License，免费可商用，不能整包转卖），但下载按钮背后有 Cloudflare 人机验证，自动化脚本会被拦（已用 Playwright 实测确认）。**判定为红线，不会尝试绕过**——用户如果想用这个来源的素材，需要自己手动在浏览器里下载后发给我整合，不是技术做不到，是原则上不做。
+- **Artlist.io**（`artlist.io/sfx/pack/casino-central`）——付费订阅制素材库，只用来试听参考风格，不作为实际下载来源（除非用户本身已有订阅）。
+
+**已确认的音效指派**（逐条讨论中，随时可能改变主意）：
+- 筹码类音效（`chips-handle-3.ogg` 等）触发条件是"筹码真的动了"，不是"玩家做了个动作"——跟注/加注/全下这类**有筹码进池**的动作才触发；让牌/弃牌不涉及筹码移动，不触发筹码音效（2026-08-14 确认）
+- 跟注 call → `chips-handle-3.ogg`（2026-08-14 确认）
+- 加注 raise → 用户本地素材 `~/Desktop/德州音效/大注.mp3`（`raise.mp3`，2026-08-14 改主意从 Kenney `chips-handle-6.ogg` 换成这个，跟跟注的 Kenney 素材来源不同也没关系）
+- 全下 all-in → 用户本地素材 `~/Desktop/德州音效/all in.mp3`（2026-08-14 确认，来源不是 Kenney，是用户自备的德州扑克专用音效——同一个文件夹里还有 `大注.mp3`/`小注.mp3` 待分配场景）
+- "初次下注"不是独立场景——代码里（`GameEngine.js`/`RoomManager.js`）动作类型只有 `call`/`raise`/`check`/`fold`/`allin`，没有单独的"bet"类型，翻牌圈第一个下注的人走的就是 `raise` 路径，已经被 raise 的音效覆盖，不用另配（2026-08-14 确认）
+- 小盲/大盲下注不触发音效（2026-08-14 确认）
+
+**剩余四个场景（2026-08-14 用户放弃逐条挑选，让 Claude 直接从已给的推荐候选里拍板实现）**：
+- 弃牌 fold → Kenney `card-shove-2.ogg`（推走感），接在跟 call/raise/allin/check 同一个 `label.type` 判断分支（`GameTable.jsx` 约L524-540）——这个项目里"弃牌"没有单独的"牌被扫走"动画（folded 状态只给头像加灰度滤镜，牌本身直接不渲染），所以音效直接挂在"弃牌"这个动作类型判定的那一刻，不需要另找一个视觉时机对齐
+- 摊牌揭牌 showdown reveal → Kenney `card-fan-1.ogg`（展开感），接在已有的 `revealPhase` effect（约L342-349）里——`gameState.phase==='showdown'` 之后延迟 `SHOWDOWN_REVEAL_HOLD_MS`（1200ms）才真正把 `revealPhase` 设成 `'showdown'`（对手底牌翻开的真实时机），音效放在这个 setTimeout 回调里，跟牌真正翻面同一刻，不是跟着 `gameState.phase` 变化就响（那样会早响1.2秒，牌还没翻）
+- 结算/赢下底池 win-pot → Kenney `chips-stack-3.ogg`（筹码归拢声），新增一个 `settlementOpen`（父组件传入的 prop，`!!settlement`）false→true 边沿检测的 effect（用 `prevSettlementOpenRef` 比较，因为这是 prop 不是本地 state，没有天然的"变化"事件可监听）
+- 轮到你行动提醒 turn-notify → Kenney 界面提示音包（不是赌场包）`bong_001.ogg`，新增一个 `myTurn`（组件内 derived 常量）false→true 边沿检测的 effect，同样用 `prevMyTurnRef` 模式——这个不会碰到之前"翻牌"那次踩过的 `react-hooks/refs` 坑，因为 `myTurn` 本身不是从 ref 派生的（跟 `justRevealed` 不一样，那个是从 `prevHeroRevealedRef.current` 读出来的）
+
+`sfx.js` 的 `SOURCES` 表现在有10个键（call/raise/allin/deal/heroFlip/knock/fold/showdownReveal/winPot/turnNotify），播放函数只有三种模式：`playSfx(name)`（单次播放，绝大多数场景）、`playCheckSfx()`（过牌专属的播两次）、`playDealSfx(duration)`（发牌专属的动态截断）——没有为每个新场景各写一个函数，四个新场景全部复用最基础的 `playSfx`。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+
+**翻牌音效（2026-08-14 确认+实现）**：Kenney `card-slide-6.ogg`，一个音效复用在两处翻牌时机——(1) 自己底牌翻面（`GameTable.jsx` 的 `justRevealed`，`heroRevealed` 从 false→true 那一刻）；(2) 每条街公共牌揭晓（翻牌/转牌/河牌），接在已有的 `newCardFrom` effect（约L433-440）里 `cardCount > newCardFrom` 判断为真的那一刻——这个 effect 本来就是"新公共牌开始翻面动画"的唯一触发点（`newCardFrom` 之后950ms才追上 `cardCount`，对应 flipIn 动画时长），且只依赖 `[cardCount]`，不会在无关重渲染时重复触发，一条街一次。`sfx.js` 新增通用 `playSfx(name)`，`playActionSfx` 现在只是它的一个别名，避免下注类和翻牌类各自维护一套播放逻辑。
+
+**踩坑记录**：第一版把"自己底牌翻面"的判断写成在 effect 里直接引用 render 阶段算出来的 `justRevealed`（`!prevHeroRevealedRef.current && heroRevealed`），触发了 React Compiler 的 `react-hooks/refs`"不能在渲染阶段读 ref"检查——即使是在 effect 闭包里引用这个由 ref 派生的变量也会被判定为间接读 ref（lint 从基线 38/29 变成 39/30）。改法：不复用外层 `justRevealed`，直接在 effect 内部重新用 `prevHeroRevealedRef.current`（这时是在 effect 里，读 ref 合法）跟 `heroRevealed` 比较。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+
+**过牌敲桌音效（2026-08-14 确认+实现）**：来源是用户本地 `~/Desktop/德州音效/敲桌子原始.mp3`（原始3.06秒），裁剪成 `client/src/assets/sounds/knock.mp3`（只取前0.5秒+末尾0.1秒淡出）。真实牌桌上过牌通常是敲一下到两下，没有统一硬性标准，用户选择两下——不是用一段预录好的"两下"音频，而是代码里把裁好的单次敲击播放两遍（`sfx.js` 新增 `playCheckSfx()`，间隔220ms），这样以后想改成一下/三下只用改间隔逻辑，不用重新找/剪素材。两次播放故意用各自独立的 `new Audio()` 实例而不是共享池——如果共享一个元素，第二次播放会重置 `currentTime` 打断第一次的尾音。触发点接在跟 call/raise/allin 同一个判断分支（`GameTable.jsx` 约L524-536），`check` 类型现在会分流到 `playCheckSfx()`。素材搜寻过程记录：一开始尝试 Kenney Impact Sounds 包（CC0，`impactWood_light/medium`），试听后用户觉得不够传神，最终还是用户自己本地素材效果最好——这类"敲击类"音效比筹码/卡牌类更依赖真实录音的质感，免费素材库的合成音效替代性没那么强。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+
+**发牌音效（2026-08-14 确认+实现）**：来源是用户本地 `~/Desktop/德州音效/发牌音效 优先.mp3`（原始5.7秒，用户后补的优先版本，替换掉了最初的 `发牌音效.mp3`），裁剪成 `client/src/assets/sounds/deal.mp3`（原长保留，只加了末尾0.3秒淡出；9人桌满座的 `totalDealTime` 理论上限约2.5秒，5.7秒本身就够余量，不用像最早那版27.8秒的素材一样先剪短）。播放时长不是固定的——发牌动画本身的 `totalDealTime` 随桌上人数变化（`GameTable.jsx` 已有的公式），所以不能简单整段播完，而是 `sfx.js` 新增的 `playDealSfx(durationSeconds)` 按传入的真实 `totalDealTime` 在对应时刻做一个150ms音量渐变后 `pause()`，不是硬切——这是运行时截断，跟素材本身预裁的4秒长度是两层不同的事（预裁是为了不把27.8秒的整个文件都塞进 bundle，运行时截断是为了让音效长度跟着每手实际发牌时长走）。触发点在 `GameTable.jsx` 里 `gameState.phase === 'preflop'` 那个已有的 effect（约L476-484），跟 `setHeroRevealed(false)`/`totalDealTime` 倒计时同一个 effect，返回的 cleanup 函数会同时清 `setTimeout` 和取消发牌音效的淡出定时器。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+
+**下注类音效实现（2026-08-14）**：素材落地在 `client/src/assets/sounds/`（`chips-handle-3.ogg`、`chips-handle-6.ogg`、`all-in.mp3`），播放逻辑集中在新增的 `client/src/utils/sfx.js`（`playActionSfx(type)`，每种音效一个复用的 `Audio` 元素，重复触发时 `currentTime = 0` 重播而不是 `new Audio()` 堆实例；`play()` 失败静默吞掉——浏览器在用户第一次交互前会拦截自动播放，不值得为此弹错误）。触发点接在 `GameTable.jsx` 里"气泡"这个概念本来就有的 `lastActionSeq` effect（约 L504-538）——这段本来就按 `label.type` 分支生成气泡文案（跟注/加注/全下/弃牌/过牌），新增的音效判断（`call`/`raise`/`allin` 才播，`fold`/`check` 不播）复用同一个分支、同一次判断，不是另开一条独立逻辑，天然跟气泡出现同一帧同步。`GameTable.jsx` 是 PVE 和真人房间共用的组件，一处接入两边都生效。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平（无新增问题）。
