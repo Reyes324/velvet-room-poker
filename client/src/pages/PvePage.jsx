@@ -44,9 +44,16 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   // 交互和效果，我测试比较方便"，纯本地 state 就够，不需要 pve:xxx 事件。
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key, emoji } | null
 
-  function poke(targetId, emoji) {
+  // fromId 作为参数传入（调用处 onPoke={(targetId, emoji) => poke(targetId,
+  // emoji, me?.id)} 绑定），而不是在函数体内直接闭包读 me——me 声明在这个
+  // 函数下方（早退 return 之后才算出来），react-hooks/purity 的静态检查
+  // 会把"函数体内引用一个源码位置更靠后的组件变量、又调用了 Date.now()
+  // 这种非纯函数"这个组合判定成潜在的渲染期副作用风险而报错，即使这个函
+  // 数实际只在点击事件里才会被调用。让调用方在 JSX 里就地读 me?.id 传进
+  // 来，函数体本身不再触碰这个变量，规避这条误报。
+  function poke(targetId, emoji, fromId) {
     const key = Date.now();
-    setPokedSeat({ targetId, key, emoji: emoji ?? null, fromName: null });
+    setPokedSeat({ targetId, fromId: fromId ?? null, key, emoji: emoji ?? null, fromName: null });
     // 1.6s 跟 RoomPage.jsx 的真实实现、以及 velvet.css 里 .poke-bubble 的
     // 淡出时机保持一致。
     setTimeout(() => {
@@ -157,7 +164,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
         onOpenStats={() => { emit('pve:get-hand-history'); setShowStats(true); }}
         onOpenFeedback={() => setShowFeedback(true)}
-        onPoke={poke}
+        onPoke={(targetId, emoji) => poke(targetId, emoji, me?.id)}
         pokedSeat={pokedSeat}
         isPve
       />

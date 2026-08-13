@@ -64,7 +64,7 @@ function bubbleStyle(bubbleSide, anchorTop) {
   return bubbleSide ? sideStyle(bubbleSide, anchorTop) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeKey = null, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -154,6 +154,29 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
     onPoke?.(emoji);
   }
 
+  // 座位震动（eggImpactShake，由 .seat.is-egg-hit .avatar-card 这条 CSS
+  // 规则驱动）是三处"蛋特效"里唯一一个不能靠 key={pokeKey} 强制重挂来解决
+  // 重播问题的——.poke-bubble/.egg-splat 是"poked 为真才整个挂载"的节点，
+  // key 一变就直接换一个全新节点；但 is-egg-hit 只是加在始终挂载着的
+  // .seat 外层 div 上的一个 class，同一个人短时间内被连续拍两下时这个
+  // class 字符串本身没有任何变化（poked 全程为真），React 根本不会去碰
+  // 这个 DOM 属性，浏览器自然也不会重播已经播完/仍在播的 CSS 动画。用
+  // ref 直接在 --avatar-card 上把 animation 先置空再清空这个标准重播手法
+  // （2026-08-13 真机 Playwright 实测确认过原因）：强制触发一次 reflow，
+  // 让浏览器重新从 CSS 规则里读一遍 animation，等于每次拍都能拿到一次
+  // 全新播放，不需要真的卸载重挂这个大节点（那样连带 speak-glow/turn-ring
+  // 这些兄弟节点也会跟着重挂，代价更大）。
+  const avatarCardRef = useRef(null);
+  useEffect(() => {
+    if (!(poked && pokeEmoji === '🥚')) return;
+    const el = avatarCardRef.current;
+    if (!el) return;
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pokeKey]);
+
   const rippleRef = useRef(null);
   useEffect(() => {
     if (!isSpeaking || !getVoiceVolume) return;
@@ -202,7 +225,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             弃牌顶多省 20 秒，却让标签显得莫名其妙。 */}
         {disconnected && <span className="disconnect-badge">断线中</span>}
       </div>
-      <div className={`avatar-card ${avClass}`} onClick={handleAvatarClick} onDoubleClick={handleAvatarDoubleClick} role={canPoke ? 'button' : undefined} aria-label={canPoke ? '单击选表情拍一拍，双击直接拍一拍' : undefined}>
+      <div ref={avatarCardRef} className={`avatar-card ${avClass}`} onClick={handleAvatarClick} onDoubleClick={handleAvatarDoubleClick} role={canPoke ? 'button' : undefined} aria-label={canPoke ? '单击选表情拍一拍，双击直接拍一拍' : undefined}>
         {/* 说话中指示：独立于 avatar-card 自身 border/box-shadow 的叠加层
             （做法跟下面的 turn-ring 一样是并列的兄弟节点），刻意不占用那两
             个属性——is-active/is-timed/is-allin/is-winner 都在用它们，抢占
@@ -263,19 +286,37 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             （egg-splat.png）——落地瞬间蛋图标挤压消失（squash+闪光+座位
             震动，物理反馈这部分手感是对的，保留），紧接着淡入这张真实
             的蛋壳+蛋黄+蛋液图，比继续手画更可信。
-            2026-08-13：蛋图标原本是"从正上方掉落"，用户反馈想要"从页面
-            中心被扔过去"的感觉。GameTable.jsx 算好了从牌桌中心（
-            DEAL_ORIGIN，跟发牌动画共用同一个原点）到这个座位的偏移量，
-            通过 pokeThrowFrom 传下来，用跟发牌动画（.card-deal 的
-            --dx/--dy）完全一样的技术：起点是"中心到这里的反向偏移"，终
-            点是 (0,0)，读起来就是"从桌子中心飞过来"，不是发明新技术。 */}
+            2026-08-13：蛋图标原本是"从正上方掉落"，先改成"从桌子中心被
+            扔过去"，用户又反馈想要"真的从发起人头像扔到接收人头像"的抛
+            物线。GameTable.jsx 现在按【发起人 pokedSeat.fromId 的座位坐
+            标】（查不到才退回桌子中心）算 pokeThrowFrom，同样是"起点是
+            反向偏移、终点是 (0,0)"这套跟发牌动画共用的技术，只是原点从
+            固定的 DEAL_ORIGIN 换成了动态的发起人座位。--throw-arc 是抛
+            物线弧顶高度（随距离缩放，GameTable.jsx 算好传下来），真正
+            的弧线路径在 velvet.css 的 eggFall 关键帧里用 --throw-dx/
+            --throw-dy/--throw-arc 三个变量算出来，不是简单直线位移。
+            key={pokeKey}（同一个目标短时间内被连续拍第二下时才会显形的
+            bug，2026-08-13 用户反馈"第一次点鸡蛋会卡住"排查确认）：拍同
+            一个人两次、间隔小于 1.6s（pokedSeat 还没被上一次的 setTimeout
+            清空）时，`poked` 这个布尔值全程为 true 没有变过 false 的间
+            隙，React 不会卸载重挂载这个 div，只是 style 里的 --throw-dx
+            等变量换了新值——但 CSS 动画只在元素被"新插入"DOM 时才会重新
+            播放，同一个还在的节点第二次根本不会重播 keyframes，只会停在
+            上一次动画播完/eggSquashVanish 收尾后的最终帧（挤扁、透明度
+            0），看起来就是"卡住不动"。真机 Playwright 实测过：不加 key
+            时，紧接着拍第二下，.egg-splat 节点确认是同一个 DOM 实例
+            （reused: true），transform 全程停在 matrix(0.3,0,0,0.15,0,0)
+            纹丝不动；加上 key={pokeKey}（pokedSeat.key，每次广播一个新
+            的 Date.now()）后，每次拍都能拿到一个新节点，动画必定从头播。
+            跟 .action-bubble 用 key={bubble.key}、turn-ring 用
+            key={clock.key} 强制重播是同一个套路，不是新发明的写法。 */}
         {poked && pokeEmoji === '🥚' && (
-          <div className="egg-splat" aria-hidden="true">
+          <div key={pokeKey} className="egg-splat" aria-hidden="true">
             <div className="egg-splat__flash" />
             <img className="egg-splat__img" src={eggSplatImg} alt="" />
             <div
               className="egg-splat__icon"
-              style={pokeThrowFrom ? { '--throw-dx': `${pokeThrowFrom.dx}px`, '--throw-dy': `${pokeThrowFrom.dy}px` } : undefined}
+              style={pokeThrowFrom ? { '--throw-dx': `${pokeThrowFrom.dx}px`, '--throw-dy': `${pokeThrowFrom.dy}px`, '--throw-arc': `${pokeThrowFrom.arc ?? 42}px` } : undefined}
             >🥚</div>
           </div>
         )}
@@ -311,15 +352,19 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           带表情时读作"XX 给你一个 😂"——重点是表情本身，文案缩小、表情
           放大（用户反馈，2026-08-11："突出的是表情不是那个样式框"）；不
           带表情（✋纯拍一拍/双击）时还是"XX 拍了拍"这句纯文字，没有大图
-          形可突出，维持原来的胶囊样式就够。 */}
+          形可突出，维持原来的胶囊样式就够。
+          key={pokeKey}：跟上面 .egg-splat 同一个 bug、同一个原因——连续
+          拍同一个人两下、间隔小于 1.6s 时 `poked` 不会经过 false，这个
+          节点不会被卸载重挂，pokeBubbleIn/pokeBubbleOut 那套入场淡出动画
+          第二次根本不会重播。 */}
       {poked && (
         pokeEmoji ? (
-          <div className="poke-bubble poke-bubble--emoji" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
+          <div key={pokeKey} className="poke-bubble poke-bubble--emoji" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
             <span className="poke-bubble__label">{pokeFromName ? `${pokeFromName} 给你` : '给你'}</span>
             <span className="poke-bubble__glyph">{pokeEmoji}</span>
           </div>
         ) : (
-          <div className="poke-bubble poke-bubble--plain" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
+          <div key={pokeKey} className="poke-bubble poke-bubble--plain" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
             {pokeFromName ? `${pokeFromName} ` : ''}拍了拍
           </div>
         )

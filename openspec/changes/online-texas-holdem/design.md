@@ -2237,3 +2237,32 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 用户反馈：想要"从页面中心被扔过去"的感觉，不是"从天而降"。复用了发牌动画已有的技术——`GameTable.jsx` 里给公共牌/手牌发牌用的 `DEAL_ORIGIN_X/Y`（牌桌中心参考点）和 `--dx/--dy` 自定义属性技巧原样搬过来：算出"桌子中心到这个座位"的偏移量（`{ dx: DEAL_ORIGIN_X - s.x, dy: DEAL_ORIGIN_Y - s.y }`），通过 `pokeThrowFrom` 传给 `PlayerSeat`，`.egg-splat__icon` 的下落起点从固定的 `translateY(-42px)` 改成 `translate(var(--throw-dx,0px), var(--throw-dy,-42px))`——没传这两个变量时退回原来的"正上方掉落"，不强依赖调用方一定要传。跟发牌动画视觉上是同一个"从桌子中心飞出"的语言，不是又发明一套新技术。
 
 验收：真实 Playwright（三人房间，找到真实渲染的顶排座位）确认——选择器的 `boundingClientRect().y >= 0`（不再探出视口顶部，真机截图确认视觉效果）；`--throw-dx`/`--throw-dy` 在真实渲染的 DOM 上被正确设置成非零具体数值（不是默认兜底值）。`cd client && npm run build` 通过；`npx eslint .` 与基线持平；服务端全量 376/376；既有 e2e `game.spec.js` 无回归。
+
+## 修订：蛋从"发起人头像"抛出、真正走抛物线（推翻 2026-08-12 决策，用户反馈，2026-08-13）
+
+### 决策变更
+
+2026-08-12 砸蛋特效立项时，用新定的四点框架评估过"从某人头像飞向目标的抛物动画"，跟用户确认后明确排除了这个方案，定成"被拍方座位上播放固定动画"（见上文"起点与决策"节）。今天（2026-08-13）先把起点从"正上方掉落"改成了"桌子中心飞过来"（上一节），用户接着追问"有没有可能从发起方头像扔到接收方头像，抛物线，复杂吗"——评估后认为技术上代价不高（座位坐标本来就都算出来了，`player:poke` 广播本来就带 `fromId`，客户端只是没存/没用），用户明确要求"要做，做好一点"，这里正式推翻 2026-08-12 那条"不做从头像飞出的抛物动画"的结论，改成实现它。
+
+### 实现
+
+**起点数据**：服务端 `player:poke`/`player:poked` 本来就携带 `fromId`（防刷/广播都要用），只是客户端 `RoomPage.jsx`/`PvePage.jsx` 收到后只拿它查 `fromName`、没有存进 `pokedSeat` 往下传。现在两处 `setPokedSeat` 都把 `fromId` 一起存下来（PVE 里没有服务端这层广播，人机对战只有人类会拍，直接用 `me?.id` 当 `fromId`）。
+
+**起点坐标**：`GameTable.jsx` 每次渲染本来就要给 hero 和每个对手算出各自在参考画布坐标系里的 `{x,y}`（座位布局用），新增一张 `seatPosById`（座位 id → 坐标）复用这份已经算好的数据，不重新计算一遍。`throwOffsetTo(targetX, targetY)` 查 `pokedSeat.fromId` 在这张表里的坐标当抛出原点，查不到（理论上不该发生，兜底）才退回昨天那版的桌子中心 `DEAL_ORIGIN`。**注意每个客户端算的是自己视角下的座位坐标**（hero 固定在底部、对手顺时针排列顺序因人而异），这也是为什么必须用"这次渲染自己算出来的" `seatPosById`，不能假设所有客户端共享同一套坐标——这条跟原来发牌动画共用 `DEAL_ORIGIN`（对所有客户端都一样，因为是桌子中心）不同，是这次改动新引入的差异点。
+
+**真抛物线**：直线位移（`translate(dx,dy)` → `translate(0,0)` 两帧线性插值）读起来是"平移"不是"扔"。改成 5 个关键帧手动插值：水平方向（`--throw-dx`）线性推进到 0；垂直方向在同样线性推进的基础上，中途额外减去一段用 `4t(1-t)` 计算的弧顶偏移（`t=.5` 时最大、两端归零，标准抛物线形状），弧顶高度 `--throw-arc` 由 `GameTable.jsx` 按抛出距离动态算（`Math.min(90, Math.max(26, dist * .4))`，两头封顶——避免近距离抛物线夸张到不成比例、远距离又扁到看不出弧度）。CSS `calc()` 直接在关键帧里用 `var(--throw-dx) * .75`、`var(--throw-dy) * .5 - var(--throw-arc)` 这类表达式插值，不需要 JS 预先算好每个关键帧的具体像素再传一堆变量下去。缓动函数从原来配合直线掉落调的 `cubic-bezier(.55,0,.85,.35)` 换成 `ease-in-out`——路径形状已经由关键帧本身决定，缓动只管沿这条路径走的节奏。
+
+### 验证
+
+项目规则明确要求"两个改动是否互相影响"类问题不接受手算 CSS 就下结论——这次直接上 Playwright 量真实渲染出来的 `getComputedStyle`：起点 `--throw-dx`/`--throw-dy` 对应的真实屏幕坐标应该落在发起人座位而不是桌子中心附近；动画播放到中途（`animation-play-state` 暂停在某个百分比）时的真实 `transform` 矩阵应该比"起点终点连线"在该时间点上的直线插值更靠上（即真的有一段抛物线弧顶偏移，不是纯线性）。`cd client && npm run build` 通过；`npx eslint .` 与基线持平；服务端测试无改动、全量通过。
+
+### Bug 修复：连续拍同一个人两下，第一下的效果会"卡住"（用户反馈，2026-08-13）
+
+用户反馈"第一次点鸡蛋会卡住，第二次才能好"。真机 Playwright 复现（同一个目标短时间内连续拍两下，间隔小于 `pokedSeat` 1.6s 的自动清空窗口）后确认：根因不是抛物线本身，是这次改动之前就存在、这次改动只是让用户第一次认真盯着这个动画看才注意到的一个更老的问题——`.egg-splat`/`.poke-bubble` 这两层特效节点都只在 `poked` 为真时挂载，同一个人被连续拍两下时 `poked`（`pokedSeat?.targetId === player.id`）全程为真、没有经过 `false` 的间隙，React 认为这个节点没变化，不会卸载重挂载，而 CSS 的 `eggFall`/`eggSquashVanish`/`pokeBubbleIn`/`pokeBubbleOut` 这些 keyframe 动画只在元素被"新插入"DOM 时才会播放——同一个还在的节点第二次只是 `style` 里的 `--throw-dx` 等变量换了新值，动画不会重播，停在上一次播完的最终帧（蛋图标挤扁、透明度 0），看起来就是"卡住不动"。`.seat.is-egg-hit .avatar-card` 的撞击震动是同一个根因的第三处：这次是加在常驻的 `.seat` 外层 div 上的一个 class，字符串本身没变化，同样不会重播。
+
+**修复**（跟"哪里疼医哪里"式打补丁不同，是同一个根因、两种匹配的手法）：
+
+1. `.egg-splat`/`.poke-bubble`（两个变体）现在都挂 `key={pokeKey}`——`pokeKey` 是 `GameTable.jsx` 新传下来的 `pokedSeat.key`（服务端/PVE 每次广播一个新的 `Date.now()`）。`key` 一变，React 保证卸载旧节点、挂载全新节点，动画必然从头播。这跟这个文件里 `.action-bubble` 用 `key={bubble.key}`、走线环用 `key={clock.key}` 强制重播是同一个已有套路，不是新发明的写法。
+2. `.seat.is-egg-hit .avatar-card` 那层震动没法用同一招——它是持续挂载的节点上的一个 class，不能靠换 `key` 卸载重挂（连带 `speak-glow`/`turn-ring` 这些兄弟节点也会跟着重挂，代价明显更大）。改成一个监听 `pokeKey` 变化的 `useEffect`，通过 ref 直接对 `.avatar-card` 做 `animation:none` → 强制 reflow（读一次 `offsetWidth`）→ 清空回 `''`，让浏览器重新从 CSS 规则里取一遍 `animation`，等同于强制重播，不需要真的卸载节点。
+
+**验证**：真机 Playwright 复现"连续拍同一个目标两下"，在 `.egg-splat` 节点上打一个 `dataset` 探针——修复前第二次点击探针显示 `reused: true`（同一个 DOM 实例）、`transform` 全程停在 `matrix(0.3,0,0,0.15,0,0)`（squash 收尾的最终帧）纹丝不动；修复后第二次点击探针显示 `reused: false`（全新节点），逐帧采样确认 `transform` 完整重新走了一遍抛物线到 squash 收尾的全过程，跟第一次点击的曲线形状一致。`cd client && npm run build` 通过；`npx eslint .` 与基线持平（38/29）；服务端全量 376/376。
