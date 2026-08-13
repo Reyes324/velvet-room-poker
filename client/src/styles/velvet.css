@@ -219,23 +219,45 @@
    转。改成把总的 720deg 拆进 8 段（关键帧间隔从 25% 缩到 12.5%，一共 9
    个关键帧），每段只转 90deg——90deg 明显小于 180deg 的临界值，两种插值
    方式（逐函数/矩阵）在这个角度下算出来的方向必然一致，不会再有歧义。
-   转满两圈的观感完全不变，只是把"允许摇摆的空子"堵死。 */
+   转满两圈的观感完全不变，只是把"允许摇摆的空子"堵死。
+   2026-08-13 再修正：拆成 90deg 一段之后用户反馈"还是有点奇怪，不像自
+   转"——这次真正的根因跟插值算法无关，是 transform-origin 选错了。
+   .egg-splat__icon 的基础样式把 transform-origin 定在 50% 85%（偏元素
+   底部）——这是为了配合③撞击那下的 eggSquashVanish："从底部往下压扁"
+   才读得出"砸在座位上"的实感，而不是整颗蛋悬空对称缩扁。但 eggFall 和
+   eggSquashVanish 是同一个元素上的两段动画，共用同一个 transform-
+   origin：飞行阶段的 rotate() 也被这个偏下的基准点带着走了——rotate 不
+   是绕元素自己的视觉中心转，是绕这个偏下 15% 的枢轴转，旋转真正带动的
+   是那个枢轴点画出抛物线，蛋本身的视觉中心（比枢轴点高一截）会额外绕
+   着枢轴转出一圈更小的圆，叠加在抛物线主运动上——这才是"看起来不像自
+   转、配合抛物线很奇怪"的真正原因：蛋不是在自转着往前飞，是在一边绕着
+   自己脚下的一个点打转、一边沿抛物线平移，两种运动叠在一起就是那种说
+   不清哪里怪的晃动感。
+   修法：给飞行阶段单独定一个居中的 transform-origin（50% 50%，就是
+   CSS 默认值——之前是被基础样式的 85% 覆盖掉了），让 rotate 真的绕蛋自
+   己的视觉中心转；eggSquashVanish 自己的关键帧里显式把 transform-
+   origin 改回 50% 85%，撞击那下"从底部压扁"的手感不受影响。两段动画同
+   时作用在 transform-origin 这个属性上时，跟 transform 一样是"animation
+   列表里靠后的赢"，eggSquashVanish 排在 eggFall 后面，.3s 之后自然接管。 */
 .egg-splat__icon {
   position:relative; font-size:24px; line-height:1; transform-origin:50% 85%;
   animation:eggFall .3s ease-in-out both, eggSquashVanish .09s ease-in .3s forwards;
 }
 @keyframes eggFall {
-  0%     { transform:translate(var(--throw-dx,0px), var(--throw-dy,-42px)) rotate(-20deg) scale(.55); opacity:1; }
-  12.5%  { transform:translate(calc(var(--throw-dx,0px) * .875), calc(var(--throw-dy,-42px) * .875 - var(--throw-arc,16px) * .4375)) rotate(70deg) scale(.70); }
-  25%    { transform:translate(calc(var(--throw-dx,0px) * .75), calc(var(--throw-dy,-42px) * .75 - var(--throw-arc,16px) * .75)) rotate(160deg) scale(.85); }
-  37.5%  { transform:translate(calc(var(--throw-dx,0px) * .625), calc(var(--throw-dy,-42px) * .625 - var(--throw-arc,16px) * .9375)) rotate(250deg) scale(.975); }
-  50%    { transform:translate(calc(var(--throw-dx,0px) * .5), calc(var(--throw-dy,-42px) * .5 - var(--throw-arc,16px))) rotate(340deg) scale(1.1); }
-  62.5%  { transform:translate(calc(var(--throw-dx,0px) * .375), calc(var(--throw-dy,-42px) * .375 - var(--throw-arc,16px) * .9375)) rotate(430deg) scale(1.075); }
-  75%    { transform:translate(calc(var(--throw-dx,0px) * .25), calc(var(--throw-dy,-42px) * .25 - var(--throw-arc,16px) * .75)) rotate(520deg) scale(1.05); }
-  87.5%  { transform:translate(calc(var(--throw-dx,0px) * .125), calc(var(--throw-dy,-42px) * .125 - var(--throw-arc,16px) * .4375)) rotate(610deg) scale(1.025); }
-  100%   { transform:translate(0,0) rotate(700deg) scale(1); opacity:1; }
+  0%     { transform-origin:50% 50%; transform:translate(var(--throw-dx,0px), var(--throw-dy,-42px)) rotate(-20deg) scale(.55); opacity:1; }
+  12.5%  { transform-origin:50% 50%; transform:translate(calc(var(--throw-dx,0px) * .875), calc(var(--throw-dy,-42px) * .875 - var(--throw-arc,16px) * .4375)) rotate(70deg) scale(.70); }
+  25%    { transform-origin:50% 50%; transform:translate(calc(var(--throw-dx,0px) * .75), calc(var(--throw-dy,-42px) * .75 - var(--throw-arc,16px) * .75)) rotate(160deg) scale(.85); }
+  37.5%  { transform-origin:50% 50%; transform:translate(calc(var(--throw-dx,0px) * .625), calc(var(--throw-dy,-42px) * .625 - var(--throw-arc,16px) * .9375)) rotate(250deg) scale(.975); }
+  50%    { transform-origin:50% 50%; transform:translate(calc(var(--throw-dx,0px) * .5), calc(var(--throw-dy,-42px) * .5 - var(--throw-arc,16px))) rotate(340deg) scale(1.1); }
+  62.5%  { transform-origin:50% 50%; transform:translate(calc(var(--throw-dx,0px) * .375), calc(var(--throw-dy,-42px) * .375 - var(--throw-arc,16px) * .9375)) rotate(430deg) scale(1.075); }
+  75%    { transform-origin:50% 50%; transform:translate(calc(var(--throw-dx,0px) * .25), calc(var(--throw-dy,-42px) * .25 - var(--throw-arc,16px) * .75)) rotate(520deg) scale(1.05); }
+  87.5%  { transform-origin:50% 50%; transform:translate(calc(var(--throw-dx,0px) * .125), calc(var(--throw-dy,-42px) * .125 - var(--throw-arc,16px) * .4375)) rotate(610deg) scale(1.025); }
+  100%   { transform-origin:50% 50%; transform:translate(0,0) rotate(700deg) scale(1); opacity:1; }
 }
-@keyframes eggSquashVanish { 0%{ transform:scaleX(1.35) scaleY(.55); opacity:1; } 100%{ transform:scaleX(.3) scaleY(.15); opacity:0; } }
+@keyframes eggSquashVanish {
+  0%   { transform-origin:50% 85%; transform:scaleX(1.35) scaleY(.55); opacity:1; }
+  100% { transform-origin:50% 85%; transform:scaleX(.3) scaleY(.15); opacity:0; }
+}
 
 /* 撞击闪光——本项目里"这一下砸中了"专属的强调信号，金色而不是刺眼纯
    白，跟 .action-bubble--allin 的暖金脉动是同一支笔画出来的。只在②那
