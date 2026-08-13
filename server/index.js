@@ -803,6 +803,7 @@ function createServer({
       // picker) — validated against a fixed allowlist so an arbitrary
       // string can't be broadcast as-is.
       const safeEmoji = POKE_EMOJI.includes(emoji) ? emoji : null;
+      if (safeEmoji === '🥚') room.recordEggPoke(targetId);
       io.to(room.code).emit('player:poked', { fromId, targetId, emoji: safeEmoji });
     });
 

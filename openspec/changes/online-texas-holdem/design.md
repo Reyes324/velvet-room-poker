@@ -2384,3 +2384,20 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 ## 账本排序：按盈亏从高到低（用户反馈，2026-08-14，实现完成）
 
 `LedgerModal.jsx` 原本直接按 `players` prop 的顺序渲染（座位顺序），跟"账本"这个场景想第一眼看出"谁赢得最多/谁输得最多"的诉求不匹配。改成渲染前先按 `net`（盈亏，`chips - startingChips - debt`，跟表格里显示的公式是同一份计算，不重复维护第二套）降序排序一份拷贝（`[...players].sort(...)`，不直接改 `players` 这个 prop 数组）。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+
+## 账本底部："被扔鸡蛋最多"（用户反馈，2026-08-14，实现完成）
+
+用户原话："里面底部能否加上，谁被扔鸡蛋多少次，只需要显示最多次数的那个"。
+
+**发现**：拍一拍（`poke()`）本身是纯社交、无持久状态的——`pokeCooldowns` 只是一个瞬时的冷却时间戳 Map，没有任何计数会留下来。"扔鸡蛋"不是独立功能，是拍一拍的表情选择器（`POKE_EMOJI`）里选中🥚这个选项，跟其他表情走的是同一条 `player:poke` 事件。
+
+**实现**：
+- `Room` 新增 `eggCounts`（`targetId → 次数` 的 Map）和 `recordEggPoke(targetId)` 方法，整个会话累加，不按手/街重置。
+- `server/index.js` 的 `player:poke` handler 里，验证过 `safeEmoji === '🥚'` 之后才调用 `room.recordEggPoke(targetId)`——只统计"被扔鸡蛋"，不是所有拍一拍。
+- `getLobbyState()` 里带上 `eggCounts: Object.fromEntries(this.eggCounts)`（Map 不能直接过 JSON 序列化广播，转成普通对象）。
+- `restart()`（"开新的一晚"）里 `eggCounts.clear()`，跟 chips/debt/handHistory 一样属于要清空的会话数据，不属于要保留的账本历史。
+- `LedgerModal.jsx` 新增 `eggCounts` prop，只显示次数最多的那个（并列则全部列出，用户没说"并列怎么办"，选择全列出而不是武断挑一个）；次数全是 0 或没传这个 prop（PVE 模式没有拍一拍，`PvePage.jsx` 不传）时这一行不渲染。
+
+**范围边界**：这个功能天然只存在于真人房间（`RoomPage.jsx`），PVE 模式的 `PveSession.js` 本来就没有 `poke()`，不需要额外排除逻辑。
+
+**测试**：`RoomManager.test.js` 新增3条——`recordEggPoke` 累加、`getLobbyState().eggCounts` 可序列化、`restart()` 清空。全量服务端单测（`server/__tests__`，384条）跑过。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。

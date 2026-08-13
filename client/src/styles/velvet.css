@@ -1108,6 +1108,7 @@
 .ledger-cell--net.net-lose { color:var(--state-danger); }
 .ledger-cell--net.net-neutral { color:#8A9C8C; }
 .ledger-note { font-family:var(--font-body); font-size:11px; color:var(--text-secondary); text-align:center; line-height:1.5; }
+.ledger-egg-note { font-family:var(--font-body); font-size:12px; font-weight:600; color:var(--gold-300); text-align:center; margin-top:6px; }
 
 /* ── PVE 战绩面板（用户反馈"AI 经常能赢"后新增，2026-07-30） ─────────── */
 .stats-modal { width:min(92vw, 360px); }

@@ -670,6 +670,30 @@ describe('RoomManager — 拍一拍', () => {
   });
 });
 
+describe('RoomManager — 被扔鸡蛋计数（用户反馈，2026-08-14："底部能否加上谁被扔鸡蛋多少次，只需要显示最多次数的那个"）', () => {
+  it('recordEggPoke 累加同一个目标的次数', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.recordEggPoke('p2');
+    room.recordEggPoke('p2');
+    room.recordEggPoke('p3');
+    expect(room.eggCounts.get('p2')).toBe(2);
+    expect(room.eggCounts.get('p3')).toBe(1);
+  });
+
+  it('getLobbyState 里的 eggCounts 是一个可序列化的普通对象', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.recordEggPoke('p2');
+    expect(room.getLobbyState().eggCounts).toEqual({ p2: 1 });
+  });
+
+  it('restart 清空 eggCounts（跟 chips/debt/handHistory 一样，属于"开新的一晚"要清的东西）', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.recordEggPoke('p2');
+    room.restart();
+    expect(room.eggCounts.size).toBe(0);
+  });
+});
+
 describe('RoomManager — nextRound 不再因断线跳过玩家（Bug C 修复）', () => {
   it('断线的玩家筹码 > 0 时仍会被正常发进下一手（断线不等于淘汰）', () => {
     const rooms2 = new RoomManager();

@@ -436,7 +436,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const [newCardFrom, setNewCardFrom] = useState(gameState.communityCards.length);
   useEffect(() => {
     if (cardCount > newCardFrom) {
-      playSfx('heroFlip'); // same flip sound as hero's own reveal — this effect only re-fires once per distinct cardCount, so one play per street
       const t = setTimeout(() => setNewCardFrom(cardCount), 950);
       return () => clearTimeout(t);
     }

@@ -37,6 +37,7 @@ class Room {
     this.awaitingBustResolution = false;
     this.lastShowdown = null; // Last showdown data, stored for reconnection during settlement wait
     this.pokeCooldowns = new Map(); // `${fromId}→${targetId}` -> last-poke timestamp (ms)
+    this.eggCounts = new Map(); // targetId -> how many times poked with the 🥚 emoji, whole session
     // Per-hand result log for this session ("牌局记录") — result summary
     // only (community cards, who won what, how), not a full action replay.
     // In-memory like everything else in Room; cleared by restart() along
@@ -218,6 +219,15 @@ class Room {
     return { ok: true };
   }
 
+  // Whole-session tally of egg pokes landed on each target — used by the
+  // ledger's "谁被扔鸡蛋最多" line (用户反馈，2026-08-14). Only egg pokes
+  // count here (index.js only calls this when the validated emoji is 🥚),
+  // not every poke — the point is specifically "被扔鸡蛋", not general
+  // poke activity.
+  recordEggPoke(targetId) {
+    this.eggCounts.set(targetId, (this.eggCounts.get(targetId) || 0) + 1);
+  }
+
   updateSocket(playerId, socketId) {
     const p = this.players.find(p => p.id === playerId);
     if (p) p.socketId = socketId;
@@ -392,6 +402,7 @@ class Room {
     this.gameTimerEndsAt = null;
     this.awaitingTimerDecision = false;
     this.dealerId = this.players.find(p => !p.left)?.id ?? null;
+    this.eggCounts.clear();
   }
 
   // ─── post-showdown "wait for everyone to ack" state ───────────────────────
@@ -598,6 +609,7 @@ class Room {
       paused: this.paused,
       gameTimerEndsAt: this.gameTimerEndsAt,
       awaitingTimerDecision: this.awaitingTimerDecision,
+      eggCounts: Object.fromEntries(this.eggCounts),
     };
   }
 }

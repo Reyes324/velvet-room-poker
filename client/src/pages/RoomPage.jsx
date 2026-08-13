@@ -271,6 +271,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
             startingChips={roomState?.startingChips ?? 1000}
             myId={playerId}
             onClose={() => setShowLedger(false)}
+            eggCounts={roomState?.eggCounts}
           />
         )}
         {showHandHistory && (
@@ -385,6 +386,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           startingChips={roomState?.startingChips ?? 1000}
           myId={playerId}
           onClose={() => setShowLedger(false)}
+          eggCounts={roomState?.eggCounts}
         />
       )}
       {settlement && settlement.winners?.length > 0 && (() => {

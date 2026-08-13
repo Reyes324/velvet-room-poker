@@ -12,7 +12,7 @@
 // `left`, specifically so this final number doesn't disappear the moment
 // someone steps away — that used to happen when leaving deleted the row
 // outright).
-export default function LedgerModal({ players, startingChips, myId, onClose }) {
+export default function LedgerModal({ players, startingChips, myId, onClose, eggCounts }) {
   // 盈亏从高到低排序（用户反馈，2026-08-14）——原来是座位顺序，跟"账本"
   // 这个场景想第一眼看出"谁赢得最多/谁输得最多"的诉求不匹配。net 的计
   // 算方式跟下面渲染时用的是同一个公式，这里先算一遍纯是为了排序，不重
@@ -22,6 +22,14 @@ export default function LedgerModal({ players, startingChips, myId, onClose }) {
     const netB = b.chips - startingChips - (b.debt || 0);
     return netB - netA;
   });
+
+  // "谁被扔鸡蛋最多"（用户反馈，2026-08-14）——只显示次数最多的那个（并
+  // 列则全部列出，不武断地只挑一个），次数为 0 或没有 eggCounts 数据（PVE
+  // 模式没有 poke，不传这个 prop）时整行都不渲染。
+  const eggEntries = Object.entries(eggCounts || {}).filter(([, n]) => n > 0);
+  const maxEggCount = eggEntries.length > 0 ? Math.max(...eggEntries.map(([, n]) => n)) : 0;
+  const topEggTargets = eggEntries.filter(([, n]) => n === maxEggCount).map(([id]) => players.find(p => p.id === id)?.name).filter(Boolean);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal ledger-modal" onClick={e => e.stopPropagation()}>
@@ -53,6 +61,9 @@ export default function LedgerModal({ players, startingChips, myId, onClose }) {
           })}
         </div>
         <div className="ledger-note">"盈亏" = 当前 − 初始 − 已借，牌局进行中显示的是上一手结束时同步的筹码，不含本手实时下注变动</div>
+        {topEggTargets.length > 0 && (
+          <div className="ledger-egg-note">🥚 被扔鸡蛋最多：{topEggTargets.join('、')}（{maxEggCount}次）</div>
+        )}
         <div className="modal-btn" onClick={onClose}>关闭</div>
       </div>
     </div>
