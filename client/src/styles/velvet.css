@@ -1411,15 +1411,17 @@
 .lobby-restart:active { opacity:.6; }
 .room-code { cursor:pointer; }
 
-/* 计时游戏 — secondary action next to the primary gold "开始游戏" pill,
-   same outline treatment as .modal-btn--secondary elsewhere (not filled
-   gold — plain "开始游戏" stays the one visually dominant choice, since
-   untimed is the default/expected path). */
-.lobby-timed-btn { height:44px; margin-bottom:10px; border-radius:22px; border:1.5px solid rgba(212,175,55,.35); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:13px; font-weight:700; color:#D4AF37; letter-spacing:1px; cursor:pointer; }
-.lobby-timed-btn:active { background:rgba(212,175,55,.08); }
+/* "开始游戏"/"计时游戏"合并成一个入口后（用户反馈，2026-08-13），原来
+   并排的第二个金边按钮 .lobby-timed-btn 不再需要——统一走下面这个选择
+   器，删掉整块规则，不留死代码。 */
 .timer-picker-options { display:flex; flex-direction:column; gap:8px; width:100%; }
 .timer-picker-option { height:46px; border-radius:14px; background:rgba(212,175,55,.06); border:1px solid rgba(212,175,55,.18); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; font-weight:600; color:var(--text-primary); cursor:pointer; }
 .timer-picker-option:active { background:rgba(212,175,55,.14); }
+/* "不限时"是跟"选个具体时长"完全不同的一类选择（默认/预期路径，不是
+   "0 分钟"），用一条分隔线 + 略深的底色跟下面几个时长选项区分开，不会
+   看起来像是同一排里的第四个数字。 */
+.timer-picker-option--untimed { background:rgba(212,175,55,.1); border-color:rgba(212,175,55,.3); color:#D4AF37; margin-bottom:4px; position:relative; }
+.timer-picker-option--untimed::after { content:''; position:absolute; left:12px; right:12px; bottom:-6px; height:1px; background:rgba(212,175,55,.15); }
 
 /* ── TOAST (position:fixed — outside .game-stage, relative to viewport) ─ */
 .toast { position:fixed; top:env(safe-area-inset-top,0px); top:max(env(safe-area-inset-top,0px),20px); left:50%; transform:translateX(-50%); white-space:nowrap; font-family:var(--font-body); font-size:15px; padding:10px 20px; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.5); z-index:200; animation:toastIn .25s cubic-bezier(.34,1.56,.64,1) both; }

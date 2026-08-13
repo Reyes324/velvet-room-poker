@@ -73,12 +73,26 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
           </div>
         </div>
       )}
+      {/* "开始游戏"（不限时）和"计时游戏"原来是两个入口——用户反馈
+          （2026-08-13）想合并成一个。合并后点"开始游戏"统一先弹这个选择
+          器，"不限时"排在时长选项最前面、单独隔一条线，跟后面几个时长选
+          项区分开（不限时不是"0 分钟"，是完全不同的一类选择，不应该跟
+          "15/30/60 分钟"挤在同一排看起来像是同一种东西）。选"不限时"时
+          `onStart()` 不传参，跟原来"开始游戏"按钮的行为完全一致；选具体
+          时长时 `onStart(min)`，跟原来"计时游戏"选完之后的行为完全一
+          致——只是合并了入口，没有改变下面这两条路径本身的语义。 */}
       {showTimerPicker && (
         <div className="modal-overlay" onClick={() => setShowTimerPicker(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">计时游戏</div>
-            <div className="modal-body">选择本局时长，时间到会提醒房主决定是否结束</div>
+            <div className="modal-title">开始游戏</div>
+            <div className="modal-body">选择本局时长——不限时可以随时手动结束；选了时长，时间到会提醒房主决定是否结束</div>
             <div className="timer-picker-options">
+              <div
+                className="timer-picker-option timer-picker-option--untimed"
+                onClick={() => { setShowTimerPicker(false); onStart?.(); }}
+              >
+                不限时
+              </div>
               {TIMER_OPTIONS.map(min => (
                 <div
                   key={min}
@@ -151,16 +165,13 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
 
         {isHost ? (
           <div className="lobby-footer">
-            {/* Explicit () => onStart() rather than passing onStart directly
-                as the handler — onClick hands the DOM event as the first
-                arg, which would otherwise leak in as `durationMinutes` and
-                corrupt gameTimerEndsAt (an Event, coerced to NaN). */}
-            <div className="lobby-btn" onClick={canStart ? () => onStart() : undefined} style={!canStart ? { opacity: .5, cursor: 'default' } : undefined}>
+            {/* 原来"开始游戏"（不限时，直接 onStart()）和"计时游戏"（弹
+                时长选择器）是两个并排按钮，合并成一个入口：点击统一弹
+                上面那个选择器，"不限时"是选择器里的第一个选项——不再有
+                直接调 onStart() 的路径留在这里了。 */}
+            <div className="lobby-btn" onClick={canStart ? () => setShowTimerPicker(true) : undefined} style={!canStart ? { opacity: .5, cursor: 'default' } : undefined}>
               {canStart ? '开始游戏' : '等待更多玩家…'}
             </div>
-            {canStart && (
-              <div className="lobby-timed-btn" onClick={() => setShowTimerPicker(true)}>计时游戏</div>
-            )}
             <div className="lobby-restart" onClick={() => setShowRestartConfirm(true)}>重新开始</div>
           </div>
         ) : (
