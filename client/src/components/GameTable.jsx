@@ -343,7 +343,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     if (gameState.phase === 'showdown' && revealPhase !== 'showdown') {
       const t = setTimeout(() => {
         setRevealPhase('showdown');
-        playSfx('showdownReveal');
       }, SHOWDOWN_REVEAL_HOLD_MS);
       return () => clearTimeout(t);
     }
@@ -381,21 +380,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled && !isShowdown;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
-  // Turn-notify sfx: only on the false→true edge, not on every render where
-  // myTurn happens to be true (it's a derived value, recomputed every
-  // render, not a one-shot event).
-  const prevMyTurnRef = useRef(false);
-  useEffect(() => {
-    if (myTurn && !prevMyTurnRef.current) playSfx('turnNotify');
-    prevMyTurnRef.current = myTurn;
-  }, [myTurn]);
 
-  // Win-pot sfx: same false→true edge pattern, on the settlement sheet prop.
-  const prevSettlementOpenRef = useRef(false);
-  useEffect(() => {
-    if (settlementOpen && !prevSettlementOpenRef.current) playSfx('winPot');
-    prevSettlementOpenRef.current = settlementOpen;
-  }, [settlementOpen]);
 
   // 说话按钮要跟玩家自己的座位在同一条水平线上——但座位的实际屏幕位置是
   // 一套参考画布坐标（heroSeatPos）经过 tableScaleX/Y 缩放算出来的，缩放
@@ -540,21 +525,30 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         let text = null;
         let folded = false;
         let allIn = false;
+        let raise = false;
         if (label.type === 'fold') { text = '弃牌'; folded = true; }
         else if (label.type === 'allin') { text = `ALL IN ¥${label.amount.toLocaleString()}`; allIn = true; }
-        else if (label.type === 'raise') text = `加注 ¥${label.amount.toLocaleString()}`;
+        else if (label.type === 'raise') { text = `加注 ¥${label.amount.toLocaleString()}`; raise = true; }
         else if (label.type === 'call') text = `跟注 ¥${label.amount.toLocaleString()}`;
         else text = '过牌'; // check
         // Chip sfx only for actions that actually move chips into the pot —
         // fold stays silent (2026-08-14 design decision, see design.md
         // "音效系统"). Check gets its own two-knock sfx instead of a chip
         // sound, since no chips move.
-        if (label.type === 'call' || label.type === 'raise' || label.type === 'allin') {
-          playActionSfx(label.type);
-        } else if (label.type === 'check') {
-          playCheckSfx();
-        } else if (label.type === 'fold') {
-          playSfx('fold');
+        //
+        // Skipped entirely when this broadcast is reporting MY OWN action
+        // (actorId === myId): ActionBar's onClick already fired this same
+        // sfx the instant the button was tapped, well before this
+        // server round-trip lands — playing it again here would be both a
+        // duplicate AND noticeably late (2026-08-14 user feedback: "感觉
+        // 声音后置了"). Still fires normally for every other player's
+        // actions, which have no earlier local click to hang the sfx on.
+        if (actorId !== myId) {
+          if (label.type === 'call' || label.type === 'raise' || label.type === 'allin') {
+            playActionSfx(label.type);
+          } else if (label.type === 'check') {
+            playCheckSfx();
+          }
         }
         // Persistent now — no self-clearing timeout. The bubble stays until
         // this same player's status/bet changes again (this effect re-fires
@@ -572,11 +566,11 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         // see GameEngine._recordAction.
         const key = Date.now();
         const phase = gameState.lastActionPhase ?? gameState.phase;
-        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, allIn, phase } }));
+        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, allIn, raise, phase } }));
       }
     }
     prevActionSeqRef.current = seq;
-  }, [gameState]);
+  }, [gameState, myId]);
 
   // The action that ENDS a hand (river call straight into showdown, or a
   // fold-to-one-left) gets tagged with gameState.phase as of THAT broadcast

@@ -2340,7 +2340,7 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 
 **验证**：真机 Playwright 复现"连续拍同一个目标两下"，在 `.egg-splat` 节点上打一个 `dataset` 探针——修复前第二次点击探针显示 `reused: true`（同一个 DOM 实例）、`transform` 全程停在 `matrix(0.3,0,0,0.15,0,0)`（squash 收尾的最终帧）纹丝不动；修复后第二次点击探针显示 `reused: false`（全新节点），逐帧采样确认 `transform` 完整重新走了一遍抛物线到 squash 收尾的全过程，跟第一次点击的曲线形状一致。`cd client && npm run build` 通过；`npx eslint .` 与基线持平（38/29）；服务端全量 376/376。
 
-## 音效系统（用户需求，2026-08-14，全部10个场景已实现）
+## 音效系统（用户需求，2026-08-14，只保留用户逐条明确确认过的场景）
 
 用户反馈游戏整体缺音效（发牌、洗牌、下注、翻牌等动作全程无声）。目前处于**素材选型阶段**，尚未接入代码。
 
@@ -2361,13 +2361,15 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 - "初次下注"不是独立场景——代码里（`GameEngine.js`/`RoomManager.js`）动作类型只有 `call`/`raise`/`check`/`fold`/`allin`，没有单独的"bet"类型，翻牌圈第一个下注的人走的就是 `raise` 路径，已经被 raise 的音效覆盖，不用另配（2026-08-14 确认）
 - 小盲/大盲下注不触发音效（2026-08-14 确认）
 
-**剩余四个场景（2026-08-14 用户放弃逐条挑选，让 Claude 直接从已给的推荐候选里拍板实现）**：
-- 弃牌 fold → Kenney `card-shove-2.ogg`（推走感），接在跟 call/raise/allin/check 同一个 `label.type` 判断分支（`GameTable.jsx` 约L524-540）——这个项目里"弃牌"没有单独的"牌被扫走"动画（folded 状态只给头像加灰度滤镜，牌本身直接不渲染），所以音效直接挂在"弃牌"这个动作类型判定的那一刻，不需要另找一个视觉时机对齐
-- 摊牌揭牌 showdown reveal → Kenney `card-fan-1.ogg`（展开感），接在已有的 `revealPhase` effect（约L342-349）里——`gameState.phase==='showdown'` 之后延迟 `SHOWDOWN_REVEAL_HOLD_MS`（1200ms）才真正把 `revealPhase` 设成 `'showdown'`（对手底牌翻开的真实时机），音效放在这个 setTimeout 回调里，跟牌真正翻面同一刻，不是跟着 `gameState.phase` 变化就响（那样会早响1.2秒，牌还没翻）
-- 结算/赢下底池 win-pot → Kenney `chips-stack-3.ogg`（筹码归拢声），新增一个 `settlementOpen`（父组件传入的 prop，`!!settlement`）false→true 边沿检测的 effect（用 `prevSettlementOpenRef` 比较，因为这是 prop 不是本地 state，没有天然的"变化"事件可监听）
-- 轮到你行动提醒 turn-notify → Kenney 界面提示音包（不是赌场包）`bong_001.ogg`，新增一个 `myTurn`（组件内 derived 常量）false→true 边沿检测的 effect，同样用 `prevMyTurnRef` 模式——这个不会碰到之前"翻牌"那次踩过的 `react-hooks/refs` 坑，因为 `myTurn` 本身不是从 ref 派生的（跟 `justRevealed` 不一样，那个是从 `prevHeroRevealedRef.current` 读出来的）
+**剩余四个场景：先斩后奏又被推翻（记一次教训）**：2026-08-14 用户说"实现音效，做完之后反馈这条反馈意见"，Claude 理解成"这四个场景自己挑就行"，从推荐候选里拍板实现了弃牌（Kenney `card-shove-2.ogg`）、摊牌揭牌（`card-fan-1.ogg`）、结算/赢下底池（`chips-stack-3.ogg`）、轮到你行动提醒（界面提示音包 `bong_001.ogg`）四个，没有像前面那几个场景一样逐条跟用户过。用户随后明确反对（"结算摊牌不需要声音啊，为啥现在有声音"、"我靠你居然我没确认的你加上去了，还有什么你加了"），要求"只保留我明确确认的"——四个未经确认的场景（含弃牌）全部撤回，对应素材文件一并删除，只留前面用户逐条确认过的六个场景。**教训**：即便用户说了"你自己弄"这种授权，涉及用户能直接感知到的产品/体验决策（不是纯技术实现细节），还是要么真的每条过一遍，要么至少做完之后明确列出"这些是我自己选的、还没被你确认"，不能默认"做完了就算数"。
 
-`sfx.js` 的 `SOURCES` 表现在有10个键（call/raise/allin/deal/heroFlip/knock/fold/showdownReveal/winPot/turnNotify），播放函数只有三种模式：`playSfx(name)`（单次播放，绝大多数场景）、`playCheckSfx()`（过牌专属的播两次）、`playDealSfx(duration)`（发牌专属的动态截断）——没有为每个新场景各写一个函数，四个新场景全部复用最基础的 `playSfx`。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+`sfx.js` 的 `SOURCES` 表现在只有6个键（call/raise/allin/deal/heroFlip/knock），播放函数三种模式：`playSfx(name)`（单次播放）、`playCheckSfx()`（过牌专属播两次）、`playDealSfx(duration)`（发牌专属动态截断）。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+
+**音效播放时机：从"等气泡"改成"点击即响"（用户反馈，2026-08-14）**：原本所有下注类音效都挂在 `GameTable.jsx` 那个监听服务端广播的 `lastActionSeq` effect 上——对自己的操作来说，这意味着音效要等"点击→服务端处理→广播→客户端收到"整个往返都走完才响，用户反馈"感觉声音后置了"。改法：`ActionBar.jsx` 的 `act()` 点击时立刻调用新增的 `playOwnActionSfx()`，不等服务端确认；`GameTable.jsx` 那个广播驱动的 effect 加一层 `actorId !== myId` 判断，只在播报**别人**的动作时才响（自己的已经在点击那一刻响过，不能重复播）。加注/all-in 在点击这一刻还分不清最终会不会判定成 all-in（取决于金额是否吃光全部筹码），客户端按 `val >= me.chips + me.bet` 提前判断，跟服务端 `GameEngine.raise()` 里 `p.status === 'allin'` 的判定条件对齐（注意不能直接拿 `maxRaise` 判断——`maxRaise` 可能被筹码更少的对手封顶，够到 `maxRaise` 未必等于自己全下）。对手的动作没有"自己点击"这个时机可用，仍然只能等广播，这个延迟本质上没法消除（不可能预判对手的操作）。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平（新增依赖 `myId` 触发了一条 exhaustive-deps 警告，补进依赖数组解决，不是抑制掉）。
+
+## 加注动作气泡专属样式（用户反馈，2026-08-14，实现完成）
+
+跟注/加注共用同一套朴素暗金气泡（`.action-bubble`），看不出加注的分量。用 `frontend-design` skill 定义了一档介于"平淡跟注"和"烧起来的 all-in"（`.action-bubble--allin`，红色渐变+脉动光晕）之间的样式——不脉动（脉动是 all-in 专属信号）、不用红色（红色是 all-in 专属危险色），复用设计系统已有的金色色阶（`tokens.css` 的 `--gold-900~100`）把底色从"深底浅字"反转成"亮金实底+深字"（`--gold-700→--gold-500` 渐变 + `#241400` 深墨字），靠色值倒转本身制造"分量变重"的视觉跳跃。三级序列：跟注/过牌（暗底浅金字，不变）→ 加注（亮金实底，新增，静态）→ 全下（红底脉动，不变）。实现：`velvet.css` 新增 `.action-bubble--raise`；`GameTable.jsx` 的气泡生成逻辑给 `label.type === 'raise'` 标记 `raise: true`；`PlayerSeat.jsx` 的气泡 className 拼接加一段 `bubble.raise` 判断。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
 
 **翻牌音效（2026-08-14 确认+实现）**：Kenney `card-slide-6.ogg`，一个音效复用在两处翻牌时机——(1) 自己底牌翻面（`GameTable.jsx` 的 `justRevealed`，`heroRevealed` 从 false→true 那一刻）；(2) 每条街公共牌揭晓（翻牌/转牌/河牌），接在已有的 `newCardFrom` effect（约L433-440）里 `cardCount > newCardFrom` 判断为真的那一刻——这个 effect 本来就是"新公共牌开始翻面动画"的唯一触发点（`newCardFrom` 之后950ms才追上 `cardCount`，对应 flipIn 动画时长），且只依赖 `[cardCount]`，不会在无关重渲染时重复触发，一条街一次。`sfx.js` 新增通用 `playSfx(name)`，`playActionSfx` 现在只是它的一个别名，避免下注类和翻牌类各自维护一套播放逻辑。
 
@@ -2378,3 +2380,7 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 **发牌音效（2026-08-14 确认+实现）**：来源是用户本地 `~/Desktop/德州音效/发牌音效 优先.mp3`（原始5.7秒，用户后补的优先版本，替换掉了最初的 `发牌音效.mp3`），裁剪成 `client/src/assets/sounds/deal.mp3`（原长保留，只加了末尾0.3秒淡出；9人桌满座的 `totalDealTime` 理论上限约2.5秒，5.7秒本身就够余量，不用像最早那版27.8秒的素材一样先剪短）。播放时长不是固定的——发牌动画本身的 `totalDealTime` 随桌上人数变化（`GameTable.jsx` 已有的公式），所以不能简单整段播完，而是 `sfx.js` 新增的 `playDealSfx(durationSeconds)` 按传入的真实 `totalDealTime` 在对应时刻做一个150ms音量渐变后 `pause()`，不是硬切——这是运行时截断，跟素材本身预裁的4秒长度是两层不同的事（预裁是为了不把27.8秒的整个文件都塞进 bundle，运行时截断是为了让音效长度跟着每手实际发牌时长走）。触发点在 `GameTable.jsx` 里 `gameState.phase === 'preflop'` 那个已有的 effect（约L476-484），跟 `setHeroRevealed(false)`/`totalDealTime` 倒计时同一个 effect，返回的 cleanup 函数会同时清 `setTimeout` 和取消发牌音效的淡出定时器。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
 
 **下注类音效实现（2026-08-14）**：素材落地在 `client/src/assets/sounds/`（`chips-handle-3.ogg`、`chips-handle-6.ogg`、`all-in.mp3`），播放逻辑集中在新增的 `client/src/utils/sfx.js`（`playActionSfx(type)`，每种音效一个复用的 `Audio` 元素，重复触发时 `currentTime = 0` 重播而不是 `new Audio()` 堆实例；`play()` 失败静默吞掉——浏览器在用户第一次交互前会拦截自动播放，不值得为此弹错误）。触发点接在 `GameTable.jsx` 里"气泡"这个概念本来就有的 `lastActionSeq` effect（约 L504-538）——这段本来就按 `label.type` 分支生成气泡文案（跟注/加注/全下/弃牌/过牌），新增的音效判断（`call`/`raise`/`allin` 才播，`fold`/`check` 不播）复用同一个分支、同一次判断，不是另开一条独立逻辑，天然跟气泡出现同一帧同步。`GameTable.jsx` 是 PVE 和真人房间共用的组件，一处接入两边都生效。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平（无新增问题）。
+
+## 账本排序：按盈亏从高到低（用户反馈，2026-08-14，实现完成）
+
+`LedgerModal.jsx` 原本直接按 `players` prop 的顺序渲染（座位顺序），跟"账本"这个场景想第一眼看出"谁赢得最多/谁输得最多"的诉求不匹配。改成渲染前先按 `net`（盈亏，`chips - startingChips - debt`，跟表格里显示的公式是同一份计算，不重复维护第二套）降序排序一份拷贝（`[...players].sort(...)`，不直接改 `players` 这个 prop 数组）。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。

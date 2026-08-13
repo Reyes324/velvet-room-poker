@@ -13,6 +13,15 @@
 // someone steps away — that used to happen when leaving deleted the row
 // outright).
 export default function LedgerModal({ players, startingChips, myId, onClose }) {
+  // 盈亏从高到低排序（用户反馈，2026-08-14）——原来是座位顺序，跟"账本"
+  // 这个场景想第一眼看出"谁赢得最多/谁输得最多"的诉求不匹配。net 的计
+  // 算方式跟下面渲染时用的是同一个公式，这里先算一遍纯是为了排序，不重
+  // 复维护另一套逻辑。
+  const sortedPlayers = [...players].sort((a, b) => {
+    const netA = a.chips - startingChips - (a.debt || 0);
+    const netB = b.chips - startingChips - (b.debt || 0);
+    return netB - netA;
+  });
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal ledger-modal" onClick={e => e.stopPropagation()}>
@@ -25,7 +34,7 @@ export default function LedgerModal({ players, startingChips, myId, onClose }) {
             <div className="ledger-cell">当前</div>
             <div className="ledger-cell">盈亏</div>
           </div>
-          {players.map(p => {
+          {sortedPlayers.map(p => {
             const net = p.chips - startingChips - (p.debt || 0);
             return (
               <div key={p.id} className={`ledger-row${p.id === myId ? ' hero' : ''}`}>

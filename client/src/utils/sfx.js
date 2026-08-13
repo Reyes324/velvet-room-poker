@@ -4,10 +4,6 @@ import chipsAllIn from '../assets/sounds/all-in.mp3';
 import dealSound from '../assets/sounds/deal.mp3';
 import heroFlip from '../assets/sounds/card-slide-6.ogg';
 import knock from '../assets/sounds/knock.mp3';
-import foldSweep from '../assets/sounds/card-shove-2.ogg';
-import showdownReveal from '../assets/sounds/card-fan-1.ogg';
-import winPot from '../assets/sounds/chips-stack-3.ogg';
-import turnNotify from '../assets/sounds/bong_001.ogg';
 
 const SOURCES = {
   call: chipsCall,
@@ -16,10 +12,6 @@ const SOURCES = {
   deal: dealSound,
   heroFlip,
   knock,
-  fold: foldSweep,
-  showdownReveal,
-  winPot,
-  turnNotify,
 };
 
 // One HTMLAudioElement per sound, reused across plays instead of `new

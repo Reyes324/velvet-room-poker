@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { playActionSfx, playCheckSfx } from '../utils/sfx';
 
 // Vertical drag slider for fine-tuning the raise amount — replaces the old
 // horizontal −/+ stepper (user feedback, 2026-07-31): that stepper's "+"
@@ -122,7 +123,24 @@ export default function ActionBar({ gameState, myId, onAction, disabled, timeBan
   });
 
   function openRaise() { setAmount(minRaise); setOpen(true); }
-  function act(action, val) { onAction(action, val); setOpen(false); setAmount(null); }
+  // Play the action's sfx right on click instead of waiting for the
+  // server's broadcast to come back and the action bubble to appear —
+  // that round-trip made the sound noticeably lag behind the tap (user
+  // feedback, 2026-08-14: "感觉声音后置了"). Only for MY OWN action:
+  // GameTable's broadcast-driven effect still owns sfx for every other
+  // player's actions (skips its own play when actorId === myId, since
+  // this already fired it). `raise` optimistically resolves to the allin
+  // sfx when the amount consumes this player's whole stack — mirrors
+  // GameEngine.raise()'s own `p.status === 'allin'` check server-side
+  // (me.chips + me.bet, not just maxRaise: maxRaise can be capped below
+  // that by a shorter-stacked opponent, in which case reaching it isn't
+  // actually going all-in for ME).
+  function playOwnActionSfx(action, val) {
+    if (action === 'check') playCheckSfx();
+    else if (action === 'call') playActionSfx('call');
+    else if (action === 'raise') playActionSfx(val >= me.chips + me.bet ? 'allin' : 'raise');
+  }
+  function act(action, val) { playOwnActionSfx(action, val); onAction(action, val); setOpen(false); setAmount(null); }
 
   return (
     <div className="action-bar">
