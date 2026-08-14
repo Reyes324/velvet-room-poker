@@ -1,5 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ICE_SERVERS, micErrorText } from '../utils/voice';
+import { ICE_SERVERS, micErrorText, shouldReportVoiceDiagnostic } from '../utils/voice';
+
+// 语音诊断上报的轮询间隔——见 design.md「生产环境语音诊断上报」。10 秒
+// 是"够密集到能抓住 SPEAKING_SILENCE_WINDOW_MS（5 秒）那个窗口、又不会
+// 每条连接每几秒就打一次 getStats()"之间的折中，不是精确标定值。
+const VOICE_DIAGNOSTIC_POLL_MS = 10000;
 
 // 语音对讲正式接入牌桌后的 N 人 mesh。跟 VoicePairPage 那个 2 人探路版本
 // 的核心协商逻辑同源（同一套 STUN/TURN、同样的 sdp/candidate 信令 payload
@@ -24,6 +29,16 @@ export function useVoiceMesh({ socket, emit, playerId }) {
   const [micError, setMicError] = useState(null);
 
   const pcsRef = useRef(new Map()); // socketId -> { pc, playerId }
+  // playerId -> 最近一次收到该人 speaking:true 广播的时间戳，语音诊断
+  // 上报用（见下面的轮询 effect）。跟 speakingPlayerIds 那个 state 分开
+  // 存：那个是给 UI 渲染用的离散状态，这个是给诊断判定用的精确时间点，
+  // 合并成一个会导致每次说话状态变化都触发诊断相关的重渲染。
+  const lastSpeakingAtRef = useRef(new Map());
+  // socketId -> 上一次轮询时读到的 bytesReceived，用来算增量。
+  const lastBytesReceivedRef = useRef(new Map());
+  // socketId -> 已经为"当前这次 speaking 窗口"上报过，避免同一次说话
+  // 期间每 10 秒重复上报同一条证据。speaking 变化或连接重建时清掉。
+  const reportedRef = useRef(new Set());
   const localStreamRef = useRef(null);
   const enabledRef = useRef(false);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
@@ -122,6 +137,8 @@ export function useVoiceMesh({ socket, emit, playerId }) {
     try { entry.pc.__audioEl?.pause(); } catch { /* 已释放 */ }
     try { entry.pc.close(); } catch { /* 已关闭 */ }
     pcsRef.current.delete(socketId);
+    lastBytesReceivedRef.current.delete(socketId);
+    reportedRef.current.delete(socketId);
     detachAnalyser(entry.playerId);
     setSpeakingPlayerIds(prev => {
       if (!prev.has(entry.playerId)) return prev;
@@ -284,6 +301,12 @@ export function useVoiceMesh({ socket, emit, playerId }) {
     };
     const onPeerLeft = ({ socketId }) => closePc(socketId);
     const onSpeaking = ({ playerId: pid, speaking }) => {
+      if (speaking) {
+        lastSpeakingAtRef.current.set(pid, Date.now());
+        for (const [socketId, entry] of pcsRef.current) {
+          if (entry.playerId === pid) reportedRef.current.delete(socketId);
+        }
+      }
       setSpeakingPlayerIds(prev => {
         const has = prev.has(pid);
         if (speaking === has) return prev;
@@ -305,6 +328,62 @@ export function useVoiceMesh({ socket, emit, playerId }) {
       socket.off('voice:speaking', onSpeaking);
     };
   }, [socket, buildPc, closePc, emit]);
+
+  // 语音诊断上报：不影响任何现有连接/协商逻辑，纯观测。见 design.md
+  // 「生产环境语音诊断上报」——沙盒复现不了跨真实网络的 NAT/TURN 问题，
+  // 只能让线上环境在出问题的那一刻把 getStats() 里的证据留下来。
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = setInterval(async () => {
+      const now = Date.now();
+      for (const [socketId, { pc, playerId: remotePlayerId }] of pcsRef.current) {
+        if (reportedRef.current.has(socketId)) continue;
+        const lastSpeakingAt = lastSpeakingAtRef.current.get(remotePlayerId) ?? null;
+        let stats;
+        try {
+          stats = await pc.getStats();
+        } catch { continue; /* 连接已经关了，下一轮跳过 */ }
+
+        let bytesReceived = null;
+        let localCandidateType = null;
+        let remoteCandidateType = null;
+        for (const report of stats.values()) {
+          if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+            bytesReceived = report.bytesReceived;
+          } else if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.nominated) {
+            const local = stats.get(report.localCandidateId);
+            const remote = stats.get(report.remoteCandidateId);
+            localCandidateType = local?.candidateType ?? null;
+            remoteCandidateType = remote?.candidateType ?? null;
+          }
+        }
+        if (bytesReceived == null) continue; // 这条连接还没有 inbound-rtp 报表，跳过
+
+        const prevBytes = lastBytesReceivedRef.current.get(socketId);
+        lastBytesReceivedRef.current.set(socketId, bytesReceived);
+        if (prevBytes == null) continue; // 第一次轮询，没有增量可比，跳过
+
+        const shouldReport = shouldReportVoiceDiagnostic({
+          lastSpeakingAt,
+          bytesReceivedDelta: bytesReceived - prevBytes,
+          now,
+        });
+        if (!shouldReport) continue;
+
+        reportedRef.current.add(socketId);
+        emit('voice:diagnostic', {
+          remotePlayerId,
+          ua: navigator.userAgent,
+          iceConnectionState: pc.iceConnectionState,
+          localCandidateType,
+          remoteCandidateType,
+          silentForMs: now - lastSpeakingAt,
+          at: now,
+        });
+      }
+    }, VOICE_DIAGNOSTIC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [enabled, emit]);
 
   // 重连：跟 RoomPage 里 room:sync 在 connect 时重新同步的模式一致——旧
   // socket.id 上的信令状态在新连接上已经失效，语音这层也要跟着重新握手。

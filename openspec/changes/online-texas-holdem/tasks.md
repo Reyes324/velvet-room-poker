@@ -1302,3 +1302,8 @@
   - 顶排座位的气泡/选择器改成"贴座位顶部往下长"而不是"以座位为中心上下对称"，结构性修法（`bubbleAnchorTop` 影响所有共用 `bubbleStyle()` 的元素，不止选择器）
   - 蛋的下落起点复用发牌动画已有的 `DEAL_ORIGIN`+`--dx/--dy` 技术，从"正上方掉落"改成"从桌子中心飞过来"
   - **验收**：真实 Playwright 确认顶排座位选择器不再探出视口（y>=0，真机截图核实）、`--throw-dx/--throw-dy` 正确设置为非零值；构建/lint/服务端/既有 e2e 均无回归
+
+- [x] **生产环境语音诊断上报（用户反馈同一问题再次出现，2026-08-15，方案见 design.md 同名章节）**
+  - 沙盒复现不了跨真实网络的 NAT/TURN 问题，改为让线上环境在"某人广播说在说话但对应连接 5 秒内收不到音频包"时自动上报一条诊断证据（房间号/playerId/UA/ICE 状态/candidate 类型），服务端记结构化日志，不做告警/汇总
+  - 判定逻辑抽成纯函数 `shouldReportVoiceDiagnostic`（`client/src/utils/voice.js`），客户端目前没有单元测试基础设施，用一次性 Node 脚本验证 5 个分支后未保留为常驻测试；服务端 `voice:diagnostic` handler 新增 2 条 vitest
+  - **验收**：服务端全量 387 条通过；客户端构建/lint 通过（38 problems/29 errors，较基线不增反减 1，属既有波动非本次引入）；`voiceTable`/`voiceCheck`/`voicePair` 三套 e2e 除一条已知 flaky（三人桌真实 ICE 建连，独立重跑必过，改动前的原始代码同样能复现，非本次引入）外全过

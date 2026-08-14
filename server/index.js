@@ -1142,6 +1142,16 @@ function createServer({
       socket.to(voiceMeshKey(room.code)).emit('voice:speaking', { playerId, speaking: !!speaking });
     });
 
+    // 语音诊断上报（2026-08-15）：只记日志，不做任何判断/告警——见 design.md
+    // 「生产环境语音诊断上报」。要求发信人真的走过 mesh-join，理由跟
+    // voice:mesh-signal 一样：不校验的话任何 socket 都能刷诊断日志。
+    socket.on('voice:diagnostic', (payload = {}) => {
+      const fromPlayerId = socket.data.voicePlayerId;
+      if (!fromPlayerId) return;
+      const room = rooms.getRoomByPlayer(fromPlayerId);
+      console.log('[voice-diag]', JSON.stringify({ ...payload, roomCode: room?.code ?? null, fromPlayerId, fromSocketId: socket.id }));
+    });
+
     socket.on('voice:mesh-leave', () => {
       for (const room of [...socket.rooms]) {
         if (!room.startsWith('voice-mesh:')) continue;

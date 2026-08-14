@@ -11,7 +11,7 @@
  *  2. "正在说话"广播必须只到同一个游戏房间的语音成员，不能溢出到另一个
  *     房间——两桌互不干扰是牌桌隔离的既有原则，语音这层不能破例。
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { createServer } = require('../index');
@@ -233,5 +233,36 @@ describe('语音 mesh 信令（正式接入牌桌）', () => {
     await meshJoin(a, 'p-a');
     await meshJoin(b, 'p-b');
     expect(gameErrors).toEqual([]);
+  });
+});
+
+describe('语音诊断上报（voice:diagnostic）', () => {
+  let logSpy;
+  beforeEach(() => { logSpy = vi.spyOn(console, 'log').mockImplementation(() => {}); });
+  afterEach(() => { logSpy.mockRestore(); });
+
+  it('走过 mesh-join 的连接上报诊断，服务端记一条带房间号/发信人的结构化日志', async () => {
+    const a = await connect();
+    const b = await connect();
+    const { code } = await createRoom(a, 'p-a');
+    await joinRoom(b, code, 'p-b', 'Bob');
+    await meshJoin(a, 'p-a');
+    await meshJoin(b, 'p-b');
+
+    a.emit('voice:diagnostic', { remotePlayerId: 'p-b', iceConnectionState: 'connected', localCandidateType: 'host', remoteCandidateType: 'relay' });
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const [tag, json] = logSpy.mock.calls[0];
+    expect(tag).toBe('[voice-diag]');
+    const logged = JSON.parse(json);
+    expect(logged).toMatchObject({ remotePlayerId: 'p-b', roomCode: code, fromPlayerId: 'p-a', fromSocketId: a.id });
+  });
+
+  it('没进过 mesh 的连接发诊断上报会被忽略', async () => {
+    const a = await connect();
+    a.emit('voice:diagnostic', { remotePlayerId: 'whatever' });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(logSpy).not.toHaveBeenCalled();
   });
 });

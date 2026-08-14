@@ -141,3 +141,18 @@ export function meterStream(stream, audioCtx, onLevel) {
 // 音量条判定"有声音"的门槛。两页共用一个值——否则会出现同一段声音在一页算
 // 有、另一页算没有的荒唐结论。
 export const SOUND_THRESHOLD = 0.06;
+
+// 语音诊断上报的判定：一条 mesh 连接"广播说在说话，但音频包确实没到"要
+// 不要上报证据。见 design.md「生产环境语音诊断上报」——沙盒复现不了真实
+// 网络里的 NAT/TURN 失败，只能让线上环境自己在出问题的一刻留证据。
+//
+// 只在"最近广播过 speaking:true"这个窗口内判断，不是任何时刻 bytesReceived
+// 没涨都算：对方本来沉默着不说话时 bytesReceived 当然不涨，那是正常状态，
+// 不是这次要抓的 bug（"广播了说在说话、但没听到"）。
+export const SPEAKING_SILENCE_WINDOW_MS = 5000;
+
+export function shouldReportVoiceDiagnostic({ lastSpeakingAt, bytesReceivedDelta, now }) {
+  if (lastSpeakingAt == null) return false;
+  if (now - lastSpeakingAt > SPEAKING_SILENCE_WINDOW_MS) return false;
+  return bytesReceivedDelta <= 0;
+}
