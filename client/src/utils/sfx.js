@@ -52,52 +52,9 @@ function getSfxPool(name) {
   return p;
 }
 
-// Plain <audio>.volume tops out at 1 (its default — nothing here ever
-// lowers it), which is already the loudest a pool element can go on its
-// own. Knock's source recording just sits quieter than the other clips
-// (user feedback, 2026-08-14: "过牌的声音...比较小"), and there's no audio
-// tooling available to re-master the file itself, so getting it louder
-// than its own native level takes routing it through a Web Audio GainNode
-// instead — a gain node CAN multiply the signal past 1x, unlike the plain
-// element property.
-//
-// Wiring this up is deliberately LAZY — done on the first real
-// playSfx('knock') call, not up front when the pool is warmed at module
-// load. An AudioContext constructed outside a user gesture starts (and on
-// some browsers — notably WeChat's embedded browser, a very real target
-// for a Chinese friend-group app — can get permanently stuck) 'suspended';
-// resume() called later from a genuine click doesn't reliably recover it
-// on every engine. Building the whole graph inside the first real click
-// instead means the AudioContext is created in direct response to a
-// gesture, the well-supported pattern every Web Audio guide recommends —
-// not resumed after the fact. First version did this eagerly and the
-// knock sfx went completely silent for the user in production (2026-08-14:
-// "过牌声音怎么没了") — not a quieter-than-expected regression, a total
-// silent failure, exactly what this eager-AudioContext trap causes.
-const KNOCK_GAIN = 1.6;
-let audioCtx = null;
-let knockBoosted = false;
-
-function ensureKnockBoost() {
-  if (knockBoosted) return;
-  knockBoosted = true;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const p = getSfxPool('knock');
-  for (const audio of p.elements) {
-    const source = audioCtx.createMediaElementSource(audio);
-    const gainNode = audioCtx.createGain();
-    gainNode.gain.value = KNOCK_GAIN;
-    source.connect(gainNode).connect(audioCtx.destination);
-  }
-}
-
 export function playSfx(name) {
   const src = SOURCES[name];
   if (!src) return;
-  if (name === 'knock') {
-    ensureKnockBoost();
-    audioCtx.resume().catch(() => {}); // resolves immediately once already running
-  }
   const p = getSfxPool(name);
   const audio = p.elements[p.next];
   p.next = (p.next + 1) % p.elements.length;
@@ -111,9 +68,7 @@ export function playSfx(name) {
 // concern, and it's a much bigger file not worth eagerly fetching before
 // anyone's even in a game). By the time a player can actually click
 // something, the browser has had the entire room/lobby setup to finish
-// decoding these in the background. Just the plain elements — knock's
-// Web Audio wiring (ensureKnockBoost) deliberately stays gesture-gated,
-// see its own comment.
+// decoding these in the background.
 for (const name of Object.keys(SOURCES)) {
   if (name !== 'deal') getSfxPool(name);
 }
