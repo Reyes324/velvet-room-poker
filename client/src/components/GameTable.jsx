@@ -684,17 +684,28 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           果），说话状态改成直接叠在座位头像发光上（见下方 PlayerSeat 的
           speak-ripple），顶部不再需要单独的语音指示。 */}
       <div className="top-bar">
-        {/* 三个点竖排（kebab menu）替代原来的 ≡（hamburger）——面包屑图标
-            在国内用户群体里不是个熟悉的符号，用户反馈"不习惯"（2026-08-11）。
-            用真的 SVG 画三个圆点，不用 unicode 字符（⋮ 在不同字体下粗
-            细/间距不受控，跟牌桌其余全 SVG 画的图形不一致，这条跟麦克风
-            图标改 SVG 是同一个理由）。 */}
-        <div className="menu-btn" onClick={() => setShowMenu(true)} aria-label="菜单" role="button">
-          <svg viewBox="0 0 20 6" width="18" height="5" aria-hidden="true">
-            <circle cx="3" cy="3" r="2.4" fill="currentColor" />
-            <circle cx="10" cy="3" r="2.4" fill="currentColor" />
-            <circle cx="17" cy="3" r="2.4" fill="currentColor" />
-          </svg>
+        <div className="top-bar-left">
+          {/* 三个点竖排（kebab menu）替代原来的 ≡（hamburger）——面包屑图标
+              在国内用户群体里不是个熟悉的符号，用户反馈"不习惯"（2026-08-11）。
+              用真的 SVG 画三个圆点，不用 unicode 字符（⋮ 在不同字体下粗
+              细/间距不受控，跟牌桌其余全 SVG 画的图形不一致，这条跟麦克风
+              图标改 SVG 是同一个理由）。 */}
+          <div className="menu-btn" onClick={() => setShowMenu(true)} aria-label="菜单" role="button">
+            <svg viewBox="0 0 20 6" width="18" height="5" aria-hidden="true">
+              <circle cx="3" cy="3" r="2.4" fill="currentColor" />
+              <circle cx="10" cy="3" r="2.4" fill="currentColor" />
+              <circle cx="17" cy="3" r="2.4" fill="currentColor" />
+            </svg>
+          </div>
+          {/* "问题反馈"以前只是菜单里一行不起眼的文字，用户要求拎出来放到
+              顶部（2026-08-12），复用首页 .home-feedback-link 同一套边框
+              样式，后来简化成纯文字"反馈"、去掉图标（2026-08-14，给静音
+              按钮腾地方）。三易其位——最早在右边跟暂停按钮并排、之后单独
+              留在右边组最左侧，用户最终要求挪到左边跟三个点菜单按钮放在
+              一起，右边只留静音+暂停两个图标（2026-08-14 三次调整）。 */}
+          <div className="top-feedback-link" onClick={() => onOpenFeedback?.()} role="button" aria-label="反馈">
+            <span>反馈</span>
+          </div>
         </div>
         {/* Room code sits in the same absolutely-centered slot as the final-5-
             minutes timer countdown — mutually exclusive with it (the timer
@@ -706,14 +717,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             写一个 `/room/人机对战` 这种坏链接进剪贴板，还谎称"已复制邀请
             链接 ✓"（用户反馈，2026-08-12）。isPve 时改成纯文字、不可点、
             不带那句"点击复制邀请链接"的提示文案。 */}
-        {/* 中间这一列原本是 position:absolute 死死卡在 .top-bar 视口正中
-            央，完全不管两边 flex 组各占了多宽——右边这组从"只有暂停按钮"
-            涨到"问题反馈+暂停按钮"两个元素之后，在 320~414px 常见手机宽
-            度下房间号胶囊会直接压进"问题反馈"胶囊里（用户反馈，2026-08-
-            14，Playwright 真机量出的 bounding box 实测重叠，不是猜的）。
-            改成 .top-bar 本身是三栏 grid（见 velvet.css），这一列是真正
-            的中间栏（grid 自动分配剩余宽度），不再是无视两边内容的绝对定
-            位，两边内容再怎么变化都不会跟中间抢地盘。 */}
+        {/* 房间号/倒计时是真正的绝对屏幕居中（left:50%），不是"居中在两边
+            剩余空间里"——用户看过 grid 三栏那版之后明确要求换回绝对居中
+            （2026-08-14，见 velvet.css 的 .top-bar-center 注释）。 */}
         <div className="top-bar-center">
           {countdownText ? (
             <div className="timer-countdown">⏱ {countdownText}</div>
@@ -730,7 +736,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               游戏音效（不影响语音对讲——那是完全独立的一套，见 useVoiceMesh）。
               状态持久化在 sfx.js 自己的 localStorage 里，这里的 sfxMuted
               只是镜像出来给按钮图标用。旁观者也能点——静音是"我不想听"，
-              跟坐没坐下无关，比照"问题反馈"不限 amPlaying 的先例。 */}
+              跟坐没坐下无关。紧挨着暂停按钮（用户要求两个图标按钮挨在一
+              起，"反馈"挪去左边跟菜单按钮放一起了，见 .top-bar-left）。 */}
           <div className="top-mute-btn" onClick={toggleSfxMuted} aria-label={sfxMuted ? '取消静音' : '静音'} role="button">
             {sfxMuted ? (
               <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
@@ -743,17 +750,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
                 <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
               </svg>
             )}
-          </div>
-          {/* "问题反馈"以前只是菜单里一行不起眼的文字，用户要求拎出来放到
-              顶部（2026-08-12），复用首页 .home-feedback-link 同一套边框
-              样式。不像暂停按钮那样只给坐位玩家——旁观的人一样可能想反
-              馈问题，之前菜单里的那一行本来就没有这个限制。
-              简化成纯文字"反馈"、去掉图标（用户反馈，2026-08-14）——加了
-              静音按钮之后右边这组东西变多了，图标+"问题反馈"四个字这个
-              版本的宽度是这次挤到中间房间号的主要原因之一，缩短成两个字
-              腾出空间给新按钮，不是单纯为了好看。 */}
-          <div className="top-feedback-link" onClick={() => onOpenFeedback?.()} role="button" aria-label="反馈">
-            <span>反馈</span>
           </div>
           {/* 暂停/继续（用户反馈，2026-08-11）：只有坐位玩家（amPlaying）能
               触发，旁观者看不到这个按钮。图标用真的 SVG 画（跟其余全部图标

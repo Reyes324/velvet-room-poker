@@ -678,47 +678,40 @@
    #D4AF37 gold instead of a separate, dimmer tone, and both plates got a
    more opaque background/border so they read as a distinct chip sitting on
    the felt rather than blending into it. */
-.menu-btn { width:44px; height:44px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; color:#D4AF37; cursor:pointer; }
+/* 36px（原来44px）——右边那组按钮去框收窄之后，这个还留着44px的框显得
+   比其余按钮都大一圈，不协调（用户反馈，2026-08-14）。保留边框/底色（跟
+   右边那组不同，用户只说"太大"，没说要去框——这个是打开整个菜单的唯一
+   入口，留个框比右边那几个更轻量的功能按钮更该有存在感）。 */
+/* "反馈"挪到左边、跟菜单按钮放一起了（用户反馈，2026-08-14 三次调整），
+   包一层 flex 容器让两者贴着对齐，跟 .top-bar-right 是同一个模式。 */
+.top-bar-left { display:flex; align-items:center; gap:6px; }
+.menu-btn { width:36px; height:36px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:26px; color:#D4AF37; cursor:pointer; }
 /* 牌桌顶部不再用这个（换成了下面的语音说话指示条），但 Lobby.jsx 的筹码
    显示仍在用同一个 class，样式留着。 */
 .bankroll { background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.36); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
 
 /* 顶部右侧一组——静音+反馈+暂停按钮并排，都要跟 .top-bar 右边缘对齐、
    彼此之间留统一间距，包一层 flex 容器。 */
-.top-bar-right { display:flex; align-items:center; gap:8px; }
-/* "问题反馈"从菜单里搬到顶部（用户反馈，2026-08-12），最初复用首页
-   .home-feedback-link 的图标+边框+文字组合。加了静音按钮之后（2026-08-
-   14）右边这组东西变多了，简化成纯文字"反馈"（去掉图标）给新按钮腾地
-   方，同时也是当时"房间号被挤到问题反馈胶囊里"这次修复的一部分——不是
-   单纯为了好看才去掉图标。 */
+.top-bar-right { display:flex; align-items:center; gap:2px; }
+/* 这三个按钮（反馈/静音/暂停）原本各自是带底色+边框的圆角矩形芯片，用户
+   看完中间房间号"居中在剩余空间"的效果后，明确要中间恢复真正的绝对屏幕
+   居中——去掉这三个的框/底色，只留图标+文字本身，视觉重量和实际占用宽
+   度都收窄，两边挤占中间的问题从"中间让步"改成"两边收窄"来解决（2026-
+   08-14 二次修订，见 .top-bar-center 的同一条注释）。触摸目标仍然靠
+   padding 撑住，不靠画一个可见的框——"精致"体现在图标本身，不是缩小点
+   击区域。 */
 .top-feedback-link {
-  display:flex; align-items:center; height:30px; padding:0 12px;
-  border-radius:15px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.3);
+  display:flex; align-items:center; height:36px; padding:0 4px;
   font-family:var(--font-display); font-size:12px; font-weight:600; letter-spacing:.5px;
-  color:var(--gold-200); cursor:pointer; transition:background .15s, border-color .15s;
+  color:var(--gold-200); cursor:pointer; transition:opacity .15s;
 }
-.top-feedback-link:active { background:rgba(212,175,55,.22); border-color:rgba(212,175,55,.45); opacity:.85; }
-/* 静音按钮（用户反馈，2026-08-14），跟 .menu-btn/.pause-btn 同一套圆角
-   矩形芯片语言，不额外发明一套形状。 */
-.top-mute-btn {
-  width:44px; height:44px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32);
-  border-radius:12px; display:flex; align-items:center; justify-content:center;
-  color:#D4AF37; cursor:pointer; transition:background .15s ease, border-color .15s ease;
+.top-feedback-link:active { opacity:.6; }
+.top-mute-btn, .pause-btn {
+  width:32px; height:36px; display:flex; align-items:center; justify-content:center;
+  color:#D4AF37; cursor:pointer; transition:color .2s ease, opacity .15s;
 }
-.top-mute-btn:active { background:rgba(212,175,55,.26); }
-
-/* 暂停/继续按钮，跟 .menu-btn 同一套圆角矩形芯片语言。暂停态用绿色系
-   （跟 --state-safe/说话发光同一色系，读作"这个功能当前生效中"），静止态
-   用金色，跟其余顶部图标一致。 */
-.pause-btn {
-  width:44px; height:44px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32);
-  border-radius:12px; display:flex; align-items:center; justify-content:center;
-  color:#D4AF37; cursor:pointer; transition:background .2s ease, border-color .2s ease, color .2s ease;
-}
-.pause-btn--active {
-  background:rgba(39,174,96,.20); border-color:rgba(39,174,96,.55); color:#27AE60;
-  box-shadow:0 0 10px rgba(39,174,96,.25);
-}
+.top-mute-btn:active, .pause-btn:active { opacity:.6; }
+.pause-btn--active { color:#27AE60; }
 
 /* 暂停态遮罩：只挡操作，不挡视觉——手牌/公共牌照常可见，只是盖一层半透
    明条幅提示"已暂停"，附一个继续按钮。z-index 要高于 ActionBar 但不影
@@ -806,16 +799,17 @@
 /* Room code, top-center of the game screen (user feedback, #14 — others
    need a way to find the room to join). Lives in .top-bar-center, the
    middle column of .top-bar's 3-column grid (see .game-stage .top-bar) —
-   no longer position:absolute (that version could visually overlap the
-   right-side button group on narrow phones once it grew past just the
-   pause button; 2026-08-14 fix, see .top-bar-center's own comment). Font
-   is smaller/looser than .room-code's lobby-only usage to fit comfortably
-   in the top-bar strip alongside menu-btn/top-bar-right.
-   No border — once the "问题反馈" chip and .pause-btn both got their own
-   bordered outlines (2026-08-12), the top bar read as too many boxed
-   chips fighting for attention side by side; dropping this one's border
-   (keeping the soft fill + gold text) lets it read as a quieter label in
-   the middle, not another button competing with the two flanking it. */
+   is back to position:absolute dead-center (2026-08-14, twice-revised —
+   first went to grid-column centering to dodge an overlap with the right
+   button group, but the visible left-of-center drift that caused wasn't
+   acceptable either; the actual fix ended up being shrinking the right
+   group's footprint instead — see .top-feedback-link/.top-mute-btn/
+   .pause-btn, all de-framed). Font is smaller/looser than .room-code's
+   lobby-only usage to fit comfortably in the top-bar strip alongside
+   menu-btn/top-bar-right.
+   No border — even before the de-framing above, this one never had a
+   border of its own; keeping the soft fill + gold text lets it read as a
+   quieter label in the middle, not another button. */
 .top-room-code {
   background:rgba(212,175,55,.1); border-radius:14px;
   padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
@@ -1270,12 +1264,18 @@
    页同一套调亮后的 token 渐变，两个问题一起解决：大厅背景色系统一；牌桌
    页顶栏/操作栏底下的留白色调跟桌布本身更接近，不再像单独镶了一圈黑框。 */
 .game-stage { position:relative; width:100%; height:100dvh; height:calc(var(--vh, 1dvh) * 100); display:flex; flex-direction:column; overflow:hidden; background:radial-gradient(ellipse at 50% 45%, var(--felt-700) 0%, var(--felt-900) 55%, var(--surface-base) 100%); }
-/* 三栏 grid，不再是"flex two-ends + 中间绝对定位插一个"（用户反馈，2026-
-   08-14：房间号胶囊在常见手机宽度下压进"问题反馈"胶囊）。中间这栏
-   （.top-bar-center）拿 1fr——两边内容多宽，grid 会自动让给两边，中间
-   永远只用剩下的空间，不会再靠"猜两边有多宽"这种脆弱的绝对定位硬撑。 */
-.game-stage .top-bar { position:relative; flex:0 0 auto; padding:14px 14px 10px; padding-top:max(env(safe-area-inset-top,0px),14px); display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:8px; z-index:10; }
-.top-bar-center { display:flex; justify-content:center; align-items:center; min-width:0; }
+/* 左右两块 flex two-ends，中间 .top-bar-center 是真正的绝对屏幕居中（见
+   它自己的规则）——第一版试过三栏 grid 让中间"居中在剩余空间里"，用户看
+   完效果覺得偏移太明显，改回硬居中，靠右边按钮组去框收窄宽度（而不是
+   中间让步）来避免重叠。 */
+.game-stage .top-bar { position:relative; flex:0 0 auto; padding:14px 14px 10px; padding-top:max(env(safe-area-inset-top,0px),14px); display:flex; justify-content:space-between; align-items:center; z-index:10; }
+/* 用户看完"居中在中间栏"的效果后明确要真正的绝对屏幕居中，不要跟着两边
+   宽度偏——回到 position:absolute 卡视口正中央这套（2026-08-14 二次修
+   订）。能这样做而不重新引入最初那次重叠 bug，前提是右边那组按钮已经
+   去框简化、实际宽度大幅收窄（见 .top-bar-right 里几个按钮改動）——两边
+   都不再需要跟中间抢空间到会撞上的地步，靠 Playwright 实测的 bounding
+   box 验证过，不是猜的。 */
+.top-bar-center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:flex; align-items:center; }
 
 /* 用户追问（2026-07-28）：桌布边框能不能去掉、纹理是不是该布满全屏。
    之前那轮只是让 .game-stage 的纯色背景跟桌布同色系，桌布本身的编织纹理
