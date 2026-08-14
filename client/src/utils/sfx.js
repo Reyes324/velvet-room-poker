@@ -14,22 +14,16 @@ const SOURCES = {
   knock,
 };
 
-// One HTMLAudioElement per sound, reused across plays instead of `new
-// Audio()` on every call — rapid-fire actions (e.g. two quick raises) just
-// rewind and replay the same element rather than piling up elements.
+// Kept only for playDealSfx below, which needs a stable reference to fade
+// and pause the same element. Everything else uses a fresh `new Audio()`
+// per play (see playSfx) so rapid-fire actions layer instead of one
+// retrigger cutting off the previous play's tail.
 const pool = {};
 
 export function playSfx(name) {
   const src = SOURCES[name];
   if (!src) return;
-  let audio = pool[name];
-  if (!audio) {
-    audio = new Audio(src);
-    pool[name] = audio;
-  }
-  audio.currentTime = 0;
-  audio.volume = 1;
-  audio.play().catch(() => {}); // autoplay can be blocked before any user gesture — not worth surfacing
+  new Audio(src).play().catch(() => {}); // autoplay can be blocked before any user gesture — not worth surfacing
 }
 
 export function playActionSfx(type) {

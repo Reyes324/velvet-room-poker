@@ -2385,7 +2385,7 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 
 **下注类音效实现（2026-08-14）**：素材落地在 `client/src/assets/sounds/`（`chips-handle-3.ogg`、`chips-handle-6.ogg`、`all-in.mp3`），播放逻辑集中在新增的 `client/src/utils/sfx.js`（`playActionSfx(type)`，每种音效一个复用的 `Audio` 元素，重复触发时 `currentTime = 0` 重播而不是 `new Audio()` 堆实例；`play()` 失败静默吞掉——浏览器在用户第一次交互前会拦截自动播放，不值得为此弹错误）。触发点接在 `GameTable.jsx` 里"气泡"这个概念本来就有的 `lastActionSeq` effect（约 L504-538）——这段本来就按 `label.type` 分支生成气泡文案（跟注/加注/全下/弃牌/过牌），新增的音效判断（`call`/`raise`/`allin` 才播，`fold`/`check` 不播）复用同一个分支、同一次判断，不是另开一条独立逻辑，天然跟气泡出现同一帧同步。`GameTable.jsx` 是 PVE 和真人房间共用的组件，一处接入两边都生效。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平（无新增问题）。
 
-## 账本排序：按盈亏从高到低（用户反馈，2026-08-14，实现完成）
+**下注音效"截断重播"改成"允许叠放"（用户反馈"感觉声效变快了"，2026-08-14，实现完成）**：上面这版"每种音效一个复用 `Audio` 元素、`currentTime = 0` 重播"的设计，在多个玩家短时间内连续行动（连续跟注/加注，PVE 里 bot 反应快时尤其容易）时会有问题——第二次触发直接把还没播完的第一次从头打断重放，衰减尾音永远听不到，只剩一串被截断的起音头部，连续叠加几次听感上像是节奏被压缩、"声音变快了"（用户反馈原话）。**决策**：改成跟 `playCheckSfx()` 早就采用的模式一致——每次播放都用独立的 `new Audio(src)` 实例而不是共享池，多次触发时旧的实例继续放完自己的尾音，新实例叠加播放，不互相打断（`playCheckSfx` 当初这么做就是同一个理由，见其函数注释）。原来共享池的设计初衷是"避免快速连续动作堆出一堆 `Audio` 元素"，但实测这个顾虑不成立——短时间内连续触发最多几个元素，播完即被 GC，没有真实的堆积问题，反而是"重播打断"这个副作用更影响体验，所以放弃复用池。`playSfx`/`playActionSfx` 改成直接 `new Audio(src).play()`；`playDealSfx` 因为需要保留对同一个元素的引用做音量渐出和 `pause()`，继续复用专属的 `pool.deal`，不受这次改动影响。
 
 `LedgerModal.jsx` 原本直接按 `players` prop 的顺序渲染（座位顺序），跟"账本"这个场景想第一眼看出"谁赢得最多/谁输得最多"的诉求不匹配。改成渲染前先按 `net`（盈亏，`chips - startingChips - debt`，跟表格里显示的公式是同一份计算，不重复维护第二套）降序排序一份拷贝（`[...players].sort(...)`，不直接改 `players` 这个 prop 数组）。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
 
