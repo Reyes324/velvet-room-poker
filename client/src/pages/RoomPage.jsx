@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useActionLock } from '../hooks/useActionLock';
 import { useVoiceMesh } from '../hooks/useVoiceMesh';
+import { playActionFeedbackSfx } from '../utils/sfx';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
@@ -124,6 +125,15 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     },
     'game:cards-revealed': ({ playerId, playerName, holeCards }) => {
       setRevealedPlayers(prev => ({ ...prev, [playerId]: { playerName, holeCards } }));
+    },
+    // Fired once per real action, independent of game:state — see this
+    // event's own comment in server/index.js (actionHappenedPayload) for
+    // why sound can't just ride along on the game:state render the way the
+    // action bubble text still does. Own actions are skipped here: ActionBar
+    // already played this the instant the button was tapped (see its
+    // playOwnActionSfx), well before this round-trip lands.
+    'action:happened': ({ actorId, label }) => {
+      if (actorId !== playerId) playActionFeedbackSfx(label);
     },
   });
 

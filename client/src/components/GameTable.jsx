@@ -4,7 +4,7 @@ import ActionBar from './ActionBar';
 import Card from './Card';
 import Pot from './Pot';
 import { useTableScale } from '../hooks/useTableScale';
-import { playActionSfx, playDealSfx, playSfx, playCheckSfx } from '../utils/sfx';
+import { playDealSfx, playSfx } from '../utils/sfx';
 
 // Fixed design canvas for just the table scene (felt + seats + hero cards) —
 // the single source of truth for both .table-canvas's inline size and
@@ -529,25 +529,17 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
         else if (label.type === 'raise') text = `加注 ¥${label.amount.toLocaleString()}`;
         else if (label.type === 'call') text = `跟注 ¥${label.amount.toLocaleString()}`;
         else text = '过牌'; // check
-        // Chip sfx only for actions that actually move chips into the pot —
-        // fold stays silent (2026-08-14 design decision, see design.md
-        // "音效系统"). Check gets its own two-knock sfx instead of a chip
-        // sound, since no chips move.
-        //
-        // Skipped entirely when this broadcast is reporting MY OWN action
-        // (actorId === myId): ActionBar's onClick already fired this same
-        // sfx the instant the button was tapped, well before this
-        // server round-trip lands — playing it again here would be both a
-        // duplicate AND noticeably late (2026-08-14 user feedback: "感觉
-        // 声音后置了"). Still fires normally for every other player's
-        // actions, which have no earlier local click to hang the sfx on.
-        if (actorId !== myId) {
-          if (label.type === 'call' || label.type === 'raise' || label.type === 'allin') {
-            playActionSfx(label.type);
-          } else if (label.type === 'check') {
-            playCheckSfx();
-          }
-        }
+        // Action sfx itself no longer lives here — it's played straight off
+        // the action:happened socket event (see RoomPage.jsx/PvePage.jsx),
+        // not off this effect, because this effect only runs when a
+        // game:state render actually happens for this exact broadcast. Two
+        // broadcasts landing close enough together that React collapses
+        // them into one render used to mean the earlier one's sfx (and only
+        // its sfx — this bubble logic is fine, see below) never played at
+        // all (2026-08-14 user feedback: "有些动作没有发出声音"). The bubble
+        // text below doesn't have that problem: it merges into a keyed
+        // dict via a functional setState updater, so even a collapsed
+        // render still ends up with the right final bubble per player.
         // Persistent now — no self-clearing timeout. The bubble stays until
         // this same player's status/bet changes again (this effect re-fires
         // and overwrites their entry) or a new street/hand clears everyone
@@ -568,7 +560,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
       }
     }
     prevActionSeqRef.current = seq;
-  }, [gameState, myId]);
+  }, [gameState]);
 
   // The action that ENDS a hand (river call straight into showdown, or a
   // fold-to-one-left) gets tagged with gameState.phase as of THAT broadcast

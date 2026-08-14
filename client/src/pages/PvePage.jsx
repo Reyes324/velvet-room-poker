@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useActionLock } from '../hooks/useActionLock';
+import { playActionFeedbackSfx } from '../utils/sfx';
 import GameTable from '../components/GameTable';
 import SettlementModal from '../components/SettlementModal';
 import BustDecisionModal from '../components/BustDecisionModal';
@@ -95,6 +96,14 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
     },
     'game:error': (msg) => { showToast(msg, 'danger'); unlockAction(); },
     'pve:hand-history': (hands) => setHandHistory(hands),
+    // See RoomPage.jsx's matching handler for why this is a separate event
+    // from game:state rather than piggybacking on it. getPveId() is the
+    // same id PveSession stores as humanId === players[].id server-side
+    // (server/PveSession.js constructor), so it's safe to compare directly
+    // against actorId without waiting on `me` (which needs gameState first).
+    'action:happened': ({ actorId, label }) => {
+      if (actorId !== getPveId()) playActionFeedbackSfx(label);
+    },
   });
 
   useEffect(() => {

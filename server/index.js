@@ -110,9 +110,32 @@ function createServer({
     io.to(socketId).emit('game:state', session.getStateForPlayer(session.humanId));
   }
 
+  // A single "someone just acted" notification, separate from game:state.
+  // game:state is a wholesale snapshot — if two of them land close enough
+  // together that the client's UI framework collapses them into one render
+  // (bursty delivery after a network stall is the common case), whichever
+  // snapshot never gets its own render silently loses everything gated on
+  // seeing it, including the action's sound cue. This event exists so sound
+  // playback doesn't depend on a render ever happening for that specific
+  // snapshot — the client fires it straight from the socket message itself.
+  // Built from the engine's own lastAction* fields (set synchronously by
+  // _recordAction, same source getStateForPlayer's lastActionSeq etc. read
+  // from) rather than threading a value through every action method's
+  // return, since both playerAction() and PveSession._dispatch() already
+  // leave the engine in that state right after any successful action.
+  function actionHappenedPayload(engine) {
+    if (!engine?.lastActionBy) return null;
+    return { actorId: engine.lastActionBy, label: engine.lastActionLabel, seq: engine.lastActionSeq };
+  }
+
   function pveHandleResult(session, result) {
     if (!result || result.error) return;
     pveBroadcastState(session);
+    const actionEvent = actionHappenedPayload(session.game);
+    if (actionEvent) {
+      const socketId = pveActiveSocket.get(session.humanId);
+      if (socketId) io.to(socketId).emit('action:happened', actionEvent);
+    }
     if (result.showdown) {
       // Stashed on the session (mirrors Room.lastShowdown) so a resume
       // (pve:start on an existing session — see that handler below) can
@@ -513,6 +536,8 @@ function createServer({
   function handleActionResult(room, result) {
     if (result.error) return;
     broadcastRoom(room);
+    const actionEvent = actionHappenedPayload(room.game);
+    if (actionEvent) io.to(room.code).emit('action:happened', actionEvent);
 
     if (result.showdown) {
       const showdownData = {

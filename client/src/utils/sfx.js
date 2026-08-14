@@ -30,6 +30,17 @@ export function playActionSfx(type) {
   playSfx(type);
 }
 
+// Maps a server action label ({ type, amount }) straight to its sfx —
+// shared by RoomPage and PvePage's own `action:happened` socket handlers
+// (see server/index.js's actionHappenedPayload) so the branch (call/raise/
+// allin get a chip sound, check gets its own two-knock sound, fold stays
+// silent) isn't duplicated between them.
+export function playActionFeedbackSfx(label) {
+  if (!label) return;
+  if (label.type === 'call' || label.type === 'raise' || label.type === 'allin') playActionSfx(label.type);
+  else if (label.type === 'check') playCheckSfx();
+}
+
 const KNOCK_GAP_MS = 220; // two raps read as one "check" gesture, not two separate actions
 
 // Check reads as two short knocks, not one — two independent Audio
