@@ -683,21 +683,29 @@
    显示仍在用同一个 class，样式留着。 */
 .bankroll { background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.36); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
 
-/* 顶部右侧一组——"问题反馈"+暂停按钮并排，之前只有暂停按钮一个元素，
-   right:auto/justify-content:space-between 直接管就够了；现在两个都要跟
-   .top-bar 右边缘对齐、彼此之间留统一间距，包一层 flex 容器。 */
+/* 顶部右侧一组——静音+反馈+暂停按钮并排，都要跟 .top-bar 右边缘对齐、
+   彼此之间留统一间距，包一层 flex 容器。 */
 .top-bar-right { display:flex; align-items:center; gap:8px; }
-/* "问题反馈"从菜单里搬到顶部（用户反馈，2026-08-12），复用首页
-   .home-feedback-link 一模一样的图标+边框+文字组合，同一个入口没必要
-   两套视觉语言。 */
+/* "问题反馈"从菜单里搬到顶部（用户反馈，2026-08-12），最初复用首页
+   .home-feedback-link 的图标+边框+文字组合。加了静音按钮之后（2026-08-
+   14）右边这组东西变多了，简化成纯文字"反馈"（去掉图标）给新按钮腾地
+   方，同时也是当时"房间号被挤到问题反馈胶囊里"这次修复的一部分——不是
+   单纯为了好看才去掉图标。 */
 .top-feedback-link {
-  display:flex; align-items:center; gap:5px; height:30px; padding:0 12px;
+  display:flex; align-items:center; height:30px; padding:0 12px;
   border-radius:15px; background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.3);
   font-family:var(--font-display); font-size:12px; font-weight:600; letter-spacing:.5px;
   color:var(--gold-200); cursor:pointer; transition:background .15s, border-color .15s;
 }
-.top-feedback-link__icon { flex-shrink:0; color:#D4AF37; }
 .top-feedback-link:active { background:rgba(212,175,55,.22); border-color:rgba(212,175,55,.45); opacity:.85; }
+/* 静音按钮（用户反馈，2026-08-14），跟 .menu-btn/.pause-btn 同一套圆角
+   矩形芯片语言，不额外发明一套形状。 */
+.top-mute-btn {
+  width:44px; height:44px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32);
+  border-radius:12px; display:flex; align-items:center; justify-content:center;
+  color:#D4AF37; cursor:pointer; transition:background .15s ease, border-color .15s ease;
+}
+.top-mute-btn:active { background:rgba(212,175,55,.26); }
 
 /* 暂停/继续按钮，跟 .menu-btn 同一套圆角矩形芯片语言。暂停态用绿色系
    （跟 --state-safe/说话发光同一色系，读作"这个功能当前生效中"），静止态
@@ -790,24 +798,25 @@
    centered in .top-bar (already position:relative) rather than a 3rd flex
    child, so it doesn't disturb the existing menu-btn/bankroll spacing. */
 .timer-countdown {
-  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
   background:rgba(60,20,10,.35); border:1px solid rgba(255,122,69,.4); border-radius:14px;
   padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
   color:#FF7A45; letter-spacing:.5px; text-shadow:0 0 8px rgba(255,90,40,.35);
+  white-space:nowrap;
 }
 /* Room code, top-center of the game screen (user feedback, #14 — others
-   need a way to find the room to join). Same absolutely-centered slot
-   .timer-countdown uses (they're mutually exclusive, see GameTable.jsx),
-   so it never fights the timer for space. Font is smaller/looser than
-   .room-code's lobby-only usage to fit comfortably in the top-bar strip
-   alongside menu-btn/pause-btn/问题反馈.
+   need a way to find the room to join). Lives in .top-bar-center, the
+   middle column of .top-bar's 3-column grid (see .game-stage .top-bar) —
+   no longer position:absolute (that version could visually overlap the
+   right-side button group on narrow phones once it grew past just the
+   pause button; 2026-08-14 fix, see .top-bar-center's own comment). Font
+   is smaller/looser than .room-code's lobby-only usage to fit comfortably
+   in the top-bar strip alongside menu-btn/top-bar-right.
    No border — once the "问题反馈" chip and .pause-btn both got their own
    bordered outlines (2026-08-12), the top bar read as too many boxed
    chips fighting for attention side by side; dropping this one's border
    (keeping the soft fill + gold text) lets it read as a quieter label in
    the middle, not another button competing with the two flanking it. */
 .top-room-code {
-  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
   background:rgba(212,175,55,.1); border-radius:14px;
   padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
   color:#D4AF37; letter-spacing:2px; cursor:pointer; white-space:nowrap;
@@ -1261,7 +1270,12 @@
    页同一套调亮后的 token 渐变，两个问题一起解决：大厅背景色系统一；牌桌
    页顶栏/操作栏底下的留白色调跟桌布本身更接近，不再像单独镶了一圈黑框。 */
 .game-stage { position:relative; width:100%; height:100dvh; height:calc(var(--vh, 1dvh) * 100); display:flex; flex-direction:column; overflow:hidden; background:radial-gradient(ellipse at 50% 45%, var(--felt-700) 0%, var(--felt-900) 55%, var(--surface-base) 100%); }
-.game-stage .top-bar { position:relative; flex:0 0 auto; padding:14px 14px 10px; padding-top:max(env(safe-area-inset-top,0px),14px); display:flex; justify-content:space-between; align-items:center; z-index:10; }
+/* 三栏 grid，不再是"flex two-ends + 中间绝对定位插一个"（用户反馈，2026-
+   08-14：房间号胶囊在常见手机宽度下压进"问题反馈"胶囊）。中间这栏
+   （.top-bar-center）拿 1fr——两边内容多宽，grid 会自动让给两边，中间
+   永远只用剩下的空间，不会再靠"猜两边有多宽"这种脆弱的绝对定位硬撑。 */
+.game-stage .top-bar { position:relative; flex:0 0 auto; padding:14px 14px 10px; padding-top:max(env(safe-area-inset-top,0px),14px); display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:8px; z-index:10; }
+.top-bar-center { display:flex; justify-content:center; align-items:center; min-width:0; }
 
 /* 用户追问（2026-07-28）：桌布边框能不能去掉、纹理是不是该布满全屏。
    之前那轮只是让 .game-stage 的纯色背景跟桌布同色系，桌布本身的编织纹理

@@ -4,7 +4,7 @@ import ActionBar from './ActionBar';
 import Card from './Card';
 import Pot from './Pot';
 import { useTableScale } from '../hooks/useTableScale';
-import { playDealSfx } from '../utils/sfx';
+import { playDealSfx, isSfxMuted, setSfxMuted } from '../utils/sfx';
 
 // Fixed design canvas for just the table scene (felt + seats + hero cards) —
 // the single source of truth for both .table-canvas's inline size and
@@ -227,6 +227,16 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  // Game sfx mute toggle (top-bar button, 用户反馈 2026-08-14) — mirrors
+  // sfx.js's own persisted flag into local state so the button icon
+  // re-renders; the actual mute/unmute effect lives in sfx.js's single
+  // choke point (isSfxMuted()/setSfxMuted()), not here.
+  const [sfxMuted, setSfxMutedState] = useState(() => isSfxMuted());
+  function toggleSfxMuted() {
+    const next = !sfxMuted;
+    setSfxMuted(next);
+    setSfxMutedState(next);
+  }
   const [codeCopied, setCodeCopied] = useState(false);
   const tableZoneRef = useRef(null);
   const { scaleX: tableScaleX, scaleY: tableScaleY } = useTableScale(tableZoneRef, TABLE_REF_W, TABLE_REF_H);
@@ -696,29 +706,54 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             写一个 `/room/人机对战` 这种坏链接进剪贴板，还谎称"已复制邀请
             链接 ✓"（用户反馈，2026-08-12）。isPve 时改成纯文字、不可点、
             不带那句"点击复制邀请链接"的提示文案。 */}
-        {countdownText ? (
-          <div className="timer-countdown">⏱ {countdownText}</div>
-        ) : roomCode && isPve ? (
-          <div className="top-room-code top-room-code--static">{roomCode}</div>
-        ) : roomCode ? (
-          <div className="top-room-code" onClick={copyRoomCode} title="点击复制邀请链接" role="button" aria-label="房间号，点击复制邀请链接">
-            {codeCopied ? '已复制邀请链接 ✓' : roomCode}
-          </div>
-        ) : null}
+        {/* 中间这一列原本是 position:absolute 死死卡在 .top-bar 视口正中
+            央，完全不管两边 flex 组各占了多宽——右边这组从"只有暂停按钮"
+            涨到"问题反馈+暂停按钮"两个元素之后，在 320~414px 常见手机宽
+            度下房间号胶囊会直接压进"问题反馈"胶囊里（用户反馈，2026-08-
+            14，Playwright 真机量出的 bounding box 实测重叠，不是猜的）。
+            改成 .top-bar 本身是三栏 grid（见 velvet.css），这一列是真正
+            的中间栏（grid 自动分配剩余宽度），不再是无视两边内容的绝对定
+            位，两边内容再怎么变化都不会跟中间抢地盘。 */}
+        <div className="top-bar-center">
+          {countdownText ? (
+            <div className="timer-countdown">⏱ {countdownText}</div>
+          ) : roomCode && isPve ? (
+            <div className="top-room-code top-room-code--static">{roomCode}</div>
+          ) : roomCode ? (
+            <div className="top-room-code" onClick={copyRoomCode} title="点击复制邀请链接" role="button" aria-label="房间号，点击复制邀请链接">
+              {codeCopied ? '已复制邀请链接 ✓' : roomCode}
+            </div>
+          ) : null}
+        </div>
         <div className="top-bar-right">
+          {/* 静音（用户反馈，2026-08-14）：一键开关下注/发牌/翻牌这几个
+              游戏音效（不影响语音对讲——那是完全独立的一套，见 useVoiceMesh）。
+              状态持久化在 sfx.js 自己的 localStorage 里，这里的 sfxMuted
+              只是镜像出来给按钮图标用。旁观者也能点——静音是"我不想听"，
+              跟坐没坐下无关，比照"问题反馈"不限 amPlaying 的先例。 */}
+          <div className="top-mute-btn" onClick={toggleSfxMuted} aria-label={sfxMuted ? '取消静音' : '静音'} role="button">
+            {sfxMuted ? (
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+                <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
+                <path d="M16 9l5 5M21 9l-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+                <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
+                <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+              </svg>
+            )}
+          </div>
           {/* "问题反馈"以前只是菜单里一行不起眼的文字，用户要求拎出来放到
-              顶部（2026-08-12），复用首页 .home-feedback-link 同一套图
-              标+边框样式（同一个入口，同一个视觉语言，不是重新发明一
-              个）。不像暂停按钮那样只给坐位玩家——旁观的人一样可能想反
-              馈问题，之前菜单里的那一行本来就没有这个限制。 */}
-          <div className="top-feedback-link" onClick={() => onOpenFeedback?.()} role="button" aria-label="问题反馈">
-            <svg className="top-feedback-link__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4 5.5C4 4.67 4.67 4 5.5 4h13c.83 0 1.5.67 1.5 1.5v10c0 .83-.67 1.5-1.5 1.5H9l-4 3.5v-3.5H5.5C4.67 17 4 16.33 4 15.5v-10Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
-              <circle cx="8.3" cy="10.3" r="1" fill="currentColor"/>
-              <circle cx="12" cy="10.3" r="1" fill="currentColor"/>
-              <circle cx="15.7" cy="10.3" r="1" fill="currentColor"/>
-            </svg>
-            <span>问题反馈</span>
+              顶部（2026-08-12），复用首页 .home-feedback-link 同一套边框
+              样式。不像暂停按钮那样只给坐位玩家——旁观的人一样可能想反
+              馈问题，之前菜单里的那一行本来就没有这个限制。
+              简化成纯文字"反馈"、去掉图标（用户反馈，2026-08-14）——加了
+              静音按钮之后右边这组东西变多了，图标+"问题反馈"四个字这个
+              版本的宽度是这次挤到中间房间号的主要原因之一，缩短成两个字
+              腾出空间给新按钮，不是单纯为了好看。 */}
+          <div className="top-feedback-link" onClick={() => onOpenFeedback?.()} role="button" aria-label="反馈">
+            <span>反馈</span>
           </div>
           {/* 暂停/继续（用户反馈，2026-08-11）：只有坐位玩家（amPlaying）能
               触发，旁观者看不到这个按钮。图标用真的 SVG 画（跟其余全部图标

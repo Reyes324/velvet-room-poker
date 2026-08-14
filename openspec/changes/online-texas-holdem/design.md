@@ -2429,3 +2429,24 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 **范围边界**：这个功能天然只存在于真人房间（`RoomPage.jsx`），PVE 模式的 `PveSession.js` 本来就没有 `poke()`，不需要额外排除逻辑。
 
 **测试**：`RoomManager.test.js` 新增3条——`recordEggPoke` 累加、`getLobbyState().eggCounts` 可序列化、`restart()` 清空。全量服务端单测（`server/__tests__`，384条）跑过。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。
+
+## 牌局顶部导航栏：修重叠 + 加静音按钮（用户反馈，2026-08-14，实现完成）
+
+用户反馈"导航栏的按钮什么的，感觉可能有点拥挤，有时候甚至会重叠在一起"。
+
+### 根因（Playwright 真机量出来的，不是猜的）
+
+`.top-bar` 原本是"左边 `.menu-btn` flex + 右边 `.top-bar-right` flex + 中间房间号/倒计时 `position:absolute; left:50%` 死死卡在视口正中央"三块拼出来的——中间那块完全不管两边 flex 组实际占了多宽。这套写法在"问题反馈"胶囊加进右边那组之前（当时右边只有一个暂停按钮）勉强够用，但两个元素叠起来之后，在 320/360/375/414px 这几个常见手机宽度下用 Playwright 量出真实 bounding box，房间号胶囊的右边缘全部压进了"问题反馈"胶囊的左边缘，是系统性重叠，不是偶发。
+
+### 修复
+
+`.top-bar` 改成正经的三栏 grid（`grid-template-columns: auto 1fr auto`）：左栏 `.menu-btn`、右栏 `.top-bar-right`（原样）、中间栏新增 `.top-bar-center` 包住房间号/倒计时，用 grid 的 `1fr` 自动吃两边剩下的空间，不再靠死记视口中心点硬撑。`.top-room-code`/`.timer-countdown` 从 `position:absolute` 改成 `.top-bar-center` 内的正常流内容（用它自己的 `justify-content:center` 居中）。这个结构以后右边按钮再增减都会自动正确适应，不需要再手调任何绝对定位的坐标。
+
+### 顺带的两处改动（用户在排查过程中一起提的）
+
+- **"问题反馈"简化成"反馈"，去掉图标**——加了下面这个静音按钮之后右边那组东西变多了，缩短文字腾地方，不是纯粹为了好看。
+- **新增静音按钮**（图标按钮，跟 `.menu-btn`/`.pause-btn` 同一套44px圆角矩形芯片语言）——追问后确认静音的是"游戏音效"（下注/发牌/翻牌那几个 sfx），不是语音对讲（语音是完全独立的一套，见 `useVoiceMesh`）。实现是在 `sfx.js` 里加一个模块级的 `muted` 标志 + `isSfxMuted()`/`setSfxMuted()`，`playSfx`/`playDealSfx` 两个真正播放声音的函数各自在最前面判一次——单一收口点，不需要去 `ActionBar.jsx`/`GameTable.jsx`/`RoomPage.jsx`/`PvePage.jsx` 四个分散的调用点各自加判断（`playCheckSfx`/`playActionSfx`/`playActionFeedbackSfx` 全部经过 `playSfx`，天然覆盖，不用重复判断）。状态持久化在 `localStorage`（`vr_sfxMuted`，跟项目里其余 `vr_` 前缀的会话状态同一套命名），刷新/重连后静音选择还在。不限 `amPlaying`——旁观者也能点，跟"问题反馈"不限坐位玩家是同一个道理（静音是"我不想听"，跟坐没坐下无关）。
+
+### 验证
+
+不接受手算 CSS 就下结论——起了真实 server，Playwright 两个浏览器上下文真实建房间、真开局，量 `.menu-btn`/`.top-room-code`/`.top-bar-right` 的真实 bounding box：修复前 320/360/375/414px 四个宽度全部测出重叠（房间号右边缘 > 右侧按钮组左边缘），修复后四个宽度全部无重叠。静音按钮额外验证：埋点 `HTMLMediaElement.prototype.play`，点静音后触发一次真实的跟注/过牌动作，`play()` 调用次数为0（确认真的没放）；再点一次取消静音，`aria-label` 正确复位、`localStorage` 里的值正确写回 `'0'`。`cd client && npm run build` 通过；`npx eslint .` 38/29，与基线持平。

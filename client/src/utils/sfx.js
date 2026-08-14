@@ -12,6 +12,24 @@ const SOURCES = {
   knock,
 };
 
+// Global mute toggle (top-bar button, 用户反馈 2026-08-14) — a single choke
+// point checked at the top of every play* function below, rather than
+// gating each of the ~4 call sites across ActionBar/GameTable/RoomPage/
+// PvePage individually. Persisted so the choice survives a reload/reconnect
+// (same `vr_` localStorage prefix the rest of the app already uses for
+// player identity/session state).
+const MUTE_KEY = 'vr_sfxMuted';
+let muted = (() => {
+  try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; }
+})();
+
+export function isSfxMuted() { return muted; }
+
+export function setSfxMuted(next) {
+  muted = next;
+  try { localStorage.setItem(MUTE_KEY, next ? '1' : '0'); } catch { /* privacy mode / quota — not worth surfacing */ }
+}
+
 // `pool.deal` below is playDealSfx's own single stable element (it fades
 // and pauses that exact instance, so it can't rotate). Everything else uses
 // playSfx's rotating pools, built by getPool.
@@ -53,6 +71,7 @@ function getSfxPool(name) {
 }
 
 export function playSfx(name) {
+  if (muted) return;
   const src = SOURCES[name];
   if (!src) return;
   const p = getSfxPool(name);
@@ -107,6 +126,7 @@ const DEAL_FADE_MS = 150;
 // Clips shorter than the requested duration just play out naturally (the
 // clip's own baked-in tail fade handles that case).
 export function playDealSfx(durationSeconds) {
+  if (muted) return;
   const src = SOURCES.deal;
   if (!src) return;
   let audio = pool.deal;
