@@ -139,7 +139,12 @@ class Room {
       sameName.socketId = socketId;
       return { ok: true, id: sameName.id };
     }
-    if (this.players.length >= 9) return { error: '房间已满，无法加入' };
+    // this.players 从不真正删行——leave()/markLeft() 只把 left 置 true，
+    // 行本身留着给账本用（见 markLeft 的注释）。满员判断如果直接数数组
+    // 长度，一个 9 人房间只要有人离开过就再也进不去新人了，哪怕当前在场
+    // 的远不到 9 个——房间号可以一直传下去、老玩家陆续离开又有新朋友加
+    // 入是这个项目的正常使用场景，不是边缘情况（用户反馈，2026-08-15）。
+    if (this.players.filter(p => !p.left).length >= 9) return { error: '房间已满，无法加入' };
     this.players.push({ id, name, chips: STARTING_CHIPS, socketId, debt: 0, connected: true, disconnectedAt: null, left: false });
     return { ok: true, id };
   }

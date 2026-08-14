@@ -130,6 +130,23 @@ describe('RoomManager — 加入房间', () => {
     expect(result.error).toBe('房间已满，无法加入');
   });
 
+  it('曾经坐满9人、其中几个真正离开后，新玩家应该能进来（用户反馈，2026-08-15：账本历史人数不该占座位名额）', () => {
+    const room = rooms.create('p1', 'Alice');
+    for (let i = 2; i <= 9; i++) rooms.join(room.code, `p${i}`, `Player${i}`, `socket${i}`);
+    expect(room.players).toHaveLength(9); // 账本累计到9人
+
+    rooms.leave('p7');
+    rooms.leave('p8');
+    rooms.leave('p9'); // 3人真正离开（left:true），账本行还留着
+
+    const result = rooms.join(room.code, 'pNew', 'Newcomer', 'socketNew');
+    expect(result.error).toBeUndefined();
+    expect(result.ok).toBe(true);
+    // 账本（this.players）超过9人是正常的——只要求"当前在场"（!left）不超9
+    expect(room.players).toHaveLength(10);
+    expect(room.players.filter(p => !p.left)).toHaveLength(7);
+  });
+
   it('不同 playerId + 同昵称，旧身份当前离线 → 按昵称复用旧身份（不是新增玩家）', () => {
     const room = rooms.create('p1', 'Alice');
     rooms.join(room.code, 'p2', 'Bob', 'socket2');
