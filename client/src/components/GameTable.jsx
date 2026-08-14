@@ -4,7 +4,7 @@ import ActionBar from './ActionBar';
 import Card from './Card';
 import Pot from './Pot';
 import { useTableScale } from '../hooks/useTableScale';
-import { playDealSfx, playSfx } from '../utils/sfx';
+import { playDealSfx } from '../utils/sfx';
 
 // Fixed design canvas for just the table scene (felt + seats + hero cards) —
 // the single source of truth for both .table-canvas's inline size and
@@ -475,13 +475,10 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   const dealing = !heroRevealed;
   const prevHeroRevealedRef = useRef(true);
   const justRevealed = !prevHeroRevealedRef.current && heroRevealed;
+  // Only tracks the ref for the render-time `justRevealed` flip-animation
+  // flag above — the hero's own reveal used to also play a flip sfx here
+  // (removed per user feedback, 2026-08-14: "自己开牌的声音也去掉").
   useEffect(() => {
-    // Compares the ref's own current value from inside the effect, rather
-    // than closing over the outer `justRevealed` — that one is computed
-    // during render from a ref read (flagged separately, pre-existing), and
-    // referencing it here as well trips the same ref-access lint check a
-    // second time for no benefit.
-    if (!prevHeroRevealedRef.current && heroRevealed) playSfx('heroFlip');
     prevHeroRevealedRef.current = heroRevealed;
   }, [heroRevealed]);
 

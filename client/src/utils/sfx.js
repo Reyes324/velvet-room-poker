@@ -2,7 +2,6 @@ import chipsCall from '../assets/sounds/chips-handle-3.ogg';
 import chipsRaise from '../assets/sounds/raise.mp3';
 import chipsAllIn from '../assets/sounds/all-in.mp3';
 import dealSound from '../assets/sounds/deal.mp3';
-import heroFlip from '../assets/sounds/card-slide-6.ogg';
 import knock from '../assets/sounds/knock.mp3';
 
 const SOURCES = {
@@ -10,7 +9,6 @@ const SOURCES = {
   raise: chipsRaise,
   allin: chipsAllIn,
   deal: dealSound,
-  heroFlip,
   knock,
 };
 
