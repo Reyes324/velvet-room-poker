@@ -39,6 +39,32 @@ const pool = {};
 const POOL_SIZE = 4;
 const sfxPools = {};
 
+// Plain <audio>.volume tops out at 1 (its default — nothing here ever
+// lowers it), which is already the loudest a pool element can go on its
+// own. Knock's source recording just sits quieter than the other clips
+// (user feedback, 2026-08-14: "过牌的声音...比较小"), and there's no audio
+// tooling available to re-master the file itself, so getting it louder
+// than its own native level takes routing it through a Web Audio GainNode
+// instead — a gain node CAN multiply the signal past 1x, unlike the plain
+// element property.
+const KNOCK_GAIN = 1.6;
+let audioCtx = null;
+function getAudioContext() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+// Once an element is routed through createMediaElementSource, that graph
+// is its only output — its normal direct-to-speakers path is gone, so this
+// only ever gets called at pool-creation time, once per element.
+function boostElement(audio, gain) {
+  const ctx = getAudioContext();
+  const source = ctx.createMediaElementSource(audio);
+  const gainNode = ctx.createGain();
+  gainNode.gain.value = gain;
+  source.connect(gainNode).connect(ctx.destination);
+}
+
 function getSfxPool(name) {
   let p = sfxPools[name];
   if (p) return p;
@@ -46,6 +72,7 @@ function getSfxPool(name) {
   p = { elements: Array.from({ length: POOL_SIZE }, () => {
     const audio = new Audio(src);
     audio.preload = 'auto';
+    if (name === 'knock') boostElement(audio, KNOCK_GAIN);
     return audio;
   }), next: 0 };
   sfxPools[name] = p;
@@ -59,6 +86,11 @@ export function playSfx(name) {
   const audio = p.elements[p.next];
   p.next = (p.next + 1) % p.elements.length;
   audio.currentTime = 0;
+  // Only knock is wired through the AudioContext (see boostElement) — it
+  // starts 'suspended' until a user gesture resumes it, and playSfx runs
+  // synchronously inside real click handlers, so this satisfies that.
+  // resume() on an already-running context just resolves immediately.
+  if (name === 'knock') getAudioContext().resume().catch(() => {});
   audio.play().catch(() => {}); // autoplay can be blocked before any user gesture — not worth surfacing
 }
 
