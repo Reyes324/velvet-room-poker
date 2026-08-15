@@ -380,14 +380,20 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           拍同一个人两下、间隔小于 1.6s 时 `poked` 不会经过 false，这个
           节点不会被卸载重挂，pokeBubbleIn/pokeBubbleOut 那套入场淡出动画
           第二次根本不会重播。 */}
+      {/* z-index 直接拿 pokeKey/chatKey（两个都是 Date.now() 时间戳）当
+          值——拍一拍和聊天气泡共用 .poke-bubble 这套视觉语言，同一个座位
+          上偶尔会前后脚都有（比如拍了一下又立刻打字），"最近发生的盖在
+          上面"应该按真实发生时间来，不是写死"聊天永远压表情"或者反过来
+          （用户反馈明确要求这条）。时间戳本身就是天然递增的，直接当
+          z-index 用比另外维护一套"谁在谁上面"的规则简单。 */}
       {poked && (
         pokeEmoji ? (
-          <div key={pokeKey} className="poke-bubble poke-bubble--emoji" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
+          <div key={pokeKey} className="poke-bubble poke-bubble--emoji" style={{ ...bubbleStyle(bubbleSide, bubbleAnchorTop), zIndex: pokeKey }}>
             <span className="poke-bubble__label">{pokeFromName ? `${pokeFromName} 给你` : '给你'}</span>
             <span className="poke-bubble__glyph">{pokeEmoji}</span>
           </div>
         ) : (
-          <div key={pokeKey} className="poke-bubble poke-bubble--plain" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
+          <div key={pokeKey} className="poke-bubble poke-bubble--plain" style={{ ...bubbleStyle(bubbleSide, bubbleAnchorTop), zIndex: pokeKey }}>
             {pokeFromName ? `${pokeFromName} ` : ''}拍了拍
           </div>
         )
@@ -406,7 +412,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         <div
           key={chatKey}
           className={`poke-bubble poke-bubble--chat poke-bubble--chat-tail-${bubbleSide === 'left' ? 'right' : bubbleSide === 'right' ? 'left' : 'bottom'}`}
-          style={bubbleStyle(bubbleSide, bubbleAnchorTop)}
+          style={{ ...bubbleStyle(bubbleSide, bubbleAnchorTop), zIndex: chatKey }}
         >
           {/* 引号改用 CSS 画的装饰图形（.poke-bubble--chat 的 ::before），
               不再是文本里字面拼的“”字符——用户反馈"能否用设计做一下，而
