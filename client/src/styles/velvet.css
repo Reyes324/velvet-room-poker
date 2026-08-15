@@ -666,22 +666,18 @@
      引号/尾巴（下面的 ::before/::after）需要一个定位上下文，不能像以前
      那样蹭外层的 position:absolute。 */
   position:relative;
-  /* 白底磨砂——用户反馈蓝色系"新颜色太多了"，改成中性的象牙白玻璃（跟
-     --ivory 这张牌本身的色调是同一个家族，不是另起一个新色相）。
-
-     磨砂+透明这条路一度改成完全不透明——因为在本地无头 Chromium 沙盒里
-     截图发现底下的字透出来，而且拿掉 backdrop-filter 问题照样在。但用
-     户提醒：`.poke-bubble--emoji`（拍一拍表情气泡）用的正是同一套"低
-     不透明度 + backdrop-filter 模糊"（rgba(8,16,11,.4) + blur(2px)），
-     真机上从来没出过"透底"的问题——说明磨砂本身在真实设备（有 GPU 合
-     成）上是可靠的，之前是沙盒渲染环境本身的局限（没有 GPU 合成，这个
-     环境测不出真实效果），不该拿它的截图当结论去改整个方案。改回磨砂，
-     但透明度给得比表情气泡（.4）高不少——这里要盖住的是下注气泡那种
-     加粗金边+饱和红字，比表情气泡背后通常的空桌布更"扎眼"，需要更强的
-     遮挡力打底，光靠模糊不够稳。 */
-  background:rgba(251,246,236,.85);
-  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-  box-shadow:0 4px 14px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.6) inset;
+  /* 磨砂+半透明这条路来回改了好几轮（透明度、blur 半径都调过），核心
+     矛盾一直没解决：沙盒的无头 Chromium 测不出 backdrop-filter 的真实
+     效果（computed value 是 "none"，没有 GPU 合成），每次"能不能盖住
+     底下的字"都只能靠用户拿真机验证，来回反馈的成本太高。用户最后决定
+     不要磨砂了，换成完全不透明的实色 + 边框——这样"盖没盖住"是纯 CSS
+     层面能保证的事实（不透明背景 100% 挡住任何东西），不用再依赖一个
+     测不了的渲染特性。象牙白（跟 --ivory 这张牌本身的色调同一个家族，
+     不是新起色相）+ 金色描边，边框色阶跟其余按钮的金色边框呼应，是
+     "白底磨砂"最初想要那种"浮在桌布上的一层"的另一种更可靠的实现方式。 */
+  background:#FBF6EC;
+  border:1.5px solid var(--gold-400);
+  box-shadow:0 4px 14px rgba(0,0,0,.35);
   /* 文字：几轮反馈下来（活泼→太夸张的玫红斜体→红色又嫌"颜色太多太复
      杂"）——收敛回牌桌本来就有的深色文字，不再单独挑一个新色。 */
   font-family:var(--font-body); font-size:13px; font-weight:800; color:var(--ink-black);
@@ -739,7 +735,7 @@
    投影还在，看起来就是个菱形贴片（用户反馈发现的）。改用纯 CSS 边框三
    角形手法（border-color 部分透明拼出三角形）——这个技巧天生只会渲染
    出三角形，没有多余的方形轮廓可露馅，是气泡尾巴最标准的实现方式。
-   三个方向的 border 颜色统一用 rgba(251,246,236,.85)——跟气泡本体
+   三个方向的 border 颜色统一用 #FBF6EC——跟气泡本体
    background 完全同一个值（用户反馈之前尾巴写成了 .96，跟气泡本体的
    .85 不是同一个数，颜色对不上），改完之后气泡和尾巴看起来是同一块
    材质连出来的，不是两个分开上色的部件。 */
@@ -748,21 +744,21 @@
 .poke-bubble--chat-tail-bottom::after {
   left:50%; bottom:-8px; transform:translateX(-50%);
   border-left:7px solid transparent; border-right:7px solid transparent;
-  border-top:9px solid rgba(251,246,236,.85);
+  border-top:9px solid #FBF6EC;
   border-bottom-left-radius:3px; border-bottom-right-radius:3px;
 }
 /* 尾巴朝右（气泡贴在座位左边，座位在气泡右侧）。 */
 .poke-bubble--chat-tail-right::after {
   right:-8px; top:50%; transform:translateY(-50%);
   border-top:7px solid transparent; border-bottom:7px solid transparent;
-  border-left:9px solid rgba(251,246,236,.85);
+  border-left:9px solid #FBF6EC;
   border-top-right-radius:3px; border-bottom-right-radius:3px;
 }
 /* 尾巴朝左（气泡贴在座位右边，座位在气泡左侧）。 */
 .poke-bubble--chat-tail-left::after {
   left:-8px; top:50%; transform:translateY(-50%);
   border-top:7px solid transparent; border-bottom:7px solid transparent;
-  border-right:9px solid rgba(251,246,236,.85);
+  border-right:9px solid #FBF6EC;
   border-top-left-radius:3px; border-bottom-left-radius:3px;
 }
 /* 不给文字加 padding-left 让位给引号——气泡是 flex 居中，文字节点自己
