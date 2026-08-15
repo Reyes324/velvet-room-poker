@@ -710,29 +710,30 @@
   color:var(--gold-500); opacity:.55;
   pointer-events:none;
 }
-.poke-bubble--chat::after {
-  content:''; position:absolute;
-  width:14px; height:14px; border-radius:3px;
-  background:rgba(251,246,236,.85); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-  box-shadow:2px 2px 4px rgba(0,0,0,.15);
-}
-/* 尾巴朝下（本人，气泡在座位正上方）——三角形右下角对着座位。 */
+/* 旋转正方形那版做出来是个完整菱形，不是干净的三角尖角——旋转矩形只
+   画了两条边框，没有真正"塞进气泡底下被遮住一半"（那需要额外的层级/
+   重叠技巧，这里没做），另外两条边框虽然透明但正方形本身的直角轮廓和
+   投影还在，看起来就是个菱形贴片（用户反馈发现的）。改用纯 CSS 边框三
+   角形手法（border-color 部分透明拼出三角形）——这个技巧天生只会渲染
+   出三角形，没有多余的方形轮廓可露馅，是气泡尾巴最标准的实现方式。 */
+.poke-bubble--chat::after { content:''; position:absolute; width:0; height:0; filter:drop-shadow(1px 1px 2px rgba(0,0,0,.2)); }
+/* 尾巴朝下（本人，气泡在座位正上方）。 */
 .poke-bubble--chat-tail-bottom::after {
-  left:50%; bottom:-7px;
-  border-right:1px solid rgba(255,255,255,.6); border-bottom:1px solid rgba(255,255,255,.6);
-  transform:translateX(-50%) rotate(45deg);
+  left:50%; bottom:-8px; transform:translateX(-50%);
+  border-left:7px solid transparent; border-right:7px solid transparent;
+  border-top:9px solid rgba(251,246,236,.96);
 }
 /* 尾巴朝右（气泡贴在座位左边，座位在气泡右侧）。 */
 .poke-bubble--chat-tail-right::after {
-  right:-7px; top:50%;
-  border-top:1px solid rgba(255,255,255,.6); border-right:1px solid rgba(255,255,255,.6);
-  transform:translateY(-50%) rotate(45deg);
+  right:-8px; top:50%; transform:translateY(-50%);
+  border-top:7px solid transparent; border-bottom:7px solid transparent;
+  border-left:9px solid rgba(251,246,236,.96);
 }
 /* 尾巴朝左（气泡贴在座位右边，座位在气泡左侧）。 */
 .poke-bubble--chat-tail-left::after {
-  left:-7px; top:50%;
-  border-bottom:1px solid rgba(255,255,255,.6); border-left:1px solid rgba(255,255,255,.6);
-  transform:translateY(-50%) rotate(45deg);
+  left:-8px; top:50%; transform:translateY(-50%);
+  border-top:7px solid transparent; border-bottom:7px solid transparent;
+  border-right:9px solid rgba(251,246,236,.96);
 }
 .poke-bubble__chat-text { position:relative; z-index:1; padding-left:14px; }
 
