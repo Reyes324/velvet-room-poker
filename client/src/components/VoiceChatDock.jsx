@@ -127,6 +127,12 @@ export default function VoiceChatDock({
           value={chatText}
           maxLength={CHAT_MAX_LEN}
           placeholder="说点什么…"
+          // enterKeyHint：手机虚拟键盘的回车键本身是系统原生 UI，网页改不
+          // 了颜色/形状，但能指定它显示的文案/图标——默认是换行箭头，容
+          // 易被当成"换行"而不是"提交"，改成 "send" 后系统键盘会显示
+          // "发送"（或对应图标），跟这里 onKeyDown 里 Enter 触发发送的
+          // 行为对上号，用户反馈问起来才发现这处没设（2026-08-15）。
+          enterKeyHint="send"
           onChange={e => setChatText(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter') submitChat();
