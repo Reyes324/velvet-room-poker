@@ -3,9 +3,10 @@
 // 定稿理由记在 openspec/changes/online-texas-holdem/design.md）。
 //
 // 收起态是个贴边的圆（呼应筹码/座位头像的圆形语言），点一下原地拉伸成
-// 竖排的"说话/打字"胶囊，再点收起箭头缩回去。拖拽只在收起态可用——
-// 展开态的"说话"区域要保留原有的按住说话手势（pointerdown/up），展开
-// 态再叠一层拖拽会跟这个手势打架，所以设计上就没让它们同时存在。
+// 竖排的"说话/打字"胶囊，再点收起箭头缩回去。展开态也能拖（用户反馈，
+// 2026-08-15）——"说话"区域的按住说话手势（pointerdown/up）靠子区域
+// 自己 stopPropagation 跟外层拖拽手势隔开，摁在按钮上是说话/点击，摁
+// 在胶囊其余空白处是拖拽，两者不会抢。
 //
 // 拖拽只能沿竖直方向 + 松手贴左或贴右边（不是自由二维位置）——保证任何
 // 时候都贴着屏幕边缘，不会被拖到桌子中间挡住牌。位置记忆在 localStorage
@@ -53,6 +54,10 @@ export default function VoiceChatDock({
   const chatInputRef = useRef(null);
   const chatInputBoxRef = useRef(null); // 输入条外层容器，点空白处判断要用
   const closeTimerRef = useRef(null);
+  // 点了输入条外面空白处，紧接着输入框也会失焦——这个标记让 onBlur 认
+  // 出"这次失焦是因为点了外面"，而不是把它跟下面 iOS 系统键盘上那条
+  // "完成"横条（打勾）的失焦混在一起处理。
+  const outsideDismissRef = useRef(false);
 
   useEffect(() => {
     if (chatOpen) chatInputRef.current?.focus();
@@ -76,7 +81,10 @@ export default function VoiceChatDock({
   useEffect(() => {
     if (!chatOpen) return;
     const onOutside = e => {
-      if (chatInputBoxRef.current && !chatInputBoxRef.current.contains(e.target)) closeChat();
+      if (chatInputBoxRef.current && !chatInputBoxRef.current.contains(e.target)) {
+        outsideDismissRef.current = true;
+        closeChat();
+      }
     };
     document.addEventListener('pointerdown', onOutside);
     return () => document.removeEventListener('pointerdown', onOutside);
@@ -97,7 +105,10 @@ export default function VoiceChatDock({
   const edge = pos?.edge ?? 'right';
 
   const handlePointerDown = useCallback(e => {
-    if (expanded) return; // 展开态不拖拽，见文件头注释
+    // 展开态也能拖——"说话"/"打字"/收起箭头三个子区域各自的 onPointerDown
+    // 都会 stopPropagation，不会冒泡到这里，所以拖拽手势只在按住胶囊本
+    // 体（三个按钮之外的空白/分隔区域）时触发，不会跟按住说话手势打架
+    // （用户反馈"展开后也希望能拖动"，2026-08-15）。
     const stageEl = dockRef.current?.closest('.game-stage');
     if (!stageEl) return;
     dragRef.current = {
@@ -105,7 +116,7 @@ export default function VoiceChatDock({
       stageRect: stageEl.getBoundingClientRect(),
     };
     dockRef.current.setPointerCapture?.(e.pointerId);
-  }, [expanded]);
+  }, []);
 
   const handlePointerMove = useCallback(e => {
     const drag = dragRef.current;
@@ -175,12 +186,20 @@ export default function VoiceChatDock({
             if (e.key === 'Enter') submitChat();
             if (e.key === 'Escape') closeChat();
           }}
-          // 输入框跟"键盘在不在"绑定，不是只靠"点旁边空白处"这一种方式关
-          // 掉——用户反馈"输入框不用一直在，键盘唤起它才需要在"（2026-08-
-          // 15）：失焦（不管是被系统自带的收起键盘手势、切到别的 App、还
-          // 是别的什么原因）就等于不再需要这个框了，直接走跟点空白处一样
-          // 的关闭+动画流程。
-          onBlur={closeChat}
+          // 输入框跟"键盘在不在"绑定——失焦就收起。但"点了输入条外面空
+          // 白处"（放弃这次输入，见上面 onOutside）跟"点了 iOS 键盘上那
+          // 条系统"完成"横条的打勾"（用户明确要求：这个等同于点发送）要
+          // 分开处理，不能都当放弃——点了外面已经被 onOutside 标记过，这
+          // 里认出这个标记就只做收尾，不重复处理；不是点外面触发的失焦，
+          // 就当作打勾发送，有内容就发，没内容就当普通收起
+          // （用户反馈，2026-08-15：只有打勾才发送，其它失焦不发）。
+          onBlur={() => {
+            if (outsideDismissRef.current) { outsideDismissRef.current = false; return; }
+            // 切到别的 App/切标签页也会让输入框失焦，但这不是"点了勾"，
+            // 不该被当成发送——document.hidden 就是这种情况的信号。
+            if (!document.hidden && chatText.trim()) submitChat();
+            else closeChat();
+          }}
         />
         {/* pointerDown 上 preventDefault——不这样做的话，点"发送"这个按
             钮本身会先让输入框失焦（触发上面新加的 onBlur→closeChat），
