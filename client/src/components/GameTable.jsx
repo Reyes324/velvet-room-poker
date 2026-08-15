@@ -224,7 +224,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, onSendChat, chatBubble = null, disconnectedIds = null }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, onSendChat, chatBubble = null, disconnectedIds = null }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -804,17 +804,9 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
             <div className="menu-row" onClick={() => { setShowMenu(false); onOpenLedger?.(); }}>账本</div>
             <div className="menu-row" onClick={() => { setShowMenu(false); onOpenHandHistory?.(); }}>牌局记录</div>
-            {onOpenStats && (
-              <div className="menu-row" onClick={() => { setShowMenu(false); onOpenStats(); }}>战绩</div>
-            )}
             {isHost && (
               <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
             )}
-            {/* 用户反馈（2026-07-31）：加到 iOS 主屏幕的书签是"独立 App"模式
-                打开的，没有 Safari 那套地址栏/下拉刷新——切到后台再切回来，
-                系统经常只是原样唤醒上次冷启动加载的那个页面，不会重新请
-                求。停在这一局中途卡住时，用户没有别的办法强制刷新。 */}
-            <div className="menu-row" onClick={() => window.location.reload()}>刷新页面</div>
             <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowExitModal(true); }}>退出游戏</div>
           </div>
         </div>

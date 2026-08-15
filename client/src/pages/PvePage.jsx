@@ -7,7 +7,6 @@ import SettlementModal from '../components/SettlementModal';
 import BustDecisionModal from '../components/BustDecisionModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
-import PveStatsModal from '../components/PveStatsModal';
 import FeedbackModal from '../components/FeedbackModal';
 
 // Same pacing as RoomPage's real-showdown reveal — see that file's own
@@ -36,7 +35,6 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   const [toast, setToast] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
   const [showHandHistory, setShowHandHistory] = useState(false);
-  const [showStats, setShowStats] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
   const settlementTimerRef = useRef(null);
@@ -187,7 +185,6 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         settlementOpen={!!settlement}
         onOpenLedger={() => setShowLedger(true)}
         onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
-        onOpenStats={() => { emit('pve:get-hand-history'); setShowStats(true); }}
         onOpenFeedback={() => setShowFeedback(true)}
         onPoke={(targetId, emoji) => poke(targetId, emoji, me?.id)}
         pokedSeat={pokedSeat}
@@ -214,16 +211,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
           onClose={() => setShowHandHistory(false)}
         />
       )}
-      {showStats && (
-        <PveStatsModal
-          hands={handHistory}
-          myId={me?.id}
-          ledgerEntry={gameState.ledger?.find(p => p.id === me?.id)}
-          startingChips={gameState.startingChips ?? 1000}
-          onClose={() => setShowStats(false)}
-        />
-      )}
-      {/* 用户反馈 #5（2026-08-04）："结算弹窗没出来，就先出来这个了，我都
+{/* 用户反馈 #5（2026-08-04）："结算弹窗没出来，就先出来这个了，我都
           没看清楚怎么输的"。原来这里是个三元表达式——破产时用借一底弹窗
           **替代**结算弹窗，于是输光的那一手永远看不到自己是怎么输的，而那
           恰恰是最想看清楚的一手。

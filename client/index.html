@@ -6,6 +6,12 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- 公共牌/手牌牌角数字用 tokens.css 里 --font-card 定义的 Oswald——
+         这个 <link> 之前一直没加，字体其实从没真正加载过，牌角数字全程
+         是浏览器 sans-serif 兜底渲染的（2026-08-15 用户发现后查证补上）。 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap" rel="stylesheet" />
     <meta name="theme-color" content="#17331E" />
     <meta name="apple-mobile-web-app-title" content="翡翠厅" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
