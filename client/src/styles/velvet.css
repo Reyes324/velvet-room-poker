@@ -618,6 +618,18 @@
    话，需要更久的阅读时间（RoomPage.jsx 里 4s 后清状态，这里的
    animation-delay 要跟着改，不能只改一边）。文字可能比表情选择器上限
    （40 字）长得多，不能像 .poke-bubble--plain 那样 nowrap 硬撑一行。 */
+/* 外层——只管"贴在座位哪个方位"，没有任何视觉样式/动画。跟 .poke-bubble
+   基类分开单独定义（不复用它），是因为 .poke-bubble 自带一份默认的
+   pokeBubbleIn/Out 动画（给拍一拍用的，1.3s 就开始淡出）——如果外层也
+   套用 .poke-bubble 类，这份跟聊天气泡自己那份 chatBubbleIn/Out（3.7s
+   才淡出）会同时作用在两层上，外层提前在 1.6s 淡没了，内层还在，整个
+   气泡会在 4s 计时还没到时就突然消失（真实会出现的 bug，不是假设）。
+   本人视角（bubbleSide 为空）时这里的位置样式生效；对手视角时
+   bubbleStyle() 会整份内联覆盖掉，这几条只是兜底。 */
+.poke-bubble-anchor--chat {
+  position:absolute; z-index:25; pointer-events:none;
+  bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+}
 .poke-bubble--chat {
   /* width:max-content，不是 fit-content——这个气泡的定位容器是座位卡本
      身（~50~70px 宽，比气泡窄得多）。fit-content 会把"可用空间"也算进
@@ -647,12 +659,13 @@
   padding:5px 14px; border-radius:14px; width:max-content; min-width:76px; max-width:220px;
   min-height:33px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;
   white-space:normal; word-break:break-word; text-align:center;
-  /* 不额外声明 position——.poke-bubble 基类已经是 position:absolute，这
-     里再写一遍 position:relative 会整个盖掉那条声明（同一属性后来居上），
-     气泡直接从"贴着座位悬浮"掉回文档正常流（真机截图踩到的坑：气泡跑
-     到了完全不对的位置，跟下注气泡没有任何关系）。装饰引号徽章（下面
-     ::before）不需要父元素声明 position:relative 也能定位——position:
-     absolute 的元素本来就会给自己的子元素建立定位上下文，不用再加一遍。 */
+  /* 定位/视觉现在分成外层 .poke-bubble-anchor--chat（贴座位、z-index、
+     pointer-events）+ 内层这个 .poke-bubble--chat（气泡外观+弹出动画）
+     两层（见 PlayerSeat.jsx 的结构注释，2026-08-15 拆分）。这里要自己
+     声明 position:relative——不再是 .poke-bubble 基类的直接后代，装饰
+     引号/尾巴（下面的 ::before/::after）需要一个定位上下文，不能像以前
+     那样蹭外层的 position:absolute。 */
+  position:relative;
   /* 白底磨砂——用户反馈蓝色系"新颜色太多了"，改成中性的象牙白玻璃（跟
      --ivory 这张牌本身的色调是同一个家族，不是另起一个新色相）。
 
@@ -673,20 +686,23 @@
      杂"）——收敛回牌桌本来就有的深色文字，不再单独挑一个新色。 */
   font-family:var(--font-body); font-size:13px; font-weight:800; color:var(--ink-black);
   /* 专属的"弹出"动画，不再借用 pokeBubbleIn/Out——那套是给拍一拍设计的
-     （小幅度旋转+缩放，读起来像"啪一下弹出来的调侃动作"）。聊天要读作
-     "话从这个人嘴里冒出来"，动画的生长原点定在尾巴那个点，从那一点点
-     "长"出整个气泡，而不是原地放大——这是说话泡最典型的运动方式（想
-     象漫画里对话框弹出的那一下）。transform-origin 默认是尾巴朝下时的
-     位置（50% 100%），尾巴朝左/右的两个修饰类各自覆盖成对应的边。 */
-  transform-origin:50% 100%;
-  animation:chatBubbleIn .32s cubic-bezier(.34,1.56,.64,1) both, chatBubbleOut .3s ease-in 3.7s forwards;
+     （小幅度旋转+缩放，读起来像"啪一下弹出来的调侃动作"）。
+
+     第一版按尾巴朝向（下/左/右）分了三套不同的 transform-origin，想做
+     "从尾巴那个点生长出来"的效果——用户反馈本人视角看着像从右下角冒
+     出来、对手视角干脆看不出动画，这套"分三个方向各自定生长点"的做法
+     太脆弱（本人座位那条走的是 CSS 类里的静态 transform:translateX(-50%)
+     居中，对手座位走的是 sideStyle() 塞进来的内联 transform，两条定位
+     方式跟动画自身的 scale/translate 组合在实机上表现不一致，没能稳定
+     复现），不值得为这点效果背这个不确定性。改成不分方向，统一从气泡
+     中心放大+淡入淡出——足够表达"话冒出来"这个意思，且不管走哪种定位
+     方式都只有一条路径，不会有方向相关的差异。 */
+  transform-origin:50% 50%;
+  animation:chatBubbleIn .28s cubic-bezier(.34,1.56,.64,1) both, chatBubbleOut .3s ease-in 3.7s forwards;
 }
-.poke-bubble--chat-tail-right { transform-origin:100% 50%; }
-.poke-bubble--chat-tail-left { transform-origin:0% 50%; }
 @keyframes chatBubbleIn {
-  0%   { opacity:0; scale:.3; translate:0 4px; }
-  60%  { opacity:1; scale:1.06; }
-  100% { opacity:1; scale:1; translate:0 0; }
+  0%   { opacity:0; scale:.5; }
+  100% { opacity:1; scale:1; }
 }
 @keyframes chatBubbleOut { to { opacity:0; scale:.5; } }
 /* 引号——用户要求"用设计做，不是文字字符"，且要"更像说话的感觉"。改了
@@ -908,7 +924,11 @@
    分裂成两套。 */
 .voice-dock {
   position:absolute; z-index:20;
-  width:34px; height:34px;
+  /* 收起态 34px、展开态按钮区 36px 宽——真机上偏小，用户反馈"太小不好
+     按"，改回接近原来 .ptt-btn（58×72）那个量级的触摸目标，比系统建议
+     的 44px 最低触摸尺寸留了余量（2026-08-15）。紧凑是上一轮为了不挡
+     座位定的方向，这次纠正为"能按到"优先于"占地小"——用户明确要求。 */
+  width:46px; height:46px;
   background:radial-gradient(circle at 35% 30%, rgba(212,175,55,.28), rgba(212,175,55,.10) 70%);
   border:1px solid rgba(212,175,55,.4);
   display:flex; align-items:center; justify-content:center;
@@ -920,18 +940,18 @@
 .voice-dock:active { cursor:grabbing; }
 .voice-dock--right { right:0; border-radius:50% 0 0 50% / 50% 0 0 50%; border-right:none; transform:translateY(-50%); }
 .voice-dock--left { left:0; border-radius:0 50% 50% 0 / 0 50% 50% 0; border-left:none; transform:translateY(-50%); }
-.voice-dock__icon { width:16px; height:16px; }
+.voice-dock__icon { width:20px; height:20px; }
 
-.voice-dock--expanded { height:120px; }
-.voice-dock--expanded.voice-dock--right { width:36px; border-radius:17px 0 0 17px; }
-.voice-dock--expanded.voice-dock--left { width:36px; border-radius:0 17px 17px 0; }
+.voice-dock--expanded { height:150px; }
+.voice-dock--expanded.voice-dock--right { width:50px; border-radius:18px 0 0 18px; }
+.voice-dock--expanded.voice-dock--left { width:50px; border-radius:0 18px 18px 0; }
 
-.voice-dock__actions { display:flex; flex-direction:column; align-items:center; width:100%; height:100%; padding:4px 0; gap:2px; }
+.voice-dock__actions { display:flex; flex-direction:column; align-items:center; width:100%; height:100%; padding:5px 0; gap:3px; }
 .voice-dock__section {
-  flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
-  font-family:var(--font-body); font-size:8px; font-weight:700; cursor:pointer;
+  flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  font-family:var(--font-body); font-size:9px; font-weight:700; cursor:pointer;
 }
-.voice-dock__section svg { width:14px; height:14px; }
+.voice-dock__section svg { width:18px; height:18px; }
 .voice-dock__section--talk { color:var(--gold-300); }
 .voice-dock__section--chat { color:#B9D6F2; }
 .voice-dock__section--talking {
@@ -947,8 +967,8 @@
   50%     { text-shadow:0 0 14px rgba(39,174,96,.95); }
 }
 .voice-dock__divider { width:60%; height:1px; background:linear-gradient(90deg, transparent, rgba(212,175,55,.5), transparent); flex:0 0 auto; }
-.voice-dock__collapse { flex:0 0 auto; width:20px; height:14px; border-radius:7px; background:rgba(212,175,55,.12); display:flex; align-items:center; justify-content:center; cursor:pointer; margin-top:1px; }
-.voice-dock__collapse svg { width:9px; height:9px; color:var(--gold-300); }
+.voice-dock__collapse { flex:0 0 auto; width:26px; height:18px; border-radius:9px; background:rgba(212,175,55,.12); display:flex; align-items:center; justify-content:center; cursor:pointer; margin-top:1px; }
+.voice-dock__collapse svg { width:11px; height:11px; color:var(--gold-300); }
 
 /* 打字输入条——独立于 .voice-dock 渲染，紧挨着胶囊同一条边、同一个垂直
    位置浮出来，不是塞进胶囊内部撑变形（见 VoiceChatDock.jsx 注释）。跟

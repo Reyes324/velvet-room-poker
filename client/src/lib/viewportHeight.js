@@ -13,9 +13,21 @@
 // themselves.
 export function initViewportHeightFix() {
   function applyRealHeight() {
+    // window.innerHeight doesn't shrink when the on-screen keyboard opens
+    // (only visualViewport.height does — the layout viewport itself is
+    // unchanged, just partially covered). Compare the two: if
+    // visualViewport is meaningfully shorter than innerHeight, that's the
+    // keyboard, not a real orientation/resize/gap-bug event — skip the
+    // update so .game-stage doesn't shrink and reflow every seat/card
+    // position while someone's typing a chat message (user-reported,
+    // 2026-08-15: "键盘唤起能不要把页面往上顶吗"). Falls back to
+    // innerHeight itself in that case, same as browsers without
+    // visualViewport support.
+    const vv = window.visualViewport?.height;
+    const keyboardLikelyOpen = vv != null && window.innerHeight - vv > 120;
+    const h = keyboardLikelyOpen ? window.innerHeight : (vv ?? window.innerHeight);
     // Stored as 1% of the real height (not the full height) so CSS can do
     // `calc(var(--vh) * 100)` as a drop-in replacement for `100dvh`.
-    const h = window.visualViewport?.height ?? window.innerHeight;
     document.documentElement.style.setProperty('--vh', `${h / 100}px`);
   }
 

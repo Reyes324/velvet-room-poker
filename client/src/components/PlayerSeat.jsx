@@ -409,15 +409,27 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
         // 位的气泡是贴在座位左边或右边（bubbleSide 由 cardsSide 决定），
         // 尾巴要指向座位那一侧，不然"尾巴指向说话人"这个语义就反了（用
         // 户反馈发现的：一开始只测过本人视角，没看对手气泡）。
+        // 外层（poke-bubble-anchor--chat）只管定位，不带任何动画/视觉样
+        // 式；真正的气泡外观 + 弹出动画全放在内层（poke-bubble--chat）。
+        // 分成两层是因为踩过坑：如果动画和"贴着座位居中"的定位共用同一
+        // 个元素，定位靠的是 CSS `transform:translateX(-50%)`（本人视角）
+        // 或者内联 `transform:translateY(...)`（对手视角，sideStyle() 塞
+        // 进来的），动画本来想用独立的 scale/translate 属性去避免覆盖掉
+        // 这个定位 transform——理论上两者能共存，但真机上表现不一致（用
+        // 户反馈：本人视角看着像从右下角冒出来，对手视角干脆看不出动
+        // 画）。分层之后外层只负责"贴在哪"，内层只负责"怎么弹出来"，两
+        // 件事各自的 transform 互不相干，不用再赌浏览器怎么组合它们。
         <div
           key={chatKey}
-          className={`poke-bubble poke-bubble--chat poke-bubble--chat-tail-${bubbleSide === 'left' ? 'right' : bubbleSide === 'right' ? 'left' : 'bottom'}`}
+          className="poke-bubble-anchor--chat"
           style={{ ...bubbleStyle(bubbleSide, bubbleAnchorTop), zIndex: chatKey }}
         >
-          {/* 引号改用 CSS 画的装饰图形（.poke-bubble--chat 的 ::before），
-              不再是文本里字面拼的“”字符——用户反馈"能否用设计做一下，而
-              不是用文字"（2026-08-15）。文本节点这里只放纯文字。 */}
-          <span className="poke-bubble__chat-text">{chatText}</span>
+          <div className={`poke-bubble--chat poke-bubble--chat-tail-${bubbleSide === 'left' ? 'right' : bubbleSide === 'right' ? 'left' : 'bottom'}`}>
+            {/* 引号改用 CSS 画的装饰图形（.poke-bubble--chat 的 ::before），
+                不再是文本里字面拼的“”字符——用户反馈"能否用设计做一下，
+                而不是用文字"（2026-08-15）。文本节点这里只放纯文字。 */}
+            <span className="poke-bubble__chat-text">{chatText}</span>
+          </div>
         </div>
       )}
 
