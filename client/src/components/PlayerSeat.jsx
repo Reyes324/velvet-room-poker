@@ -399,7 +399,10 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           不需要发送者名字前缀（座位名字本身已经在头像上方显示）。 */}
       {chatText && (
         <div key={chatKey} className="poke-bubble poke-bubble--chat" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
-          {chatText}
+          {/* 引号——用户反馈，2026-08-15：光看一句悬浮的文字容易看不出这
+              是"某人说的话"还是别的什么状态提示，加上引号是最省事的信号，
+              不用另外画一个"说话气泡尖角"之类的图形元素。 */}
+          “{chatText}”
         </div>
       )}
 

@@ -626,14 +626,12 @@
      踩到的 bug，不是猜的）。max-content 不看容器宽度，只按内容自然宽度
      算，再用 max-width 兜底超长文本才换行，这才是想要的效果。
 
-     bottom 单独加大：只有本人自己座位（没传 bubbleSide，走 .poke-bubble
-     基类默认的"正上方居中"锚点）会撞见这个问题——对手座位的气泡都是
-     PlayerSeat 拿到显式 bubbleSide 后往左右两侧摆，不共用这个锚点。跟
-     .action-bubble（下注/弃牌播报）用的是同一个"正上方"锚点，聊天气泡
-     停留 4s 比动作气泡常见的存活时间长得多，真机截图发现"小盲 ¥10"这
-     类下注气泡被聊天气泡糊住大半（用户反馈，2026-08-15）。加大到清过
-     一整个动作气泡的高度，改成聊天气泡叠在动作气泡上方，不重叠。 */
-  bottom:calc(100% + 40px);
+     不单独加 bottom 偏移，就用 .poke-bubble 继承来的默认锚点——跟
+     .action-bubble（下注/弃牌播报）共用同一个"正上方"位置是故意的，不
+     是没处理：z-index（这条继承自 .poke-bubble 的 25）本来就压在
+     .action-bubble 的 8 之上，聊天气泡在场时直接盖住下注气泡，不用再猜
+     一个偏移量去"叠在上面"——曾经试过加 40px 让两者上下堆叠，用户反馈
+     "还是覆盖简单"，改回来了（2026-08-15）。 */
   padding:7px 14px; border-radius:14px; width:max-content; max-width:150px;
   white-space:normal; word-break:break-word; text-align:center; line-height:1.35;
   /* 白底磨砂——用户反馈蓝色系"新颜色太多了"，改成中性的象牙白玻璃（跟
