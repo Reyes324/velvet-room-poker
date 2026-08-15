@@ -631,17 +631,29 @@
      是没处理：z-index（这条继承自 .poke-bubble 的 25）本来就压在
      .action-bubble 的 8 之上，聊天气泡在场时直接盖住下注气泡，不用再猜
      一个偏移量去"叠在上面"——曾经试过加 40px 让两者上下堆叠，用户反馈
-     "还是覆盖简单"，改回来了（2026-08-15）。 */
-  padding:7px 14px; border-radius:14px; width:max-content; max-width:150px;
-  white-space:normal; word-break:break-word; text-align:center; line-height:1.35;
+     "还是覆盖简单"，改回来了（2026-08-15）。
+
+     padding/font-size/line-height 特意跟 .action-bubble 完全一致（5px
+     12px / 13px / 正常行高）——用户明确要求"高度要跟下注气泡一样、完全
+     盖住"，高度只由这几个值决定，跟文字内容长短无关，数值对齐了两者
+     的盒子高度就永远一致，不用另外量哪个像素凑。 */
+  padding:5px 12px; border-radius:14px; width:max-content; max-width:150px;
+  white-space:normal; word-break:break-word; text-align:center; line-height:normal;
   /* 白底磨砂——用户反馈蓝色系"新颜色太多了"，改成中性的象牙白玻璃（跟
      --ivory 这张牌本身的色调是同一个家族，不是另起一个新色相），backdrop-
      filter 磨砂让它在深色桌布上依然读作"浮在上面的一层"，不需要靠饱和
-     色块才能跳出来。文字换深色（象牙底配浅色字看不清）。 */
-  background:rgba(251,246,236,.94);
-  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
-  box-shadow:0 4px 14px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.6) inset;
-  font-family:var(--font-body); font-size:12px; font-weight:700; color:var(--ink-black);
+     色块才能跳出来。透明度压到 .74（第一版 .94 太接近纯白实色，磨砂效
+     果基本看不出来，用户反馈"要有磨砂质感"）——现在底下桌布/牌背的颜
+     色能真的透一点出来，配合 blur 才读得出"一层磨砂玻璃"而不是"一张白
+     纸"。 */
+  background:rgba(251,246,236,.74);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  box-shadow:0 4px 14px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.55) inset;
+  /* 文字：用户反馈"能否活泼一点"——纯黑字配磨砂白底太像正式的系统提示。
+     换成拍一拍那套暖色系里偏玫红的一支（跟 .poke-bubble--plain 的橘粉
+     渐变同一色系家族，只是这里字浅底也不会糊），斜体 + 800 字重读起来
+     更像随手写的一句话，不是播报文案。 */
+  font-family:var(--font-body); font-style:italic; font-size:13px; font-weight:800; color:#C23B6B;
   animation:pokeBubbleIn .3s cubic-bezier(.34,1.7,.64,1) both, pokeBubbleOut .3s ease-in 3.7s forwards;
 }
 
