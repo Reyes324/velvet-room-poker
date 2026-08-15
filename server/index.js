@@ -832,6 +832,18 @@ function createServer({
       io.to(room.code).emit('player:poked', { fromId, targetId, emoji: safeEmoji });
     });
 
+    // 打字聊天广播（2026-08-15）——跟 player:poke 是同一层"纯社交、不碰
+    // 游戏状态"广播，唯一区别是没有 targetId，全房间都收。
+    socket.on('chat:message', ({ playerId, text } = {}) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.chat(playerId, text);
+      if (result.error) return socket.emit('game:error', result.error);
+      if (result.ignored) return; // 冷却期内静默丢弃，跟拍一拍的处理一致，不单独报错打扰
+      room.touch();
+      io.to(room.code).emit('chat:message', { fromId: playerId, text: result.text });
+    });
+
     socket.on('room:restart', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return socket.emit('game:error', '未找到房间');

@@ -64,7 +64,7 @@ function bubbleStyle(bubbleSide, anchorTop) {
   return bubbleSide ? sideStyle(bubbleSide, anchorTop) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeKey = null, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeKey = null, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, chatText = null, chatKey = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -391,6 +391,16 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
             {pokeFromName ? `${pokeFromName} ` : ''}拍了拍
           </div>
         )
+      )}
+
+      {/* 打字聊天气泡（2026-08-15）——复用拍一拍这套 bubbleStyle 定位逻辑
+          （同一个锚点系统），不是另起一套。跟拍一拍不同的是聊天没有
+          "谁发给你"这个指向性，就是这个人自己说的话，直接显示文本，
+          不需要发送者名字前缀（座位名字本身已经在头像上方显示）。 */}
+      {chatText && (
+        <div key={chatKey} className="poke-bubble poke-bubble--chat" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
+          {chatText}
+        </div>
       )}
 
       {/* GameEngine.getStateForPlayer masks other seats' cards as [null, null]

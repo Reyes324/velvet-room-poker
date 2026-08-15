@@ -224,7 +224,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, disconnectedIds = null }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenStats, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, onSendChat, chatBubble = null, disconnectedIds = null }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -796,6 +796,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           voiceTalking={voiceTalking}
           onStartTalking={onStartTalking}
           onStopTalking={onStopTalking}
+          onSendChat={onSendChat}
         />
       )}
       {showMenu && (
@@ -938,6 +939,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             pokeKey={pokedSeat?.targetId === me.id ? pokedSeat.key : null}
             pokeEmoji={pokedSeat?.targetId === me.id ? pokedSeat.emoji : null}
             pokeFromName={pokedSeat?.targetId === me.id ? pokedSeat.fromName : null}
+            chatText={chatBubble?.fromId === me.id ? chatBubble.text : null}
+            chatKey={chatBubble?.fromId === me.id ? chatBubble.key : null}
             turnEndsAt={turnClock?.playerId === me.id ? turnClock.endsAt : null}
             turnStartedAt={turnClock?.playerId === me.id ? turnClock.startedAt : null}
             isSpeaking={voiceTalking || !!speakingPlayerIds?.has(me.id)}
@@ -985,6 +988,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               pokeKey={pokedSeat?.targetId === p.id ? pokedSeat.key : null}
               pokeEmoji={pokedSeat?.targetId === p.id ? pokedSeat.emoji : null}
               pokeFromName={pokedSeat?.targetId === p.id ? pokedSeat.fromName : null}
+              chatText={chatBubble?.fromId === p.id ? chatBubble.text : null}
+              chatKey={chatBubble?.fromId === p.id ? chatBubble.key : null}
               pokeThrowFrom={throwOffsetTo(s.x, s.y)}
               bubbleAnchorTop={s.y <= TOP_ZONE.end}
               turnEndsAt={turnClock?.playerId === p.id ? turnClock.endsAt : null}

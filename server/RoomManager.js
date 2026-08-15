@@ -3,6 +3,8 @@ const { GameEngine } = require('./GameEngine');
 const STARTING_CHIPS = 1000;
 const BIG_BLIND = 20;
 const POKE_COOLDOWN_MS = 2000;
+const CHAT_COOLDOWN_MS = 2000; // 跟拍一拍用同一个节流量级——都是"手抖连点"该被吞掉的场景
+const CHAT_MAX_LEN = 40; // 气泡浮层展示，不是聊天面板，太长的字会溢出/被截断，从源头卡住
 // 断线跨手自动离座（nextRound）的最短持续时长——见 setConnected 上方注释，
 // 一次瞬时的 disconnect 事件不代表人真的走了，只有断线撑过这个时长才在手
 // 牌边界移出。2026-08-14 用户定的值：长到能滤掉正常网络抖动/切后台，又不
@@ -37,6 +39,7 @@ class Room {
     this.awaitingBustResolution = false;
     this.lastShowdown = null; // Last showdown data, stored for reconnection during settlement wait
     this.pokeCooldowns = new Map(); // `${fromId}→${targetId}` -> last-poke timestamp (ms)
+    this.chatCooldowns = new Map(); // fromId -> last-message timestamp (ms)，跟 pokeCooldowns 同一套节流思路
     this.eggCounts = new Map(); // targetId -> how many times poked with the 🥚 emoji, whole session
     // Per-hand result log for this session ("牌局记录") — result summary
     // only (community cards, who won what, how), not a full action replay.
@@ -222,6 +225,20 @@ class Room {
     if (last && Date.now() - last < POKE_COOLDOWN_MS) return { ignored: true };
     this.pokeCooldowns.set(key, Date.now());
     return { ok: true };
+  }
+
+  // 打字聊天——广播给全房间，不像拍一拍那样针对某个人，所以冷却按发送者
+  // 单独计（不是 poke 那种按有序对计的 key），道理跟 pokeCooldowns 上面的
+  // 注释一样：不想让 A 发消息的节流影响到 A 拍一拍。不持久化——房主/玩家
+  // 刷新页面后消息就没了，跟拍一拍的动作气泡是同一个产品决定（用户反馈，
+  // 2026-08-15：先上气泡版，真用起来发现总错过再考虑要不要做常驻面板）。
+  chat(fromId, text) {
+    const trimmed = (text ?? '').trim();
+    if (!trimmed) return { error: '消息不能为空' };
+    const last = this.chatCooldowns.get(fromId);
+    if (last && Date.now() - last < CHAT_COOLDOWN_MS) return { ignored: true };
+    this.chatCooldowns.set(fromId, Date.now());
+    return { ok: true, text: trimmed.slice(0, CHAT_MAX_LEN) };
   }
 
   // Whole-session tally of egg pokes landed on each target — used by the

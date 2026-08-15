@@ -687,6 +687,50 @@ describe('RoomManager — 拍一拍', () => {
   });
 });
 
+describe('RoomManager — 打字聊天（2026-08-15）', () => {
+  it('成功发送返回 ok，并回传去空格、截断到上限的文本', () => {
+    const room = rooms.create('p1', 'Alice');
+    const result = room.chat('p1', '  hello  ');
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe('hello');
+  });
+
+  it('空消息（或全是空格）报错', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(room.chat('p1', '   ').error).toBe('消息不能为空');
+    expect(room.chat('p1', '').error).toBe('消息不能为空');
+  });
+
+  it('超长消息被截断，不报错', () => {
+    const room = rooms.create('p1', 'Alice');
+    const result = room.chat('p1', 'x'.repeat(100));
+    expect(result.ok).toBe(true);
+    expect(result.text).toHaveLength(40);
+  });
+
+  it('2 秒冷却内重复发送 → 静默忽略，跟拍一拍同一套节流处理', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(room.chat('p1', '第一条').ok).toBe(true);
+    const second = room.chat('p1', '第二条');
+    expect(second.ignored).toBe(true);
+    expect(second.error).toBeUndefined();
+  });
+
+  it('冷却按发送者单独计，不影响另一个人发消息', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    expect(room.chat('p1', 'hi').ok).toBe(true);
+    expect(room.chat('p2', 'hi').ok).toBe(true);
+  });
+
+  it('冷却过期后可以再次发送', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(room.chat('p1', '第一条').ok).toBe(true);
+    room.chatCooldowns.set('p1', Date.now() - 3000);
+    expect(room.chat('p1', '第二条').ok).toBe(true);
+  });
+});
+
 describe('RoomManager — 被扔鸡蛋计数（用户反馈，2026-08-14："底部能否加上谁被扔鸡蛋多少次，只需要显示最多次数的那个"）', () => {
   it('recordEggPoke 累加同一个目标的次数', () => {
     const room = rooms.create('p1', 'Alice');

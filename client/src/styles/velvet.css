@@ -611,6 +611,28 @@
 }
 @keyframes pokeBubbleOut { to { opacity:0; scale:.85; translate:0 -8px; } }
 
+/* 打字聊天气泡（2026-08-15）——刻意不用拍一拍的暖橘粉（那套配色读作
+   "调侃/闹着玩"，聊天是正经说话）。改用跟 .voice-dock__section--chat
+   一致的蓝色系，视觉上跟吸附组件里的"打字"入口是同一件事的两端。停留
+   时长也不一样——拍一拍 1.6s 总时长是给一个表情+几个字，这里是一整句
+   话，需要更久的阅读时间（RoomPage.jsx 里 4s 后清状态，这里的
+   animation-delay 要跟着改，不能只改一边）。文字可能比表情选择器上限
+   （40 字）长得多，不能像 .poke-bubble--plain 那样 nowrap 硬撑一行。 */
+.poke-bubble--chat {
+  /* width:max-content，不是 fit-content——这个气泡的定位容器是座位卡本
+     身（~50~70px 宽，比气泡窄得多）。fit-content 会把"可用空间"也算进
+     候选值，绝对定位元素的可用空间就是这个窄容器，结果气泡被压成跟座
+     位一样窄、配合 word-break:break-word 变成每个字单独一行（真实渲染
+     踩到的 bug，不是猜的）。max-content 不看容器宽度，只按内容自然宽度
+     算，再用 max-width 兜底超长文本才换行，这才是想要的效果。 */
+  padding:7px 14px; border-radius:14px; width:max-content; max-width:150px;
+  white-space:normal; word-break:break-word; text-align:center; line-height:1.35;
+  background:linear-gradient(135deg, rgba(26,95,173,.88), rgba(18,64,120,.8));
+  box-shadow:0 4px 14px rgba(26,95,173,.4), 0 0 0 1.5px rgba(185,214,242,.35) inset;
+  font-family:var(--font-body); font-size:12px; font-weight:700; color:#EAF4FF;
+  animation:pokeBubbleIn .3s cubic-bezier(.34,1.7,.64,1) both, pokeBubbleOut .3s ease-in 3.7s forwards;
+}
+
 /* 拍一拍表情选择器——复用 .action-bubble 同一套暗金"丝绒赌场"底板，横排一
    行表情按钮而不是单行文字。位置计算跟 .action-bubble/.poke-bubble 共用
    bubbleStyle()，贴在同一侧。选择器本身还是暗金（跟牌桌其余弹层一致，
@@ -804,6 +826,31 @@
 .voice-dock__divider { width:60%; height:1px; background:linear-gradient(90deg, transparent, rgba(212,175,55,.5), transparent); flex:0 0 auto; }
 .voice-dock__collapse { flex:0 0 auto; width:20px; height:14px; border-radius:7px; background:rgba(212,175,55,.12); display:flex; align-items:center; justify-content:center; cursor:pointer; margin-top:1px; }
 .voice-dock__collapse svg { width:9px; height:9px; color:var(--gold-300); }
+
+/* 打字输入条——独立于 .voice-dock 渲染，紧挨着胶囊同一条边、同一个垂直
+   位置浮出来，不是塞进胶囊内部撑变形（见 VoiceChatDock.jsx 注释）。跟
+   胶囊本身同一套低透明度金玻璃质感的深色版，风格统一但不喧宾夺主——
+   这是个临时呼出的工具条，不是牌桌上的常驻元素。 */
+.voice-dock-input {
+  position:absolute; top:50%; transform:translateY(-50%); z-index:21;
+  display:flex; align-items:center; gap:6px;
+  padding:6px 8px; border-radius:999px;
+  background:rgba(12,12,10,.88); border:1px solid rgba(212,175,55,.35);
+  box-shadow:0 6px 20px rgba(0,0,0,.5);
+}
+.voice-dock-input--right { right:46px; }
+.voice-dock-input--left { left:46px; }
+.voice-dock-input__field {
+  width:120px; background:transparent; border:none; outline:none;
+  font-family:var(--font-body); font-size:13px; color:var(--text-primary);
+}
+.voice-dock-input__field::placeholder { color:var(--text-muted); }
+.voice-dock-input__send {
+  width:24px; height:24px; border-radius:50%; flex:0 0 auto;
+  background:rgba(90,150,210,.24); color:#B9D6F2;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.voice-dock-input__send svg { width:14px; height:14px; }
 /* 跟顶部常规 toast 用同一套底色/圆角，但往下错开一整个 toast 的高度，
    避免语音报错和别的 toast（比如断线提示）同时出现时叠在同一行看不清。 */
 .voice-error-toast { top:calc(max(env(safe-area-inset-top,0px),20px) + 56px); }

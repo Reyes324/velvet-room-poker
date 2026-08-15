@@ -15,6 +15,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'vr-voice-dock-pos';
 const DRAG_THRESHOLD_PX = 6;
+// 跟服务端 RoomManager.js 的 CHAT_MAX_LEN 对齐——前端这道限制只是不让用
+// 户打了老长一段之后才被服务端截断得莫名其妙，真正的上限判定在服务端。
+const CHAT_MAX_LEN = 40;
 
 function loadSavedPos() {
   try {
@@ -36,12 +39,26 @@ export default function VoiceChatDock({
   voiceTalking,
   onStartTalking,
   onStopTalking,
-  onOpenChat,
+  onSendChat,
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatText, setChatText] = useState('');
   const [pos, setPos] = useState(() => loadSavedPos());
   const dockRef = useRef(null);
   const dragRef = useRef(null); // { startX, startY, moved, stageRect }
+  const chatInputRef = useRef(null);
+
+  useEffect(() => {
+    if (chatOpen) chatInputRef.current?.focus();
+  }, [chatOpen]);
+
+  const submitChat = useCallback(() => {
+    const trimmed = chatText.trim();
+    if (trimmed) onSendChat?.(trimmed);
+    setChatText('');
+    setChatOpen(false);
+  }, [chatText, onSendChat]);
 
   const topPx = pos != null
     ? `${pos.topPercent * 100}%`
@@ -94,6 +111,35 @@ export default function VoiceChatDock({
   }, [pos]);
 
   return (
+    <>
+    {chatOpen && (
+      // 独立于 .voice-dock 渲染（不是塞进它内部）——胶囊的宽高是为"两个
+      // 竖排分区"设计的固定尺寸，硬塞一个横向输入框进去要么被裁切要么把
+      // 胶囊撑变形。改成紧挨着胶囊的同一条边、同一个垂直位置，独立浮出
+      // 一个输入条，跟胶囊本身的形状语言脱钩，各自负责各自的形态。
+      <div
+        className={`voice-dock-input voice-dock-input--${edge}`}
+        style={{ top: topPx }}
+      >
+        <input
+          ref={chatInputRef}
+          className="voice-dock-input__field"
+          value={chatText}
+          maxLength={CHAT_MAX_LEN}
+          placeholder="说点什么…"
+          onChange={e => setChatText(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') submitChat();
+            if (e.key === 'Escape') { setChatText(''); setChatOpen(false); }
+          }}
+        />
+        <div className="voice-dock-input__send" onClick={submitChat} role="button" aria-label="发送">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 12h16M14 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      </div>
+    )}
     <div
       ref={dockRef}
       className={`voice-dock voice-dock--${edge}${expanded ? ' voice-dock--expanded' : ''}`}
@@ -131,7 +177,7 @@ export default function VoiceChatDock({
           <div
             className="voice-dock__section voice-dock__section--chat"
             onPointerDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); onOpenChat?.(); }}
+            onClick={e => { e.stopPropagation(); setChatOpen(true); }}
             role="button"
             aria-label="打字"
           >
@@ -154,5 +200,6 @@ export default function VoiceChatDock({
         </div>
       )}
     </div>
+    </>
   );
 }

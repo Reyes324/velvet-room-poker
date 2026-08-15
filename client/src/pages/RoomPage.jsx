@@ -34,6 +34,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   const [showFeedback, setShowFeedback] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
+  const [chatBubble, setChatBubble] = useState(null); // { fromId, text, key } | null
   const [revealedPlayers, setRevealedPlayers] = useState({});
   // { [playerId]: { playerName, holeCards } }
   const settlementTimerRef = useRef(null);
@@ -123,6 +124,17 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         setPokedSeat(p => (p?.key === key ? null : p));
       }, 1600);
     },
+    // 打字聊天气泡（2026-08-15）——复用拍一拍这套"单个 key 化气泡+定时自
+    // 清"的机制，不是另起一套状态管理。文字比表情需要更长的阅读时间，
+    // 拉到 4s（拍一拍那个 1.6s 是给一个 emoji + 几个字的短标签，聊天是一
+    // 整句话）。
+    'chat:message': ({ fromId, text }) => {
+      const key = Date.now();
+      setChatBubble({ fromId, text, key });
+      setTimeout(() => {
+        setChatBubble(b => (b?.key === key ? null : b));
+      }, 4000);
+    },
     'game:cards-revealed': ({ playerId, playerName, holeCards }) => {
       setRevealedPlayers(prev => ({ ...prev, [playerId]: { playerName, holeCards } }));
     },
@@ -192,6 +204,10 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
 
   function poke(targetId, emoji) {
     emit('player:poke', { fromId: playerId, targetId, emoji });
+  }
+
+  function sendChat(text) {
+    emit('chat:message', { playerId, text });
   }
 
   function handleAction(action, amount) {
@@ -333,6 +349,8 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         getVoiceVolume={voice.getVolume}
         onStartTalking={voice.startTalking}
         onStopTalking={voice.stopTalking}
+        onSendChat={sendChat}
+        chatBubble={chatBubble}
         disconnectedIds={disconnectedIds}
       />
       {roomState?.awaitingTimerDecision && isHost && (
