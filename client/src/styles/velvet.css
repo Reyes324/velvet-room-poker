@@ -920,11 +920,11 @@
    分裂成两套。 */
 .voice-dock {
   position:absolute; z-index:20;
-  /* 收起态 34px、展开态按钮区 36px 宽——真机上偏小，用户反馈"太小不好
-     按"，改回接近原来 .ptt-btn（58×72）那个量级的触摸目标，比系统建议
-     的 44px 最低触摸尺寸留了余量（2026-08-15）。紧凑是上一轮为了不挡
-     座位定的方向，这次纠正为"能按到"优先于"占地小"——用户明确要求。 */
-  width:46px; height:46px;
+  /* 收起态尺寸几轮调整：34→46→58px——第一次恢复到接近原 .ptt-btn（58×
+     72）的量级，用户反馈"还能再大一点"，直接对齐到 58px（原按钮的宽度
+     本身）。紧凑是更早一轮为了不挡座位定的方向，这次纠正为"好按"优先
+     于"占地小"（2026-08-15）。 */
+  width:58px; height:58px;
   background:radial-gradient(circle at 35% 30%, rgba(212,175,55,.28), rgba(212,175,55,.10) 70%);
   border:1px solid rgba(212,175,55,.4);
   display:flex; align-items:center; justify-content:center;
@@ -936,18 +936,18 @@
 .voice-dock:active { cursor:grabbing; }
 .voice-dock--right { right:0; border-radius:50% 0 0 50% / 50% 0 0 50%; border-right:none; transform:translateY(-50%); }
 .voice-dock--left { left:0; border-radius:0 50% 50% 0 / 0 50% 50% 0; border-left:none; transform:translateY(-50%); }
-.voice-dock__icon { width:20px; height:20px; }
+.voice-dock__icon { width:24px; height:24px; }
 
-.voice-dock--expanded { height:150px; }
-.voice-dock--expanded.voice-dock--right { width:50px; border-radius:18px 0 0 18px; }
-.voice-dock--expanded.voice-dock--left { width:50px; border-radius:0 18px 18px 0; }
+.voice-dock--expanded { height:180px; }
+.voice-dock--expanded.voice-dock--right { width:58px; border-radius:20px 0 0 20px; }
+.voice-dock--expanded.voice-dock--left { width:58px; border-radius:0 20px 20px 0; }
 
 .voice-dock__actions { display:flex; flex-direction:column; align-items:center; width:100%; height:100%; padding:5px 0; gap:3px; }
 .voice-dock__section {
   flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
-  font-family:var(--font-body); font-size:9px; font-weight:700; cursor:pointer;
+  font-family:var(--font-body); font-size:10px; font-weight:700; cursor:pointer;
 }
-.voice-dock__section svg { width:18px; height:18px; }
+.voice-dock__section svg { width:21px; height:21px; }
 .voice-dock__section--talk { color:var(--gold-300); }
 .voice-dock__section--chat { color:#B9D6F2; }
 .voice-dock__section--talking {
@@ -963,8 +963,8 @@
   50%     { text-shadow:0 0 14px rgba(39,174,96,.95); }
 }
 .voice-dock__divider { width:60%; height:1px; background:linear-gradient(90deg, transparent, rgba(212,175,55,.5), transparent); flex:0 0 auto; }
-.voice-dock__collapse { flex:0 0 auto; width:26px; height:18px; border-radius:9px; background:rgba(212,175,55,.12); display:flex; align-items:center; justify-content:center; cursor:pointer; margin-top:1px; }
-.voice-dock__collapse svg { width:11px; height:11px; color:var(--gold-300); }
+.voice-dock__collapse { flex:0 0 auto; width:30px; height:20px; border-radius:10px; background:rgba(212,175,55,.12); display:flex; align-items:center; justify-content:center; cursor:pointer; margin-top:1px; }
+.voice-dock__collapse svg { width:13px; height:13px; color:var(--gold-300); }
 
 /* 打字输入条——独立于 .voice-dock 渲染，紧挨着胶囊同一条边、同一个垂直
    位置浮出来，不是塞进胶囊内部撑变形（见 VoiceChatDock.jsx 注释）。跟
