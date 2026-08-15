@@ -175,8 +175,26 @@ export default function VoiceChatDock({
             if (e.key === 'Enter') submitChat();
             if (e.key === 'Escape') closeChat();
           }}
+          // 输入框跟"键盘在不在"绑定，不是只靠"点旁边空白处"这一种方式关
+          // 掉——用户反馈"输入框不用一直在，键盘唤起它才需要在"（2026-08-
+          // 15）：失焦（不管是被系统自带的收起键盘手势、切到别的 App、还
+          // 是别的什么原因）就等于不再需要这个框了，直接走跟点空白处一样
+          // 的关闭+动画流程。
+          onBlur={closeChat}
         />
-        <div className="voice-dock-input__send" onClick={submitChat} role="button" aria-label="发送">
+        {/* pointerDown 上 preventDefault——不这样做的话，点"发送"这个按
+            钮本身会先让输入框失焦（触发上面新加的 onBlur→closeChat），
+            跟 onClick 里的 submitChat 抢着关闭，两条路径谁先谁后不确
+            定，容易看到一闪而过的空白态或者退场动画卡一下。preventDefault
+            拦住"点击非输入元素导致输入框失焦"这个浏览器默认行为，让输
+            入框在点发送的整个过程里都不失焦，onBlur 就不会被误触发。 */}
+        <div
+          className="voice-dock-input__send"
+          onPointerDown={e => e.preventDefault()}
+          onClick={submitChat}
+          role="button"
+          aria-label="发送"
+        >
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M4 12h16M14 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

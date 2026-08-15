@@ -44,6 +44,22 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   // 真人需要同步）——用户反馈（2026-08-13）："人机对战也保留发表情这个
   // 交互和效果，我测试比较方便"，纯本地 state 就够，不需要 pve:xxx 事件。
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key, emoji } | null
+  // 语音吸附组件在人机对战里同样没有真实广播对象（AI 不说话，也没有第二
+  // 个真人）——用户反馈（2026-08-15）："方便我一个人测试样式"，跟上面
+  // pokedSeat 是同一个理由：不接 useVoiceMesh，纯本地 state 让组件能展
+  // 开/收起/拖拽/发消息，看得到真实效果就够，不需要真的建 WebRTC 连接。
+  const [voiceTalking, setVoiceTalking] = useState(false);
+  const [chatBubble, setChatBubble] = useState(null); // { fromId, text, key } | null
+
+  // fromId 由调用处传入，理由跟上面 poke() 那条注释一样：函数体本身不
+  // 直接闭包读 me（声明在这个函数下方），避免 react-hooks/purity 误报。
+  function sendChat(text, fromId) {
+    const key = Date.now();
+    setChatBubble({ fromId: fromId ?? null, text, key });
+    setTimeout(() => {
+      setChatBubble(b => (b?.key === key ? null : b));
+    }, 4000); // 跟 RoomPage.jsx 的真实实现时长保持一致
+  }
 
   // fromId 作为参数传入（调用处 onPoke={(targetId, emoji) => poke(targetId,
   // emoji, me?.id)} 绑定），而不是在函数体内直接闭包读 me——me 声明在这个
@@ -175,6 +191,12 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         onOpenFeedback={() => setShowFeedback(true)}
         onPoke={(targetId, emoji) => poke(targetId, emoji, me?.id)}
         pokedSeat={pokedSeat}
+        voiceEnabled
+        voiceTalking={voiceTalking}
+        onStartTalking={() => setVoiceTalking(true)}
+        onStopTalking={() => setVoiceTalking(false)}
+        onSendChat={text => sendChat(text, me?.id)}
+        chatBubble={chatBubble}
         isPve
       />
       {showLedger && (
