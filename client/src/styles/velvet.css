@@ -729,16 +729,6 @@
   color:var(--gold-400); opacity:.85;
   pointer-events:none;
 }
-/* 收尾引号——跟开引号（上面的 ::before）配对，同样的字体/字号/颜色/透
-   明度，只是镜像贴在右下角。用真实 DOM 节点而不是 ::after，是因为
-   ::after 已经被尾巴三角占用了，一个元素只有两个伪元素槽位，两个都
-   派了别的用场（用户反馈"引号现在只有一边"，2026-08-15）。 */
-.poke-bubble__chat-close-quote {
-  position:absolute; bottom:-8px; right:-2px;
-  font-family:var(--font-display); font-size:26px; line-height:1;
-  color:var(--gold-400); opacity:.85;
-  pointer-events:none;
-}
 /* 旋转正方形那版做出来是个完整菱形，不是干净的三角尖角——旋转矩形只
    画了两条边框，没有真正"塞进气泡底下被遮住一半"（那需要额外的层级/
    重叠技巧，这里没做），另外两条边框虽然透明但正方形本身的直角轮廓和

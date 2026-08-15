@@ -425,13 +425,10 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           style={{ ...bubbleStyle(bubbleSide, bubbleAnchorTop), zIndex: chatKey }}
         >
           <div className={`poke-bubble--chat poke-bubble--chat-tail-${bubbleSide === 'left' ? 'right' : bubbleSide === 'right' ? 'left' : 'bottom'}`}>
-            {/* 开引号用 ::before（用户反馈"用设计做，不是文字字符"）。收
-                尾引号原来没配对——::after 已经被尾巴三角占用了，两个伪
-                元素都用完了，配对的右引号只能用一个真实 DOM 节点补上
-                （用户反馈"引号现在只有一边"，2026-08-15）。文本节点这
-                里只放纯文字。 */}
+            {/* 引号用 ::before（用户反馈"用设计做，不是文字字符"）。曾经
+                配过一个收尾引号，用户反馈又不要了——只留开头这一个（
+                2026-08-15）。文本节点这里只放纯文字。 */}
             <span className="poke-bubble__chat-text">{chatText}</span>
-            <span className="poke-bubble__chat-close-quote" aria-hidden="true">”</span>
           </div>
         </div>
       )}
