@@ -3,7 +3,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; overflow: hidden; }
 
 body {
   /* ambient felt — fills desktop margins around the centered portrait stage */
@@ -14,7 +14,16 @@ body {
   line-height: 1.6;
   min-height: 100dvh;
   min-height: calc(var(--vh, 1dvh) * 100);
-  overflow-x: hidden;
+  /* overflow-y 原来是默认值（可滚动）——研究了 iOS Safari 键盘弹出把整
+     个页面顶起来的机制（GitHub/DEV 社区常见方案）之后发现：这不只是
+     .game-stage 自己的高度计算问题（viewportHeight.js 那处已经修过一
+     轮），iOS 键盘挡住聚焦的输入框时，会自动滚动"离输入框最近的可滚动
+     祖先"让它露出来——这里最近的可滚动祖先就是 body（只锁了横向），于
+     是整页跟着往上滚，看起来就是"被顶起来了"。这个牌桌本来就是固定单
+     屏布局，不依赖 body 本身能滚动，直接把纵向也锁死——没有可滚动的目
+     标，iOS 就没有东西可滚，这一层"自动滚动进视野"的行为直接不会触发
+     （2026-08-15，用户反馈+查证）。 */
+  overflow: hidden;
 }
 
 body::before {

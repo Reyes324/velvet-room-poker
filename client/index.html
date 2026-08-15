@@ -22,7 +22,13 @@
          域的方式（仍是「整屏减一条固定状态栏」），理论上不会重新触发
          black-translucent 那个 bug；效果和风险都还没有真机验证过。 -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- interactive-widget=resizes-visual：Android Chrome 键盘弹出的标准
+         行为控制——不设的话部分 Chrome 版本默认 resizes-content，会真的
+         收缩布局视口（触发 .game-stage 重新排版），resizes-visual 只让
+         "可见区域"变小，布局本身不跟着动，是键盘顶起页面这类问题官方推
+         荐的免 JS 修法（2026-08-15，查证后加）。iOS Safari 不认这个属
+         性，键盘问题在那边靠 body overflow:hidden 解决，见 global.css。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual" />
     <title>翡翠厅</title>
   </head>
   <body translate="no">
