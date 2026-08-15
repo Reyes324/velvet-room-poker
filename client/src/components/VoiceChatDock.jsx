@@ -43,21 +43,52 @@ export default function VoiceChatDock({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  // 关闭动画期间 chatOpen 已经是 false 了（触发退场 class），但节点还得
+  // 留在 DOM 里等动画播完——closing 就是这段"还没真正卸载"的窗口期。
+  const [closing, setClosing] = useState(false);
   const [chatText, setChatText] = useState('');
   const [pos, setPos] = useState(() => loadSavedPos());
   const dockRef = useRef(null);
   const dragRef = useRef(null); // { startX, startY, moved, stageRect }
   const chatInputRef = useRef(null);
+  const chatInputBoxRef = useRef(null); // 输入条外层容器，点空白处判断要用
+  const closeTimerRef = useRef(null);
 
   useEffect(() => {
     if (chatOpen) chatInputRef.current?.focus();
   }, [chatOpen]);
+
+  const closeChat = useCallback(() => {
+    setChatOpen(false);
+    setClosing(true);
+    clearTimeout(closeTimerRef.current);
+    // 220ms 要跟下面 voiceDockInputOut 那条 keyframe 的时长对齐——退场
+    // 动画播完才真正把输入框从 DOM 里拿掉，不然会是硬切没有淡出效果。
+    closeTimerRef.current = setTimeout(() => { setClosing(false); setChatText(''); }, 220);
+  }, []);
+
+  useEffect(() => () => clearTimeout(closeTimerRef.current), []);
+
+  // 点输入条以外的任何地方关闭它——跟按 Escape 是同一个"放弃这次输入"
+  // 语义，不自动发送（用户没主动点发送/敲回车，视为不想发了）。只在
+  // chatOpen 时挂监听，用 pointerdown 不用 click——避免跟输入框内部的
+  // 文字选中/拖拽手势冲突（用户反馈要求"点空白处也能关"，2026-08-15）。
+  useEffect(() => {
+    if (!chatOpen) return;
+    const onOutside = e => {
+      if (chatInputBoxRef.current && !chatInputBoxRef.current.contains(e.target)) closeChat();
+    };
+    document.addEventListener('pointerdown', onOutside);
+    return () => document.removeEventListener('pointerdown', onOutside);
+  }, [chatOpen, closeChat]);
 
   const submitChat = useCallback(() => {
     const trimmed = chatText.trim();
     if (trimmed) onSendChat?.(trimmed);
     setChatText('');
     setChatOpen(false);
+    setClosing(false); // 主动发送不用播退场动画——内容已经确认要走了，直接收
+    clearTimeout(closeTimerRef.current);
   }, [chatText, onSendChat]);
 
   const topPx = pos != null
@@ -112,13 +143,19 @@ export default function VoiceChatDock({
 
   return (
     <>
-    {chatOpen && (
+    {(chatOpen || closing) && (
       // 独立于 .voice-dock 渲染（不是塞进它内部）——胶囊的宽高是为"两个
       // 竖排分区"设计的固定尺寸，硬塞一个横向输入框进去要么被裁切要么把
       // 胶囊撑变形。改成紧挨着胶囊的同一条边、同一个垂直位置，独立浮出
       // 一个输入条，跟胶囊本身的形状语言脱钩，各自负责各自的形态。
+      //
+      // (chatOpen || closing)：点空白处/按 Escape 关闭时要有退场动画，
+      // 不能 chatOpen 一变 false 节点就直接从 DOM 消失（那样只是硬切，
+      // 没有动画播放的时间）——closing 这个窗口期专门留给 CSS 退场动画
+      // 播完，见 closeChat() 里的 setTimeout。
       <div
-        className={`voice-dock-input voice-dock-input--${edge}`}
+        ref={chatInputBoxRef}
+        className={`voice-dock-input voice-dock-input--${edge}${closing ? ' voice-dock-input--closing' : ''}`}
         style={{ top: topPx }}
       >
         <input
@@ -136,7 +173,7 @@ export default function VoiceChatDock({
           onChange={e => setChatText(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter') submitChat();
-            if (e.key === 'Escape') { setChatText(''); setChatOpen(false); }
+            if (e.key === 'Escape') closeChat();
           }}
         />
         <div className="voice-dock-input__send" onClick={submitChat} role="button" aria-label="发送">
@@ -183,7 +220,7 @@ export default function VoiceChatDock({
           <div
             className="voice-dock__section voice-dock__section--chat"
             onPointerDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); setChatOpen(true); }}
+            onClick={e => { e.stopPropagation(); clearTimeout(closeTimerRef.current); setClosing(false); setChatOpen(true); }}
             role="button"
             aria-label="打字"
           >

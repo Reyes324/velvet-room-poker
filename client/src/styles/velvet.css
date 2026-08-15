@@ -976,9 +976,28 @@
   padding:6px 8px; border-radius:999px;
   background:rgba(12,12,10,.88); border:1px solid rgba(212,175,55,.35);
   box-shadow:0 6px 20px rgba(0,0,0,.5);
+  /* 用独立的 scale 属性（不是 transform:scale()）做进出场——这个元素本
+     身已经靠 transform:translateY(-50%) 做垂直居中，如果动画也走
+     transform 这个属性，退场/入场那一刻会把居中的位移直接覆盖掉，导
+     致跳动（聊天气泡的入场动画踩过同一个坑，见 PlayerSeat.jsx 的注
+     释）。scale 是独立属性，跟 transform 各自叠加，互不覆盖。 */
+  transform-origin:50% 50%;
+  animation:voiceDockInputIn .18s cubic-bezier(.34,1.56,.64,1) both;
 }
-.voice-dock-input--right { right:46px; }
-.voice-dock-input--left { left:46px; }
+.voice-dock-input--right { right:46px; transform-origin:100% 50%; }
+.voice-dock-input--left { left:46px; transform-origin:0% 50%; }
+/* 点空白处/按 Escape 关闭——不是硬切消失，退场动画播完才真正从 DOM 移
+   除（VoiceChatDock.jsx 的 closing 状态 + setTimeout 配合这个时长，改
+   一边要记得改另一边）。用户反馈"记得要顺畅有动画"，2026-08-15。 */
+.voice-dock-input--closing { animation:voiceDockInputOut .2s ease-in both; }
+@keyframes voiceDockInputIn {
+  0%   { opacity:0; scale:.7; }
+  100% { opacity:1; scale:1; }
+}
+@keyframes voiceDockInputOut {
+  0%   { opacity:1; scale:1; }
+  100% { opacity:0; scale:.85; }
+}
 .voice-dock-input__field {
   width:120px; background:transparent; border:none; outline:none;
   font-family:var(--font-body); font-size:13px; color:var(--text-primary);
