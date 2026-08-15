@@ -1307,3 +1307,8 @@
   - 沙盒复现不了跨真实网络的 NAT/TURN 问题，改为让线上环境在"某人广播说在说话但对应连接 5 秒内收不到音频包"时自动上报一条诊断证据（房间号/playerId/UA/ICE 状态/candidate 类型），服务端记结构化日志，不做告警/汇总
   - 判定逻辑抽成纯函数 `shouldReportVoiceDiagnostic`（`client/src/utils/voice.js`），客户端目前没有单元测试基础设施，用一次性 Node 脚本验证 5 个分支后未保留为常驻测试；服务端 `voice:diagnostic` handler 新增 2 条 vitest
   - **验收**：服务端全量 387 条通过；客户端构建/lint 通过（38 problems/29 errors，较基线不增反减 1，属既有波动非本次引入）；`voiceTable`/`voiceCheck`/`voicePair` 三套 e2e 除一条已知 flaky（三人桌真实 ICE 建连，独立重跑必过，改动前的原始代码同样能复现，非本次引入）外全过
+
+- [x] **语音/打字吸附组件：贴边可拖拽，取代固定悬浮说话按钮（2026-08-15，方案见 design.md 同名章节）**
+  - 抽成独立组件 `VoiceChatDock.jsx`，收起态是贴边的圆、展开态同一轮廓拉伸成连续胶囊（说话=金/打字=蓝分区），拖拽只在收起态生效、松手自动贴左/右边，位置记忆存 `localStorage`（按舞台高度比例，不用绝对像素）
+  - 删除了旧的 `.ptt-btn*` CSS（确认 JSX 无引用后整体替换，不留兼容包袱）；说话功能原样复用 `useVoiceMesh` 的 `onStartTalking`/`onStopTalking`，行为不变；"打字"这次只做 UI，真实收发下一轮单独接
+  - **验收**：`npm run build`/`eslint` 通过（38/29，持平）；真实 Playwright 双人房间验证拖拽→贴边→刷新持久化→展开/收起→说话手势不报错全链路；真机截图确认 9 人满座下收起态（34×34）远小于旧按钮（58×72），且用户现在能自己拖走不挡座位

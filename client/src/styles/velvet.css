@@ -706,6 +706,11 @@
   color:var(--gold-200); cursor:pointer; transition:opacity .15s;
 }
 .top-feedback-link:active { opacity:.6; }
+/* MOCKUP-ONLY：布局对比原型，还没定案 */
+.top-chat-btn--mock {
+  width:32px; height:36px; display:flex; align-items:center; justify-content:center;
+  color:#D4AF37; cursor:pointer;
+}
 .top-mute-btn, .pause-btn {
   width:32px; height:36px; display:flex; align-items:center; justify-content:center;
   color:#D4AF37; cursor:pointer; transition:color .2s ease, opacity .15s;
@@ -742,45 +747,63 @@
    位置由另一套会随窗口比例缓动变化的坐标系算出来，两边没有绑在一起）。
    .game-stage 本身是 position:relative 且铺满真实视口宽高，用它当定位
    基准，而不是内部按固定设计画布缩放的 .table-canvas。 */
-/* 圆角矩形芯片，跟 .menu-btn/.avatar-card 用同一套形状语言（12~16px 圆
-   角），不再是牌桌上唯一一个孤零零的正圆——那是用户反馈"太突兀"的根源
-   （2026-08-11）。触摸目标仍然刻意做大（58×72），比系统建议的 44px 最小
-   触摸尺寸留足余量，"精致"体现在图标/圆角/配色上，不是靠缩小点击区域。
-   2026-08-11 当天晚些时候试过挪进底部操作栏（为了解决 9 人满座时压住
-   最后一个对手座位的问题），用户看完实际效果后要求换回这个悬浮版本，
-   9 人满座那个问题接受暂时存在，回头另外解决。 */
-.ptt-btn {
-  position:absolute; right:14px; top:50%; transform:translateY(-50%);
-  width:58px; height:72px; border-radius:16px;
-  background:linear-gradient(180deg, rgba(212,175,55,.22), rgba(212,175,55,.10));
-  border:1.5px solid rgba(212,175,55,.42);
-  color:var(--gold-200);
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
-  cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:none;
-  z-index:20; box-shadow:0 4px 16px rgba(0,0,0,.5);
-  transition:background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+/* 语音/打字吸附组件（2026-08-15，取代原来固定悬浮的 .ptt-btn）。
+   设计过程见 openspec/changes/online-texas-holdem/design.md「语音/打字
+   吸附组件」一节：用户反馈原来的说话按钮常年压住 9 人满座时的最后一个
+   座位（.ptt-btn 那条旧注释里"接受暂时存在，回头另外解决"的问题）；
+   加打字功能时若在旁边再摆一个同样大小的按钮只会更挤——最终定为可拖拽
+   贴边、收起/展开的统一入口，用户可以把它挪到不挡座位的地方。
+
+   形状语言：不用"矩形容器里塞矩形按钮"（初版做完用户反馈"太多框套
+   框"）。收起态是个圆，呼应筹码/座位头像本身的圆形语言；展开态是同一
+   个轮廓向下拉伸成一整条连续胶囊，内部用一道细金线分区，不是两个独立
+   卡片叠放。收起态的配色特意跟 .menu-btn/.top-mute-btn 同一套低透明度
+   金玻璃质感（用户反馈过纯实心金"太抢眼"），展开态延续同一套透明度，
+   只是内部两个分区各自换色相（说话=金，打字=蓝）区分功能，材质感不
+   分裂成两套。 */
+.voice-dock {
+  position:absolute; z-index:20;
+  width:34px; height:34px;
+  background:radial-gradient(circle at 35% 30%, rgba(212,175,55,.28), rgba(212,175,55,.10) 70%);
+  border:1px solid rgba(212,175,55,.4);
+  display:flex; align-items:center; justify-content:center;
+  color:var(--gold-300);
+  cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none;
+  box-shadow:0 4px 14px rgba(0,0,0,.45);
+  transition:height .32s var(--ease-bounce), border-radius .3s var(--ease-out), width .28s var(--ease-out);
 }
-.ptt-btn__icon { width:22px; height:22px; }
-.ptt-btn__label {
-  font-family:var(--font-body); font-size:10px; font-weight:700; letter-spacing:.2px;
-  white-space:nowrap;
+.voice-dock:active { cursor:grabbing; }
+.voice-dock--right { right:0; border-radius:50% 0 0 50% / 50% 0 0 50%; border-right:none; transform:translateY(-50%); }
+.voice-dock--left { left:0; border-radius:0 50% 50% 0 / 0 50% 50% 0; border-left:none; transform:translateY(-50%); }
+.voice-dock__icon { width:16px; height:16px; }
+
+.voice-dock--expanded { height:120px; }
+.voice-dock--expanded.voice-dock--right { width:36px; border-radius:17px 0 0 17px; }
+.voice-dock--expanded.voice-dock--left { width:36px; border-radius:0 17px 17px 0; }
+
+.voice-dock__actions { display:flex; flex-direction:column; align-items:center; width:100%; height:100%; padding:4px 0; gap:2px; }
+.voice-dock__section {
+  flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  font-family:var(--font-body); font-size:8px; font-weight:700; cursor:pointer;
 }
-.ptt-btn--talking {
-  background:linear-gradient(180deg, rgba(39,174,96,.9), rgba(39,174,96,.72));
-  border-color:#27AE60; color:#EAFBF0;
-  transform:translateY(-50%) scale(1.06);
-  box-shadow:0 0 0 6px rgba(39,174,96,.24), 0 0 24px rgba(39,174,96,.55);
-  /* 专用的 pttPulse，不能复用 .speak-glow 那个 speakPulse——那组 keyframe
-     的 transform 只写了 scale()，没带上这个按钮赖以垂直居中的
-     translateY(-50%)。CSS 动画的 transform 是整体替换、不是叠加，用在这
-     个按钮上会导致每次呼吸动画播放时都把居中位移吃掉，看起来像按下说话
-     就"往下掉一截"（真实 bug，不是错觉，用户反馈抓出来的，2026-08-11）。 */
-  animation:pttPulse .7s ease-in-out infinite;
+.voice-dock__section svg { width:14px; height:14px; }
+.voice-dock__section--talk { color:var(--gold-300); }
+.voice-dock__section--chat { color:#B9D6F2; }
+.voice-dock__section--talking {
+  color:#EAFBF0;
+  /* 说话中的强调不再靠整颗按钮变色/放大（那是 .ptt-btn--talking 的做
+     法，这里按钮变小了，放大动画在这个尺寸下会显得抖）——改成图标区域
+     一圈柔和的绿色呼吸光晕，跟 PlayerSeat 的 .speak-glow 是同一套"呼吸
+     光晕表示正在说话"的视觉语言，不需要另造一套。 */
+  animation:voiceDockTalkGlow .7s ease-in-out infinite;
 }
-@keyframes pttPulse {
-  0%,100% { transform:translateY(-50%) scale(1.06); }
-  50%     { transform:translateY(-50%) scale(1.12); }
+@keyframes voiceDockTalkGlow {
+  0%,100% { text-shadow:0 0 6px rgba(39,174,96,.6); }
+  50%     { text-shadow:0 0 14px rgba(39,174,96,.95); }
 }
+.voice-dock__divider { width:60%; height:1px; background:linear-gradient(90deg, transparent, rgba(212,175,55,.5), transparent); flex:0 0 auto; }
+.voice-dock__collapse { flex:0 0 auto; width:20px; height:14px; border-radius:7px; background:rgba(212,175,55,.12); display:flex; align-items:center; justify-content:center; cursor:pointer; margin-top:1px; }
+.voice-dock__collapse svg { width:9px; height:9px; color:var(--gold-300); }
 /* 跟顶部常规 toast 用同一套底色/圆角，但往下错开一整个 toast 的高度，
    避免语音报错和别的 toast（比如断线提示）同时出现时叠在同一行看不清。 */
 .voice-error-toast { top:calc(max(env(safe-area-inset-top,0px),20px) + 56px); }

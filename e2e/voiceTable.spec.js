@@ -23,7 +23,8 @@ const S = {
   roomCode: '.room-code',
   startBtn: '.lobby-btn',
   gameStage: '.game-stage',
-  pttBtn: '.ptt-btn',
+  voiceDock: '.voice-dock',
+  talkBtn: '.voice-dock__section--talk',
   seat: '.seat',
   seatName: '.seat-name',
 };
@@ -58,10 +59,22 @@ function seatOf(page, name) {
 }
 
 /** 语音默认对所有人自动开启（2026-08-10 UX 修正后不再有手动开关），进牌
- * 桌后 useVoiceMesh 会自己接入 mesh——这里只需要等"说话"按钮出现，代表
- * 自动 enable() 已经跑完，不用再手动点任何按钮。 */
+ * 桌后 useVoiceMesh 会自己接入 mesh——这里只需要等吸附组件（收起态）出
+ * 现，代表自动 enable() 已经跑完，不用再手动点任何按钮。 */
 async function openVoice(page) {
-  await expect(page.locator(S.pttBtn)).toBeVisible({ timeout: 5000 });
+  await expect(page.locator(S.voiceDock)).toBeVisible({ timeout: 5000 });
+}
+
+/** 语音/打字吸附组件默认是收起态，按住说话前要先点开展开成"说话/打字"
+ * 两个分区（2026-08-15 改版，见 VoiceChatDock.jsx）——展开后点住说话
+ * 分区触发 pointerdown 才是原来"按住说话"的等价动作。 */
+async function pressTalk(page) {
+  await page.locator(S.voiceDock).click();
+  await expect(page.locator(S.talkBtn)).toBeVisible({ timeout: 3000 });
+  await page.locator(S.talkBtn).dispatchEvent('pointerdown');
+}
+async function releaseTalk(page) {
+  await page.locator(S.talkBtn).dispatchEvent('pointerup');
 }
 
 /** 等某一页真的连上了期望数量的对端（真实 ICE 状态，不是只看信令 join
@@ -134,7 +147,7 @@ test.describe('语音对讲接入实际牌桌', () => {
 
     // Alice 按住说话——她自己屏幕上也该立刻亮起（本地状态，不用等广播），
     // 且 Bob/Carol 屏幕上 Alice 那个座位也该亮起（经服务端转发的广播）。
-    await a.locator(S.pttBtn).dispatchEvent('pointerdown');
+    await pressTalk(a);
     await expect(seatOf(a, 'Alice').locator('.speak-glow')).toBeVisible({ timeout: 3000 });
     await expect(seatOf(b, 'Alice').locator('.speak-glow')).toBeVisible({ timeout: 3000 });
     await expect(seatOf(b, 'Alice').locator('.speak-badge')).toBeVisible();
@@ -145,7 +158,7 @@ test.describe('语音对讲接入实际牌桌', () => {
     await expect(seatOf(c, 'Carol').locator('.speak-glow')).toHaveCount(0);
 
     // 松开后各方都该恢复
-    await a.locator(S.pttBtn).dispatchEvent('pointerup');
+    await releaseTalk(a);
     await expect(seatOf(a, 'Alice').locator('.speak-glow')).toHaveCount(0);
     await expect(seatOf(b, 'Alice').locator('.speak-glow')).toHaveCount(0, { timeout: 3000 });
     await expect(seatOf(c, 'Alice').locator('.speak-glow')).toHaveCount(0, { timeout: 3000 });
@@ -216,7 +229,7 @@ test.describe('语音对讲接入实际牌桌', () => {
     await waitForPeerCount(x, 1);
     await waitForPeerCount(y, 1);
 
-    await a.locator(S.pttBtn).dispatchEvent('pointerdown');
+    await pressTalk(a);
     await expect(seatOf(b, 'Alice').locator('.speak-glow')).toBeVisible({ timeout: 3000 });
     // 另一桌完全不该受影响——既不该多出一条 pc，也不该出现任何说话指示
     const xPcCount = await x.evaluate(() => window.__voiceMeshPcs?.size ?? -1);
