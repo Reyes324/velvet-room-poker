@@ -398,7 +398,16 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           "谁发给你"这个指向性，就是这个人自己说的话，直接显示文本，
           不需要发送者名字前缀（座位名字本身已经在头像上方显示）。 */}
       {chatText && (
-        <div key={chatKey} className="poke-bubble poke-bubble--chat" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
+        // 尾巴方向要跟着气泡实际贴在座位哪一侧走，不能写死指向正下方——
+        // 只有本人（没传 bubbleSide，走"正上方"锚点）尾巴才朝下；对手座
+        // 位的气泡是贴在座位左边或右边（bubbleSide 由 cardsSide 决定），
+        // 尾巴要指向座位那一侧，不然"尾巴指向说话人"这个语义就反了（用
+        // 户反馈发现的：一开始只测过本人视角，没看对手气泡）。
+        <div
+          key={chatKey}
+          className={`poke-bubble poke-bubble--chat poke-bubble--chat-tail-${bubbleSide === 'left' ? 'right' : bubbleSide === 'right' ? 'left' : 'bottom'}`}
+          style={bubbleStyle(bubbleSide, bubbleAnchorTop)}
+        >
           {/* 引号改用 CSS 画的装饰图形（.poke-bubble--chat 的 ::before），
               不再是文本里字面拼的“”字符——用户反馈"能否用设计做一下，而
               不是用文字"（2026-08-15）。文本节点这里只放纯文字。 */}

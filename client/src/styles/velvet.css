@@ -668,24 +668,73 @@
   /* 文字：几轮反馈下来（活泼→太夸张的玫红斜体→红色又嫌"颜色太多太复
      杂"）——收敛回牌桌本来就有的深色文字，不再单独挑一个新色。 */
   font-family:var(--font-body); font-size:13px; font-weight:800; color:var(--ink-black);
-  animation:pokeBubbleIn .3s cubic-bezier(.34,1.7,.64,1) both, pokeBubbleOut .3s ease-in 3.7s forwards;
+  /* 专属的"弹出"动画，不再借用 pokeBubbleIn/Out——那套是给拍一拍设计的
+     （小幅度旋转+缩放，读起来像"啪一下弹出来的调侃动作"）。聊天要读作
+     "话从这个人嘴里冒出来"，动画的生长原点定在尾巴那个点，从那一点点
+     "长"出整个气泡，而不是原地放大——这是说话泡最典型的运动方式（想
+     象漫画里对话框弹出的那一下）。transform-origin 默认是尾巴朝下时的
+     位置（50% 100%），尾巴朝左/右的两个修饰类各自覆盖成对应的边。 */
+  transform-origin:50% 100%;
+  animation:chatBubbleIn .32s cubic-bezier(.34,1.56,.64,1) both, chatBubbleOut .3s ease-in 3.7s forwards;
 }
-/* 装饰引号——用户要求"用设计做，不是文字字符"。第一版是个独立配色的红
-   色圆徽，跟"颜色太多太复杂"的反馈撞在一起了——改成不单独引入色相，用
-   牌桌本来就有的金色描边 + 象牙底（跟气泡本身同一套材质），只留一个
-   开引号字形做视觉信号，不靠额外的强饱和色块吸引注意力。 */
+.poke-bubble--chat-tail-right { transform-origin:100% 50%; }
+.poke-bubble--chat-tail-left { transform-origin:0% 50%; }
+@keyframes chatBubbleIn {
+  0%   { opacity:0; scale:.3; translate:0 4px; }
+  60%  { opacity:1; scale:1.06; }
+  100% { opacity:1; scale:1; translate:0 0; }
+}
+@keyframes chatBubbleOut { to { opacity:0; scale:.5; } }
+/* 引号——用户要求"用设计做，不是文字字符"，且要"更像说话的感觉"。改了
+   两处：
+   1. 不再做成独立的圆形徽章（用户反馈"这个引号的球有点奇怪"——一个贴
+      在角落的小圆点跟气泡本身是两个不相关的形状，读起来像贴纸不像气
+      泡的一部分）。改成嵌在气泡内部左上角的大号装饰引号字形，跟着气
+      泡文字一起呼吸，是版式的一部分，不是外挂的贴纸。
+   2. 新增气泡尾巴（::after，一个小三角）——这才是"说话"最直接的图形语
+      言（漫画对话框的标准画法：尾巴指向说话人），比引号本身更能一眼读
+      出"这是谁说的话"。材质跟气泡本体同一套磨砂描边，不是另外的颜色/
+      风格。
+
+      尾巴方向不能写死——只有本人（气泡贴在座位正上方，见 bubbleStyle
+      "没传 bubbleSide 时默认above"那条分支）尾巴该朝下；对手座位的气
+      泡贴在座位左边或右边（PlayerSeat.jsx 里 bubbleSide 由 cardsSide
+      决定），尾巴要跟着指向座位那一侧，不然"尾巴指向说话人"这句话就
+      说反了（用户反馈：一开始只验证过本人视角，没看对手气泡）。三个
+      方向共用同一份三角形状，只是位置/旋转角度不同，靠 PlayerSeat.jsx
+      按 bubbleSide 加的 `--chat-tail-bottom/left/right` 三选一实现。 */
 .poke-bubble--chat::before {
   content:'“';
-  position:absolute; top:-9px; left:-7px;
-  width:20px; height:20px; border-radius:50%;
-  background:#FBF6EC; border:1.5px solid var(--gold-400);
-  color:var(--gold-500);
-  display:flex; align-items:center; justify-content:center;
-  font-family:var(--font-display); font-size:15px; line-height:1;
-  box-shadow:0 2px 6px rgba(0,0,0,.4);
-  z-index:1;
+  position:absolute; top:-4px; left:6px;
+  font-family:var(--font-display); font-size:26px; line-height:1;
+  color:var(--gold-500); opacity:.55;
+  pointer-events:none;
 }
-.poke-bubble__chat-text { position:relative; z-index:0; }
+.poke-bubble--chat::after {
+  content:''; position:absolute;
+  width:14px; height:14px; border-radius:3px;
+  background:rgba(251,246,236,.85); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:2px 2px 4px rgba(0,0,0,.15);
+}
+/* 尾巴朝下（本人，气泡在座位正上方）——三角形右下角对着座位。 */
+.poke-bubble--chat-tail-bottom::after {
+  left:50%; bottom:-7px;
+  border-right:1px solid rgba(255,255,255,.6); border-bottom:1px solid rgba(255,255,255,.6);
+  transform:translateX(-50%) rotate(45deg);
+}
+/* 尾巴朝右（气泡贴在座位左边，座位在气泡右侧）。 */
+.poke-bubble--chat-tail-right::after {
+  right:-7px; top:50%;
+  border-top:1px solid rgba(255,255,255,.6); border-right:1px solid rgba(255,255,255,.6);
+  transform:translateY(-50%) rotate(45deg);
+}
+/* 尾巴朝左（气泡贴在座位右边，座位在气泡左侧）。 */
+.poke-bubble--chat-tail-left::after {
+  left:-7px; top:50%;
+  border-bottom:1px solid rgba(255,255,255,.6); border-left:1px solid rgba(255,255,255,.6);
+  transform:translateY(-50%) rotate(45deg);
+}
+.poke-bubble__chat-text { position:relative; z-index:1; padding-left:14px; }
 
 /* 拍一拍表情选择器——复用 .action-bubble 同一套暗金"丝绒赌场"底板，横排一
    行表情按钮而不是单行文字。位置计算跟 .action-bubble/.poke-bubble 共用
