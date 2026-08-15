@@ -633,12 +633,16 @@
      一个偏移量去"叠在上面"——曾经试过加 40px 让两者上下堆叠，用户反馈
      "还是覆盖简单"，改回来了（2026-08-15）。
 
-     padding/font-size/line-height 特意跟 .action-bubble 完全一致（5px
-     12px / 13px / 正常行高）——用户明确要求"高度要跟下注气泡一样、完全
-     盖住"，高度只由这几个值决定，跟文字内容长短无关，数值对齐了两者
-     的盒子高度就永远一致，不用另外量哪个像素凑。 */
+     padding/font-size 跟 .action-bubble 完全一致（5px 12px / 13px），但
+     实测发现光对齐这两个值高度还是差了几像素——两边字体不一样
+     （--font-body 的 Crimson Pro vs --font-amount 的 Inter），同样
+     font-size 下不同字体的行高度量本来就不同，"line-height:normal" 会
+     各读各的字体内建值。改成不依赖行高凑高度：真机量出 .action-bubble
+     实际渲染高度 ≈31px，直接给 min-height:31px + flex 居中，高度由这个
+     显式值决定，跟里面用什么字体、文字多长完全脱钩，两边永远一样高。 */
   padding:5px 12px; border-radius:14px; width:max-content; max-width:150px;
-  white-space:normal; word-break:break-word; text-align:center; line-height:normal;
+  min-height:33px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;
+  white-space:normal; word-break:break-word; text-align:center;
   /* 白底磨砂——用户反馈蓝色系"新颜色太多了"，改成中性的象牙白玻璃（跟
      --ivory 这张牌本身的色调是同一个家族，不是另起一个新色相），backdrop-
      filter 磨砂让它在深色桌布上依然读作"浮在上面的一层"，不需要靠饱和
@@ -649,11 +653,12 @@
   background:rgba(251,246,236,.74);
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   box-shadow:0 4px 14px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.55) inset;
-  /* 文字：用户反馈"能否活泼一点"——纯黑字配磨砂白底太像正式的系统提示。
-     换成拍一拍那套暖色系里偏玫红的一支（跟 .poke-bubble--plain 的橘粉
-     渐变同一色系家族，只是这里字浅底也不会糊），斜体 + 800 字重读起来
-     更像随手写的一句话，不是播报文案。 */
-  font-family:var(--font-body); font-style:italic; font-size:13px; font-weight:800; color:#C23B6B;
+  /* 文字：用户反馈"能否活泼一点"，第一版玫红斜体又被反馈"太夸张"——退到
+     更克制的一档，不用斜体（正体更好认，斜体在小字号 CJK 上本来就容易
+     糊），颜色换成牌面本身就有的红（--ink-red，红桃/方块花色同一支），
+     不是新色相，比黑字活但不刺眼；靠字重（800）撑"活泼"，不靠颜色和
+     字形一起加码。 */
+  font-family:var(--font-body); font-size:13px; font-weight:800; color:var(--ink-red);
   animation:pokeBubbleIn .3s cubic-bezier(.34,1.7,.64,1) both, pokeBubbleOut .3s ease-in 3.7s forwards;
 }
 
