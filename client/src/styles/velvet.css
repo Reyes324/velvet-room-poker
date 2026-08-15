@@ -624,12 +624,26 @@
      候选值，绝对定位元素的可用空间就是这个窄容器，结果气泡被压成跟座
      位一样窄、配合 word-break:break-word 变成每个字单独一行（真实渲染
      踩到的 bug，不是猜的）。max-content 不看容器宽度，只按内容自然宽度
-     算，再用 max-width 兜底超长文本才换行，这才是想要的效果。 */
+     算，再用 max-width 兜底超长文本才换行，这才是想要的效果。
+
+     bottom 单独加大：只有本人自己座位（没传 bubbleSide，走 .poke-bubble
+     基类默认的"正上方居中"锚点）会撞见这个问题——对手座位的气泡都是
+     PlayerSeat 拿到显式 bubbleSide 后往左右两侧摆，不共用这个锚点。跟
+     .action-bubble（下注/弃牌播报）用的是同一个"正上方"锚点，聊天气泡
+     停留 4s 比动作气泡常见的存活时间长得多，真机截图发现"小盲 ¥10"这
+     类下注气泡被聊天气泡糊住大半（用户反馈，2026-08-15）。加大到清过
+     一整个动作气泡的高度，改成聊天气泡叠在动作气泡上方，不重叠。 */
+  bottom:calc(100% + 40px);
   padding:7px 14px; border-radius:14px; width:max-content; max-width:150px;
   white-space:normal; word-break:break-word; text-align:center; line-height:1.35;
-  background:linear-gradient(135deg, rgba(26,95,173,.88), rgba(18,64,120,.8));
-  box-shadow:0 4px 14px rgba(26,95,173,.4), 0 0 0 1.5px rgba(185,214,242,.35) inset;
-  font-family:var(--font-body); font-size:12px; font-weight:700; color:#EAF4FF;
+  /* 白底磨砂——用户反馈蓝色系"新颜色太多了"，改成中性的象牙白玻璃（跟
+     --ivory 这张牌本身的色调是同一个家族，不是另起一个新色相），backdrop-
+     filter 磨砂让它在深色桌布上依然读作"浮在上面的一层"，不需要靠饱和
+     色块才能跳出来。文字换深色（象牙底配浅色字看不清）。 */
+  background:rgba(251,246,236,.94);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  box-shadow:0 4px 14px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.6) inset;
+  font-family:var(--font-body); font-size:12px; font-weight:700; color:var(--ink-black);
   animation:pokeBubbleIn .3s cubic-bezier(.34,1.7,.64,1) both, pokeBubbleOut .3s ease-in 3.7s forwards;
 }
 
