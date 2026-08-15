@@ -705,7 +705,7 @@
       按 bubbleSide 加的 `--chat-tail-bottom/left/right` 三选一实现。 */
 .poke-bubble--chat::before {
   content:'“';
-  position:absolute; top:-4px; left:6px;
+  position:absolute; top:-8px; left:-2px;
   font-family:var(--font-display); font-size:26px; line-height:1;
   color:var(--gold-500); opacity:.55;
   pointer-events:none;
@@ -715,27 +715,36 @@
    重叠技巧，这里没做），另外两条边框虽然透明但正方形本身的直角轮廓和
    投影还在，看起来就是个菱形贴片（用户反馈发现的）。改用纯 CSS 边框三
    角形手法（border-color 部分透明拼出三角形）——这个技巧天生只会渲染
-   出三角形，没有多余的方形轮廓可露馅，是气泡尾巴最标准的实现方式。 */
+   出三角形，没有多余的方形轮廓可露馅，是气泡尾巴最标准的实现方式。
+   三个方向的 border 颜色统一用 rgba(251,246,236,.85)——跟气泡本体
+   background 完全同一个值（用户反馈之前尾巴写成了 .96，跟气泡本体的
+   .85 不是同一个数，颜色对不上），改完之后气泡和尾巴看起来是同一块
+   材质连出来的，不是两个分开上色的部件。 */
 .poke-bubble--chat::after { content:''; position:absolute; width:0; height:0; filter:drop-shadow(1px 1px 2px rgba(0,0,0,.2)); }
 /* 尾巴朝下（本人，气泡在座位正上方）。 */
 .poke-bubble--chat-tail-bottom::after {
   left:50%; bottom:-8px; transform:translateX(-50%);
   border-left:7px solid transparent; border-right:7px solid transparent;
-  border-top:9px solid rgba(251,246,236,.96);
+  border-top:9px solid rgba(251,246,236,.85);
 }
 /* 尾巴朝右（气泡贴在座位左边，座位在气泡右侧）。 */
 .poke-bubble--chat-tail-right::after {
   right:-8px; top:50%; transform:translateY(-50%);
   border-top:7px solid transparent; border-bottom:7px solid transparent;
-  border-left:9px solid rgba(251,246,236,.96);
+  border-left:9px solid rgba(251,246,236,.85);
 }
 /* 尾巴朝左（气泡贴在座位右边，座位在气泡左侧）。 */
 .poke-bubble--chat-tail-left::after {
   left:-8px; top:50%; transform:translateY(-50%);
   border-top:7px solid transparent; border-bottom:7px solid transparent;
-  border-right:9px solid rgba(251,246,236,.96);
+  border-right:9px solid rgba(251,246,236,.85);
 }
-.poke-bubble__chat-text { position:relative; z-index:1; padding-left:14px; }
+/* 不给文字加 padding-left 让位给引号——气泡是 flex 居中，文字节点自己
+   加左内边距会让它的盒子变宽、居中基准跟着偏，视觉上文字整体往右偏了
+   （用户反馈发现的：肉眼能看出没居中）。引号本身是 position:absolute
+   跳出文档流的，不占版式空间，直接往左上角挪出去就够，不需要占用文字
+   的排版空间来"让位"。 */
+.poke-bubble__chat-text { position:relative; z-index:1; }
 
 /* 拍一拍表情选择器——复用 .action-bubble 同一套暗金"丝绒赌场"底板，横排一
    行表情按钮而不是单行文字。位置计算跟 .action-bubble/.poke-bubble 共用
