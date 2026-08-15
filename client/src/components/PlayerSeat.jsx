@@ -399,10 +399,10 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           不需要发送者名字前缀（座位名字本身已经在头像上方显示）。 */}
       {chatText && (
         <div key={chatKey} className="poke-bubble poke-bubble--chat" style={bubbleStyle(bubbleSide, bubbleAnchorTop)}>
-          {/* 引号——用户反馈，2026-08-15：光看一句悬浮的文字容易看不出这
-              是"某人说的话"还是别的什么状态提示，加上引号是最省事的信号，
-              不用另外画一个"说话气泡尖角"之类的图形元素。 */}
-          “{chatText}”
+          {/* 引号改用 CSS 画的装饰图形（.poke-bubble--chat 的 ::before），
+              不再是文本里字面拼的“”字符——用户反馈"能否用设计做一下，而
+              不是用文字"（2026-08-15）。文本节点这里只放纯文字。 */}
+          <span className="poke-bubble__chat-text">{chatText}</span>
         </div>
       )}
 

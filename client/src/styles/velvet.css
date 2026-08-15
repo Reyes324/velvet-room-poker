@@ -640,27 +640,51 @@
      各读各的字体内建值。改成不依赖行高凑高度：真机量出 .action-bubble
      实际渲染高度 ≈31px，直接给 min-height:31px + flex 居中，高度由这个
      显式值决定，跟里面用什么字体、文字多长完全脱钩，两边永远一样高。 */
-  padding:5px 12px; border-radius:14px; width:max-content; max-width:150px;
+  padding:5px 14px; border-radius:14px; width:max-content; min-width:76px; max-width:150px;
   min-height:33px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;
   white-space:normal; word-break:break-word; text-align:center;
+  /* 不额外声明 position——.poke-bubble 基类已经是 position:absolute，这
+     里再写一遍 position:relative 会整个盖掉那条声明（同一属性后来居上），
+     气泡直接从"贴着座位悬浮"掉回文档正常流（真机截图踩到的坑：气泡跑
+     到了完全不对的位置，跟下注气泡没有任何关系）。装饰引号徽章（下面
+     ::before）不需要父元素声明 position:relative 也能定位——position:
+     absolute 的元素本来就会给自己的子元素建立定位上下文，不用再加一遍。 */
   /* 白底磨砂——用户反馈蓝色系"新颜色太多了"，改成中性的象牙白玻璃（跟
-     --ivory 这张牌本身的色调是同一个家族，不是另起一个新色相），backdrop-
-     filter 磨砂让它在深色桌布上依然读作"浮在上面的一层"，不需要靠饱和
-     色块才能跳出来。透明度压到 .74（第一版 .94 太接近纯白实色，磨砂效
-     果基本看不出来，用户反馈"要有磨砂质感"）——现在底下桌布/牌背的颜
-     色能真的透一点出来，配合 blur 才读得出"一层磨砂玻璃"而不是"一张白
-     纸"。 */
-  background:rgba(251,246,236,.74);
-  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-  box-shadow:0 4px 14px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.55) inset;
-  /* 文字：用户反馈"能否活泼一点"，第一版玫红斜体又被反馈"太夸张"——退到
-     更克制的一档，不用斜体（正体更好认，斜体在小字号 CJK 上本来就容易
-     糊），颜色换成牌面本身就有的红（--ink-red，红桃/方块花色同一支），
-     不是新色相，比黑字活但不刺眼；靠字重（800）撑"活泼"，不靠颜色和
-     字形一起加码。 */
-  font-family:var(--font-body); font-size:13px; font-weight:800; color:var(--ink-red);
+     --ivory 这张牌本身的色调是同一个家族，不是另起一个新色相）。
+
+     底色改成完全不透明：真机截图发现即使透明度提到 .90，底下"小盲 ¥10"
+     的红字依然清清楚楚透出来——一路查过去，backdrop-filter 在这个沙盒
+     的无头 Chromium 里 computed value 是 "none"（没有 GPU 合成），但拿
+     掉 backdrop-filter 之后问题照样在，说明根本不是"模糊不够"，是半透
+     明底色的 alpha 混合在这层叠加关系下就是没有按预期遮住底下的文字
+     （具体渲染管线原因没有再深挖，但现象是稳定复现的，不是猜的）。用户
+     明确要求"完全盖住"是硬指标，不能继续赌透明度混合这条不可靠的路，
+     改成 100% 不透明的实色。"磨砂"的质感靠一层对角高光渐变模拟玻璃反光
+     （不是真的透光），实色打底反而更稳——不管这个气泡宽度跟下注气泡差
+     多少、不管浏览器有没有 GPU 合成，都不会露出底下的字。 */
+  background:linear-gradient(135deg, rgba(255,255,255,.55), transparent 45%), #FBF6EC;
+  box-shadow:0 4px 14px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.7) inset;
+  /* 文字：几轮反馈下来（活泼→太夸张的玫红斜体→红色又嫌"颜色太多太复
+     杂"）——收敛回牌桌本来就有的深色文字，不再单独挑一个新色。 */
+  font-family:var(--font-body); font-size:13px; font-weight:800; color:var(--ink-black);
   animation:pokeBubbleIn .3s cubic-bezier(.34,1.7,.64,1) both, pokeBubbleOut .3s ease-in 3.7s forwards;
 }
+/* 装饰引号——用户要求"用设计做，不是文字字符"。第一版是个独立配色的红
+   色圆徽，跟"颜色太多太复杂"的反馈撞在一起了——改成不单独引入色相，用
+   牌桌本来就有的金色描边 + 象牙底（跟气泡本身同一套材质），只留一个
+   开引号字形做视觉信号，不靠额外的强饱和色块吸引注意力。 */
+.poke-bubble--chat::before {
+  content:'“';
+  position:absolute; top:-9px; left:-7px;
+  width:20px; height:20px; border-radius:50%;
+  background:#FBF6EC; border:1.5px solid var(--gold-400);
+  color:var(--gold-500);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-size:15px; line-height:1;
+  box-shadow:0 2px 6px rgba(0,0,0,.4);
+  z-index:1;
+}
+.poke-bubble__chat-text { position:relative; z-index:0; }
 
 /* 拍一拍表情选择器——复用 .action-bubble 同一套暗金"丝绒赌场"底板，横排一
    行表情按钮而不是单行文字。位置计算跟 .action-bubble/.poke-bubble 共用
