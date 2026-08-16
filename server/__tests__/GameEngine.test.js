@@ -279,4 +279,25 @@ describe('GameEngine — 摊牌 bestCards / handNameShort（用于牌桌高亮�
       }
     }
   });
+
+  it('轮子顺（A-2-3-4-5）：bestCards 里的 A 要标成 "Ah" 不是 pokersolver 内部用的 "1h"（真机反馈 2026-08-16，此前这张牌高亮不出来）', () => {
+    const game = new GameEngine(makePlayers(2), 0, 20);
+    const [p1, p2] = game.players;
+    p1.holeCards = ['2h', '3h'];
+    p2.holeCards = ['9c', 'Kd']; // 明显打不过顺子的高牌，不参与胜负判断
+    game.communityCards = ['5d', '3c', 'Ah', 'Jc', '4c'];
+    p1.totalBet = p2.totalBet = 20;
+
+    const result = game._endHand(game.players);
+    const winner = result.winners.find(w => w.id === p1.id);
+    expect(winner).toBeDefined();
+    expect(winner.handNameShort).toBe('顺子');
+    expect(winner.bestCards).toHaveLength(5);
+    const rawSet = new Set(winner.bestCards.map(c => c.raw));
+    expect(rawSet.has('Ah')).toBe(true);
+    expect(rawSet.has('1h')).toBe(false);
+    for (const raw of ['5d', '4c', '2h']) {
+      expect(rawSet.has(raw)).toBe(true);
+    }
+  });
 });

@@ -1,5 +1,18 @@
 const { Hand } = require('pokersolver');
 
+// pokersolver represents the ace as rank '1' (not 'A') when it's the low
+// end of a wheel straight (A-2-3-4-5) — its internal ordering trick for
+// making that straight sort correctly. `solved.cards` for a wheel then
+// contains e.g. '1h' instead of 'Ah'. Every other consumer of a card's raw
+// notation (the deck, communityCards, holeCards) always uses 'A', so left
+// unnormalized this mismatch makes the ace silently fail every raw-string
+// comparison downstream — confirmed as a real bug: the winning-hand
+// highlight on a wheel straight lit up 4 of its 5 cards, always skipping
+// the ace (real playtest screenshot, 2026-08-16).
+function pokersolverCardRaw(c) {
+  return (c.value === '1' ? 'A' : c.value) + c.suit;
+}
+
 const SUITS = ['s', 'h', 'd', 'c']; // spades hearts diamonds clubs
 const RANKS = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'];
 
@@ -530,7 +543,7 @@ class GameEngine {
         const solved = Hand.solve([...w.holeCards, ...this.communityCards]);
         w.handName = translateHandDescr(solved.descr);
         w.handNameShort = translateHandDescrShort(solved.descr);
-        w.bestCards = solved.cards.map(c => c.value + c.suit);
+        w.bestCards = solved.cards.map(pokersolverCardRaw);
       }
       return contenders;
     }
@@ -544,7 +557,7 @@ class GameEngine {
       .map(h => {
         h.player.handName = translateHandDescr(h.hand.descr);
         h.player.handNameShort = translateHandDescrShort(h.hand.descr);
-        h.player.bestCards = h.hand.cards.map(c => c.value + c.suit);
+        h.player.bestCards = h.hand.cards.map(pokersolverCardRaw);
         return h.player;
       });
   }

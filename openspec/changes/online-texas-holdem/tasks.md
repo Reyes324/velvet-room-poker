@@ -1412,3 +1412,7 @@
 - [x] **昵称输入框记住上次填过的值（2026-08-16，方案见 design.md 同名章节）**
   - `HomePage.jsx`：`name` state 初始化从 `localStorage.getItem('vr_playerName')` 读取，输入变化时同步写回；输入框新增 `name="nickname"` + `autoComplete="name"`
   - **验收**：客户端构建通过、服务端全量 395/395 通过。**真机验证还没做**——需要用户实测确认微信里填过一次昵称后，下次打开自动带出来
+
+- [x] **Bug 修复：A-2-3-4-5 轮子顺，赢家高亮漏掉 A（2026-08-16，方案见 design.md 同名章节）**
+  - `GameEngine.js`：新增 `pokersolverCardRaw`，把 pokersolver 轮子顺返回的 `'1h'` 统一转回 `'Ah'`，两处 `bestCards` 构造都改用
+  - **验收**：新增单测覆盖，服务端全量 396/396 通过。**真机验证还没做**——需要用户实测确认 A2345 顺子五张牌都亮
