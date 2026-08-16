@@ -8,7 +8,7 @@ function genId() {
 }
 
 export default function HomePage({ onJoined, onPve, initialCode }) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState(() => localStorage.getItem('vr_playerName') ?? '');
   const [code, setCode] = useState(initialCode ?? '');
   const [mode, setMode] = useState(initialCode ? 'join' : null);
   const [error, setError] = useState('');
@@ -194,10 +194,16 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
             // 对战，不用写昵称，选择人数就可以了"。
             <input
               className="home-input"
+              name="nickname"
+              autoComplete="name"
               placeholder="你的昵称"
               value={name}
               maxLength={16}
-              onChange={e => { setName(e.target.value); setError(''); }}
+              onChange={e => {
+                setName(e.target.value);
+                setError('');
+                localStorage.setItem('vr_playerName', e.target.value);
+              }}
               onKeyDown={e => e.key === 'Enter' && mode === 'join' && handleJoin()}
               onFocus={scrollFieldIntoView}
             />
