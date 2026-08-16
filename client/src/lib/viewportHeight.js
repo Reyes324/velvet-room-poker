@@ -36,13 +36,17 @@ export function initViewportHeightFix() {
   applyRealHeight();
   window.addEventListener('orientationchange', applyRealHeight);
 
-  if (window.navigator.standalone) {
+  // 曾经这个"悄悄滚一下逼 WebKit 重算高度"的技巧只在 navigator.standalone
+  // （加到主屏幕独立打开）下才跑——但这是通用的 WebKit 引擎 bug（见上面注
+  // 释），不是独立模式专属的，微信内置浏览器等普通嵌入式场景一样会算错
+  // 首屏高度，只是之前没被注意到（真机反馈：被同一时期出现的另一个问题——
+  // 微信悬浮前进/后退条——正好挡住了同一块底部区域，那个问题修掉后这道
+  // 缝才露出来）。去掉 standalone 限制，所有场景加载时都跑一次。
+  requestAnimationFrame(() => {
+    window.scrollTo(0, 1);
     requestAnimationFrame(() => {
-      window.scrollTo(0, 1);
-      requestAnimationFrame(() => {
-        window.scrollTo(0, 0);
-        applyRealHeight();
-      });
+      window.scrollTo(0, 0);
+      applyRealHeight();
     });
-  }
+  });
 }
