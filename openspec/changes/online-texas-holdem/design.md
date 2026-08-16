@@ -2651,7 +2651,16 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 
 **顺带排查过程记录**（走了一段弯路，但过程本身有价值）：一度怀疑是 TLS 握手慢（用 `curl -w` 拆解发现 TLS 阶段单独花了 5.18 秒），但用 `openssl s_client` 连续测 3 次同一个站点发现第一次 2.89 秒、后两次 0.03 秒——确认是本地测试环境的连接缓存假象，不是服务端真实的、可复现的 TLS 问题，撤回了这个怀疑。用户反馈"无痕浏览器打开更慢"这条线索最终把问题定位说清楚了：无痕模式没有任何 DNS/TLS 会话/静态资源缓存，暴露的是没有缓存兜底时的真实服务端响应情况（可能是休眠冷启动，也可能是免费档本身 512MB/0.1 CPU 配置有限，两者都会被无痕模式放大感知）。
 
-**决策**：删除 `.github/workflows/keep-alive.yml`，改用 cron-job.org（专门的定时任务服务，可靠性明显更好）——用户自己注册账号配置：URL 指向 `/health`、执行频率 "Every 10 minutes"、`Enable job` 开启。这部分是用户自己在浏览器里完成的，Claude 没法代劳外部服务账号操作。，查证后确认是个长期存在的问题：`tokens.css` 定义了 6 个自定义字体变量（`--font-display`/`--font-body`/`--font-mono`/`--font-numerals`/`--font-card`/`--font-amount`），但 `index.html` 从项目最初的 commit 起就没有引入任何字体文件（没有 Google Fonts `<link>`，没有 `@font-face`），全都在用浏览器兜底字体渲染，不是这次改动引入的回归。用户目前只要求接入公共牌数字用的 `--font-card`（Oswald），其余 5 个字体暂时维持现状——如果后续也要接入，是同一个根因，同样在 `index.html` 加 `<link>` 即可。
+**决策**：删除 `.github/workflows/keep-alive.yml`，改用 cron-job.org（专门的定时任务服务，可靠性明显更好）——用户自己注册账号配置：URL 指向 `/health`、执行频率 "Every 10 minutes"、`Enable job` 开启。这部分是用户自己在浏览器里完成的，Claude 没法代劳外部服务账号操作。
+
+### 加注动作气泡改成偏蓝配色，跟跟注/all-in 区分开（2026-08-16）
+
+**背景**：用户反馈"加注的气泡要不特殊化一点是偏蓝色的，这样跟跟注 加注 all in能分开"。现状：跟注/过牌用默认暗金气泡，all-in 有专属的红色脉动（GitHub #25），弃牌是灰色，唯独加注跟"跟注/过牌"共用同一套默认暗金样式，四种状态里加注是唯一没有专属识别色的。用户一开始问的是蓝色，中途自己犹豫要不要改绿色，问了 Claude 意见——回答倾向蓝色（桌布本身是深绿色 `--felt-900`，加注气泡用绿色会跟背景融在一起，蓝色能跟暗金/红/灰三种已有配色都拉开色相，且这套色板里蓝色还没被用过），用户采纳。
+
+**实现**：
+- `GameTable.jsx`：`lastActionLabel.type === 'raise'` 时额外标记 `raise: true`，跟已有的 `folded`/`allIn` 标记走同一套 `actionBubbles` state
+- `PlayerSeat.jsx`：`bubble.raise` 时追加 `action-bubble--raise` class
+- `velvet.css`：新增 `.action-bubble--raise`，配色复用 `--chip-blue`（跟筹码图例的蓝色筹码同一支笔），线性渐变 + 微光晕，**不加脉动动画**——脉动是留给 all-in 的"更危险"信号，加注只需要能被一眼分辨出来，不需要抢 all-in 的紧迫感。，查证后确认是个长期存在的问题：`tokens.css` 定义了 6 个自定义字体变量（`--font-display`/`--font-body`/`--font-mono`/`--font-numerals`/`--font-card`/`--font-amount`），但 `index.html` 从项目最初的 commit 起就没有引入任何字体文件（没有 Google Fonts `<link>`，没有 `@font-face`），全都在用浏览器兜底字体渲染，不是这次改动引入的回归。用户目前只要求接入公共牌数字用的 `--font-card`（Oswald），其余 5 个字体暂时维持现状——如果后续也要接入，是同一个根因，同样在 `index.html` 加 `<link>` 即可。
 
 ### Bug：人机对战选桌人数不生效，总是沿用上次的桌型（2026-08-16）
 

@@ -1383,3 +1383,9 @@
   - 用户反馈"无痕浏览器打开更慢"定位到真正原因：无痕模式没有任何缓存，暴露了没有缓存兜底时的真实服务端响应（休眠冷启动 + 免费档 512MB/0.1 CPU 配置本身有限，两者叠加）
   - **改用 cron-job.org**（用户自己注册配置：URL 指向 `/health`、每 10 分钟一次、已启用），删除不可靠的 `.github/workflows/keep-alive.yml`
   - **已知局限**：不保证 100%——Render 自己的维护窗口保活防不住，免费档硬件配置本身的限制保活也解决不了；真要绝对稳只有升级付费档
+
+- [x] **加注动作气泡改成偏蓝配色（2026-08-16，方案见 design.md 同名章节）**
+  - `GameTable.jsx`：`raise: label.type === 'raise'` 标记，走 `actionBubbles` state
+  - `PlayerSeat.jsx`：`bubble.raise` 时加 `action-bubble--raise` class
+  - `velvet.css`：新增 `.action-bubble--raise`，配色取自 `--chip-blue`，不加脉动动画（脉动留给 all-in）
+  - **验收**：真实 Playwright（双人开局，触发一次加注）确认气泡应用了正确的蓝色渐变（`rgb(18,58,102)→rgb(26,95,173)`）；截图确认视觉效果——"加注 ¥40" 蓝色气泡跟绿色桌布/金色其余元素区分明显。服务端全量 395/395、客户端构建均通过。
