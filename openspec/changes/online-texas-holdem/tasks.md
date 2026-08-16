@@ -1389,3 +1389,11 @@
   - `PlayerSeat.jsx`：`bubble.raise` 时加 `action-bubble--raise` class
   - `velvet.css`：新增 `.action-bubble--raise`，配色取自 `--chip-blue`，不加脉动动画（脉动留给 all-in）
   - **验收**：真实 Playwright（双人开局，触发一次加注）确认气泡应用了正确的蓝色渐变（`rgb(18,58,102)→rgb(26,95,173)`）；截图确认视觉效果——"加注 ¥40" 蓝色气泡跟绿色桌布/金色其余元素区分明显。服务端全量 395/395、客户端构建均通过。
+
+- [x] **牌角数字字体改自托管子集，不再依赖国内访问不了的 Google Fonts（2026-08-16，方案见 design.md 同名章节）**
+  - 用 `fontTools.subset` 从 Oswald 700 latin 子集截出 `0-9 A J K Q` 这几个字符，打包成 1.5KB 的 `client/src/assets/fonts/oswald-card-ranks.woff2`
+  - `tokens.css`：从 Google Fonts `@import` 去掉 Oswald，新增独立 `@font-face` 指向自托管文件
+  - `index.html`：删掉不再需要的 Oswald Google Fonts `<link>`
+  - **验收**：真实 Playwright 确认 `document.fonts.check('700 15px Oswald')` 为 `true`；截图确认牌角字形正确（窄高的 Oswald 风格，不是缺字方块）。服务端全量 394/395（1 个已知全量套件 flake，单独跑 29/29 全绿，跟本次改动无关）；客户端构建通过；1.5KB 字体被 Vite 自动内联成 base64，不额外发请求
+  - **后续追加（同一天）**：把剩余 4 个实际在用的字体（Cinzel/Crimson Pro/Space Mono/Inter）也一起自托管了，方案见 design.md 同名章节"后续追加"部分——共 11 个字重文件，子集化后约 100KB；顺手删掉死 token `--font-numerals`（DM Serif Display，0 处引用）、`index.html` 里的 Google Fonts `preconnect` 提示
+  - **验收**：真实 Playwright 监听网络请求，确认走完一次开局流程零个 Google Fonts 请求；`document.fonts.check()` 对 5 个字体族全部返回 `true`；截图确认视觉正常。服务端全量 395/395、客户端构建通过

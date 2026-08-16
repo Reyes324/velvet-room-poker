@@ -1,7 +1,46 @@
 /* ═══════════════════════════════════════════════
    VELVET ROOM — Design Tokens (synced with design-system.html)
 ═══════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=DM+Serif+Display&family=Oswald:wght@600;700&family=Space+Mono:wght@400;700&family=Inter:wght@500;600;700&display=swap');
+
+/* 全部自定义字体改成自托管子集，不再依赖 Google Fonts（2026-08-16，用户
+   反馈"牌的数字字体又没有用上特殊字体了"排查出根因：国内网络访问不了
+   fonts.googleapis.com/fonts.gstatic.com，且这条外部 @import 是阻塞渲
+   染的——浏览器要等这个请求明确失败/超时才会继续，国内每次打开页面都
+   在为一个注定连不上的域名交这笔"等待税"，不只是好不好看的问题）。
+   Oswald 先单独修过一轮（只需要 0-9 A J K Q 四五个字符），这次把其余
+   4 个实际用到的字体（Cinzel/Crimson Pro/Space Mono/Inter）一并做了；
+   `--font-numerals`（DM Serif Display）经查在 `velvet.css` 里 0 处引
+   用，是个完全没用上的死 token，直接删掉，不用管它的字体加载。
+   每个字重的字符集统一按"英文字母+数字+常用标点+¥/省略号/破折号"截
+   取（这几个字体只承载西文/数字/金额，从没被用来渲染中文），字重档位
+   按 `velvet.css` 里 `var(--font-*)` 实际请求到的粗细来定，不是照抄原
+   来 Google Fonts 请求里的档位——原请求里有几处对不上（Cinzel 900、
+   Inter 500/600 从未被用到；Crimson Pro 700/800、Space Mono 600 反而
+   是实际用了但原来没请求到、一直在用浏览器伪粗体顶替），这次顺手把请
+   求的档位和实际用到的档位对齐，字形比以前更准。原始 latin 子集
+   11 个文件共 ~200KB，子集化后共 ~100KB。 */
+@font-face { font-family:'Cinzel'; font-style:normal; font-weight:400; font-display:swap; src:url('../assets/fonts/cinzel-400.woff2') format('woff2'); }
+@font-face { font-family:'Cinzel'; font-style:normal; font-weight:600; font-display:swap; src:url('../assets/fonts/cinzel-600.woff2') format('woff2'); }
+@font-face { font-family:'Cinzel'; font-style:normal; font-weight:700; font-display:swap; src:url('../assets/fonts/cinzel-700.woff2') format('woff2'); }
+@font-face { font-family:'Crimson Pro'; font-style:normal; font-weight:400; font-display:swap; src:url('../assets/fonts/crimsonpro-400.woff2') format('woff2'); }
+@font-face { font-family:'Crimson Pro'; font-style:normal; font-weight:600; font-display:swap; src:url('../assets/fonts/crimsonpro-600.woff2') format('woff2'); }
+@font-face { font-family:'Crimson Pro'; font-style:normal; font-weight:700; font-display:swap; src:url('../assets/fonts/crimsonpro-700.woff2') format('woff2'); }
+@font-face { font-family:'Crimson Pro'; font-style:normal; font-weight:800; font-display:swap; src:url('../assets/fonts/crimsonpro-800.woff2') format('woff2'); }
+@font-face { font-family:'Space Mono'; font-style:normal; font-weight:400; font-display:swap; src:url('../assets/fonts/spacemono-400.woff2') format('woff2'); }
+@font-face { font-family:'Space Mono'; font-style:normal; font-weight:700; font-display:swap; src:url('../assets/fonts/spacemono-700.woff2') format('woff2'); }
+@font-face { font-family:'Inter'; font-style:normal; font-weight:400; font-display:swap; src:url('../assets/fonts/inter-400.woff2') format('woff2'); }
+@font-face { font-family:'Inter'; font-style:normal; font-weight:700; font-display:swap; src:url('../assets/fonts/inter-700.woff2') format('woff2'); }
+
+/* Oswald——牌角数字，只需要 0-9 A J K Q（2026-08-16 第一轮修复，见上方
+   同一条背景说明）。 */
+@font-face {
+  font-family: 'Oswald';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/oswald-card-ranks.woff2') format('woff2');
+  unicode-range: U+0030-0039, U+0041, U+004A, U+004B, U+0051; /* 0-9 A J K Q */
+}
 
 :root {
   /* Felt — reverted (2026-08-11, later same day): user asked for a full
@@ -72,7 +111,6 @@
   --font-display: 'Cinzel', serif;
   --font-body: 'Crimson Pro', serif;
   --font-mono: 'Space Mono', monospace;
-  --font-numerals: 'DM Serif Display', serif;  /* hero numbers: pot / win amount */
   --font-card: 'Oswald', sans-serif;            /* card ranks (tidy "10") */
   --font-amount: 'Inter', -apple-system, sans-serif; /* 所有金额数字统一用这个 */
 

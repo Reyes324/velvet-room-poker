@@ -2660,7 +2660,33 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 **实现**：
 - `GameTable.jsx`：`lastActionLabel.type === 'raise'` 时额外标记 `raise: true`，跟已有的 `folded`/`allIn` 标记走同一套 `actionBubbles` state
 - `PlayerSeat.jsx`：`bubble.raise` 时追加 `action-bubble--raise` class
-- `velvet.css`：新增 `.action-bubble--raise`，配色复用 `--chip-blue`（跟筹码图例的蓝色筹码同一支笔），线性渐变 + 微光晕，**不加脉动动画**——脉动是留给 all-in 的"更危险"信号，加注只需要能被一眼分辨出来，不需要抢 all-in 的紧迫感。，查证后确认是个长期存在的问题：`tokens.css` 定义了 6 个自定义字体变量（`--font-display`/`--font-body`/`--font-mono`/`--font-numerals`/`--font-card`/`--font-amount`），但 `index.html` 从项目最初的 commit 起就没有引入任何字体文件（没有 Google Fonts `<link>`，没有 `@font-face`），全都在用浏览器兜底字体渲染，不是这次改动引入的回归。用户目前只要求接入公共牌数字用的 `--font-card`（Oswald），其余 5 个字体暂时维持现状——如果后续也要接入，是同一个根因，同样在 `index.html` 加 `<link>` 即可。
+- `velvet.css`：新增 `.action-bubble--raise`，配色复用 `--chip-blue`（跟筹码图例的蓝色筹码同一支笔），线性渐变 + 微光晕，**不加脉动动画**——脉动是留给 all-in 的"更危险"信号，加注只需要能被一眼分辨出来，不需要抢 all-in 的紧迫感。
+
+### 牌角数字字体在国内网络加载不出来，改自托管字体子集（2026-08-16）
+
+**背景**：用户反馈"牌的数字字体又没有用上特殊字体了"。2026-08-15 曾经修过一次（补上 `index.html` 里 Oswald 的 `<link>`，解决了"CSS `@import` 不是文件第一条规则导致被浏览器忽略"这个加载顺序问题），但没解决更根本的问题——`tokens.css` 里全部 6 个自定义字体都是从 `fonts.googleapis.com`/`fonts.gstatic.com` 加载的，这两个域名在国内网络访问不了（用户确认"是，国内网络（无科学上网）"），不是代码逻辑的 bug。
+
+**决策（用户主动提出"数字下载下来"的思路）**：不再依赖 Google Fonts 域名，把牌角数字实际用到的字符（`0-9 A J K Q`，即 `2,3,4,5,6,7,8,9,10,J,Q,K,A` 这些牌面用到的全部字符）用 `fontTools.subset` 从原始 Oswald 700 latin 子集（12.6KB）里截出来，打包成一个只有 **1.5KB** 的 woff2，跟着项目一起发布，不再有任何外部字体 CDN 依赖。这个范围只覆盖 Oswald——`tokens.css` 里其余 5 个字体（Cinzel/Crimson Pro/DM Serif Display/Space Mono/Inter）理论上有同样的问题，但这次先只修用户实际反馈的这一个，其余留给后续按需处理（见下一条）。
+
+**实现**：
+- `client/src/assets/fonts/oswald-card-ranks.woff2`：新增的自托管子集字体文件
+- `client/src/styles/tokens.css`：从 Google Fonts 的 `@import` 列表里去掉 `Oswald`，新增一条独立 `@font-face`（`src: url('../assets/fonts/oswald-card-ranks.woff2')`，`unicode-range` 限定到 `0-9 A J K Q`）
+- `client/index.html`：删掉 2026-08-15 加的那个专门给 Oswald 用的 Google Fonts `<link>`，不再需要
+- 构建产物里这个 1.5KB 的字体文件被 Vite 自动内联成 base64 data URI（默认 4KB 内联阈值，低于阈值的资源直接嵌进 CSS，不用额外发一次网络请求）——不需要额外配置
+
+**验证**：真实 Playwright——`document.fonts.check('700 15px Oswald')` 返回 `true`，`document.fonts` 遍历里只有一条 `Oswald 700 loaded` 记录（不再是一堆按 Google Fonts unicode-range 拆出来的、以 `unloaded` 状态混在一起的记录，字体系统干净了）；截图确认牌角"6"渲染出 Oswald 特有的窄高字形，不是缺字方块。服务端全量 394/395（1 个失败是已知的 `integration.test.js` 全量套件计时 flake，单独跑 29/29 全绿，跟本次纯前端字体改动无关）；客户端构建通过。
+
+**后续追加（同一天）**：用户追问"其他字体有用上必须的话也可以类似？"，并进一步确认这不只是视觉问题——`@import` 引入外部样式表是阻塞渲染的，国内每次打开页面都要先等这个连不上的域名超时才能继续，这条本身也是"打开慢"的一个独立成因（跟同一天排查的 Render 冷启动是两件不同的事）。用户一度问"我们需要用到这么多字体吗"——查了一遍这 4 个字体的实际用途（Cinzel=展示/标题，Crimson Pro=正文/标签，Space Mono=技术性数字读数如倒计时/牌型/房间号，Inter=专门给金额数字用），确认是"丝绒赌场"视觉风格里刻意设计的排版层级分工，不是随手堆砌，建议保留，用户认可后继续自托管。
+
+**实现（4 个字体一起做）**：
+- 逐个字重单独请求 Google Fonts CSS2 API（一次性请求多个字重会返回错误关联的 URL，踩过一次坑——查证发现同一批量请求里 Cinzel 三个字重返回的 latin woff2 URL 是同一个，单独按字重分别请求才拿到正确的、互不相同的文件），只取 `unicode-range` 是 `U+0000-00FF`（最广的基础拉丁块）那个 `@font-face` 块的 URL
+- 字重档位对齐 `velvet.css` 里 `var(--font-*)` 实际请求的粗细（不是照抄原 Google Fonts 请求档位）：Cinzel 400/600/700（原来多请求了个没用过的 900）；Crimson Pro 400/600/700/800（原来漏了 700/800，这两档之前一直在用浏览器伪粗体顶替，斜体没用到不用留）；Space Mono 400/700（Google 本来就没有 600 这个静态字重，`velvet.css` 里请求 600 的地方现在跟之前一样由浏览器就近伪粗体，没有新增回归）；Inter 400/700（原来多请求了 500/600 两档没用过的，漏了 400 这档实际在用的）
+- 统一用 `fontTools.subset` 截取字符集：`A-Za-z0-9` + 常用标点（空格/逗号/句号/冒号/分号/叹号/问号/引号/连字符/加号/括号/斜杠/井号/百分号/&/@）+ ¥ + 省略号/短横线/长横线/乘号——这几个字体只承载西文/数字/金额，从没被用来渲染中文
+- 11 个字重文件，原始 latin 子集总共约 200KB，子集化后共约 100KB（Cinzel 3 档共 25.6KB，Crimson Pro 4 档共 33.1KB，Inter 2 档共 13.4KB，Space Mono 2 档共 7.8KB）
+- `tokens.css`：删掉整条 Google Fonts `@import`，改成 11 条独立 `@font-face`；顺手删掉查到的死 token `--font-numerals`（`velvet.css` 0 处引用）
+- `index.html`：连带删掉给 Google Fonts 用的两条 `preconnect` 提示，不再需要
+
+**验证**：真实 Playwright——监听全部网络请求，确认页面完整走完一次开局流程后**零个**指向 `fonts.googleapis.com`/`fonts.gstatic.com` 的请求；`document.fonts.check()` 对 5 个字体族（Cinzel 700/Crimson Pro 600/Space Mono 700/Inter 700/Oswald 700）全部返回 `true`；截图确认牌桌整体视觉（底池/盲注/跟注按钮/牌角）没有跑偏，字体渲染正常。构建产物里 9 个大于 4KB 的字重被 Vite 拆成独立带哈希文件名的文件（走正常的长期缓存），2 个小于 4KB 的（Space Mono 两档、Oswald）内联成 base64。服务端全量 395/395、客户端构建均通过。，查证后确认是个长期存在的问题：`tokens.css` 定义了 6 个自定义字体变量（`--font-display`/`--font-body`/`--font-mono`/`--font-numerals`/`--font-card`/`--font-amount`），但 `index.html` 从项目最初的 commit 起就没有引入任何字体文件（没有 Google Fonts `<link>`，没有 `@font-face`），全都在用浏览器兜底字体渲染，不是这次改动引入的回归。用户目前只要求接入公共牌数字用的 `--font-card`（Oswald），其余 5 个字体暂时维持现状——如果后续也要接入，是同一个根因，同样在 `index.html` 加 `<link>` 即可。
 
 ### Bug：人机对战选桌人数不生效，总是沿用上次的桌型（2026-08-16）
 
