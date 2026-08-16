@@ -125,7 +125,12 @@ function createServer({
   // leave the engine in that state right after any successful action.
   function actionHappenedPayload(engine) {
     if (!engine?.lastActionBy) return null;
-    return { actorId: engine.lastActionBy, label: engine.lastActionLabel, seq: engine.lastActionSeq };
+    return {
+      actorId: engine.lastActionBy,
+      label: engine.lastActionLabel,
+      seq: engine.lastActionSeq,
+      phase: engine.lastActionPhase,
+    };
   }
 
   function pveHandleResult(session, result) {

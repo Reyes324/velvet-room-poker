@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useActionLock } from '../hooks/useActionLock';
 import { playActionFeedbackSfx } from '../utils/sfx';
+import { describeActionLabel } from '../utils/actionBubbleText';
 import GameTable from '../components/GameTable';
 import SettlementModal from '../components/SettlementModal';
 import BustDecisionModal from '../components/BustDecisionModal';
@@ -48,6 +49,11 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   // 开/收起/拖拽/发消息，看得到真实效果就够，不需要真的建 WebRTC 连接。
   const [voiceTalking, setVoiceTalking] = useState(false);
   const [chatBubble, setChatBubble] = useState(null); // { fromId, text, key } | null
+  // { [actorId]: { text, key, folded, allIn, raise, phase } } — see
+  // RoomPage.jsx's matching state for why this is set here (in the
+  // 'action:happened' handler below), not inside a GameTable effect keyed
+  // off gameState.
+  const [actionBubbles, setActionBubbles] = useState({});
 
   // fromId 由调用处传入，理由跟上面 poke() 那条注释一样：函数体本身不
   // 直接闭包读 me（声明在这个函数下方），避免 react-hooks/purity 误报。
@@ -115,8 +121,18 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
     // same id PveSession stores as humanId === players[].id server-side
     // (server/PveSession.js constructor), so it's safe to compare directly
     // against actorId without waiting on `me` (which needs gameState first).
-    'action:happened': ({ actorId, label }) => {
+    // See RoomPage.jsx's matching handler for why the action bubble is set
+    // here (once per real 'action:happened' event) rather than from a
+    // gameState-diffing effect inside GameTable — that approach could
+    // silently drop an action whenever two game:state broadcasts (e.g. two
+    // AI seats acting back-to-back) land in the same React render.
+    'action:happened': ({ actorId, label, phase }) => {
       if (actorId !== getPveId()) playActionFeedbackSfx(label);
+      if (actorId && label) {
+        const { text, folded, allIn, raise } = describeActionLabel(label);
+        const key = Date.now();
+        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, allIn, raise, phase } }));
+      }
     },
   });
 
@@ -194,6 +210,8 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         onStopTalking={() => setVoiceTalking(false)}
         onSendChat={text => sendChat(text, me?.id)}
         chatBubble={chatBubble}
+        actionBubbles={actionBubbles}
+        setActionBubbles={setActionBubbles}
         isPve
       />
       {showLedger && (

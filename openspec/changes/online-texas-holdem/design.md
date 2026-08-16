@@ -2734,3 +2734,17 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 **修法**：`GameEngine.js` 新增 `pokersolverCardRaw(c)`，把 pokersolver 返回的 `value === '1'` 统一转回 `'A'`，两处构造 `bestCards`（单一赢家、多赢家平分）都改用这个函数。
 
 **验收**：新增单测覆盖轮子顺场景，断言 `bestCards` 里有 `'Ah'`、没有 `'1h'`；服务端全量 396/396 通过。**真机验证还没做**——需要用户在原设备上再打出一手 A2345 顺子确认 5 张牌都亮。
+
+### Bug：对手的动作气泡有时整个不出现（不是位置错，是根本没渲染）（2026-08-16）
+
+**背景**：用户真机截图反馈"我看不到对方的再加注气泡"。排查后确认：气泡真正出问题的不是显示位置，是有时压根没被创建——图里那个"加注 ¥87"其实是玩家自己之前的动作气泡，某个对手紧跟着的加注动作没能生成气泡。
+
+**根因**：动作气泡文案原来是从一个监听 `gameState` 的 `useEffect`（`GameTable.jsx`）里设置的，只读 `gameState.lastActionBy`/`lastActionLabel`——这是引擎状态上的单槽字段，永远只记录"最近一次"动作。这个 effect 只在 `gameState` 触发一次 React 渲染时才跑一次；但服务端在 AI 背靠背连续行动时，可能在同一个事件循环 tick 内连续 emit 好几次 `game:state`——如果这些广播在客户端被 React 合并进同一次渲染（已经在 `RoomPage.jsx`/`PvePage.jsx` 的 `action:happened` 注释里确认过这是真实会发生的情况，此前专门为它修过"部分动作没声音"的 bug），这个 effect 只会跑一次，只看到最后一个动作的 `actorId`——中间那次动作的气泡数据从一开始就没进到这个 effect 的输入里，无从谈起"漏渲染"，是根本没被观察到。旧代码注释里"这个气泡逻辑没问题，因为用了 keyed dict 的函数式更新"这个结论只对了一半——函数式更新确实保证同一个 actor 的气泡不会互相覆盖，但如果两个不同 actor 的动作被合并进同一次渲染，`setActionBubbles` 根本只会被调用一次，另一个 actor 完全没有机会被记录。
+
+**修法（结构性，不是补丁）**：跟"动作没声音"那次是同一类问题、同一个解法——把设置气泡这件事，从"监听 `gameState` 的 React effect"搬到"`action:happened` 这个 socket 事件的回调本身"（`RoomPage.jsx`/`PvePage.jsx`）。`action:happened` 由服务端每次真实动作各自 emit 一次，socket.io 在客户端是逐条调用注册的回调，不会像 React 渲染那样把多条消息合并成一次——所以即使最终触发的重渲染被 React 合并，`setActionBubbles` 这个函数式更新本身是逐次、按顺序被调用并入队的，最终状态仍然正确包含每一个动作。`actionBubbles`/`setActionBubbles` 状态本身也跟着从 `GameTable.jsx` 挪到 `RoomPage.jsx`/`PvePage.jsx`（跟 `chatBubble`/`pokedSeat` 已有的做法一致，两个页面各自独立持有，不共享），`GameTable.jsx` 改成接收这两个作为 props。"清空气泡"的按街道 sweep 逻辑留在 `GameTable.jsx` 不动——它只关心 `gameState.phase` 这个当前值，不需要回放每一个中间动作，不受同一个问题影响。
+
+服务端 `action:happened` payload 补了 `phase` 字段（`server/index.js` 的 `actionHappenedPayload`），气泡需要按"发生在哪条街"打标签才能被 sweep 正确清除，这个字段以前只在 `gameState.lastActionPhase` 里有，现在直接跟着这个事件一起发。
+
+`label→气泡文案/样式` 的映射抽成共享工具 `client/src/utils/actionBubbleText.js`（`describeActionLabel`），避免 `RoomPage.jsx`/`PvePage.jsx` 各存一份重复逻辑。
+
+**验收**：客户端构建、lint（相比改动前净减少 2 个既有 error，没有新增）均通过；服务端全量 396/396（1 个已知 `integration.test.js` 全量套件计时 flake，单独跑 29/29 全绿，跟这次改动无关）；`e2e/game.spec.js` 26 条里 25 条通过，唯一失败的"账本弹窗"用例经确认是修改前就存在的既有失败（fixture 数据问题），跟这次改动无关。新增 `e2e/actionBubbleRegression.spec.js` 冒烟测试（8 人机对战桌走多手，确认气泡机制在新数据流下正常工作、无渲染报错）——**这不是这个 bug 的确定性回归测试**：真正的时序竞态（两次广播落进同一次 React 渲染）取决于服务端事件循环调度，脚本无法从外部强制复现，所以只做了结构性修复 + 冒烟验证，**真机多打几手交叉确认还没做**。

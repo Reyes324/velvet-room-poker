@@ -224,7 +224,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, onSendChat, chatBubble = null, disconnectedIds = null }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenFeedback, onPoke, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, onSendChat, chatBubble = null, disconnectedIds = null, actionBubbles = {}, setActionBubbles = () => {} }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -474,72 +474,31 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.phase]);
 
-  // ── Action feedback bubbles ── server tells us directly who just acted and
-  // what they did (lastActionBy/lastActionLabel), keyed by lastActionSeq so we
-  // only react once per real action. Used to be inferred client-side by diffing
-  // actionPlayerId/bet/status between renders, but actionIndex never advances
-  // for a hand's true final action (fold-to-one-left, or river call straight
-  // into showdown — see GameEngine's own comment on lastActionSeq), so that
-  // diff-based approach could never detect those actions at all, and even when
-  // it did fire, _nextStreet() resets everyone's bet to 0 before the diff ever
-  // runs, making the inferred text wrong for any street-ending action (user
-  // feedback, 2026-07-28).
-  const prevActionSeqRef = useRef(0);
-  const [actionBubbles, setActionBubbles] = useState({}); // { [id]: { text, key, folded, phase } }
-  // Always-fresh phase, read inside the delayed sweep below instead of the
-  // phase it closed over at schedule time — see that effect's own comment.
-  // Written in its own effect (not directly in the render body) so a ref
-  // mutation never happens during render itself.
+  // ── Action feedback bubbles ── actionBubbles/setActionBubbles are owned by
+  // the parent page (RoomPage.jsx/PvePage.jsx), not here. They used to be
+  // local state, set from an effect that read gameState.lastActionBy/
+  // lastActionLabel — a single-slot snapshot of "the most recent action",
+  // reset on every game:state broadcast. That effect only fires once per
+  // React render of gameState, but the server can legitimately emit several
+  // game:state broadcasts back-to-back in the same tick (bots acting near-
+  // instantly) — React collapses those into one render, and the effect then
+  // only ever sees the LAST action's actorId, silently dropping every
+  // earlier actor's bubble in that batch entirely (not just its sfx, which
+  // was already known to have this problem — see the matching comment in
+  // RoomPage.jsx/PvePage.jsx). Confirmed as a real bug from a live game
+  // screenshot (2026-08-16): an opponent's raise never got a bubble at all
+  // because it landed in the same collapsed render as another player's
+  // later action. Fixed by moving the setActionBubbles call directly into
+  // the 'action:happened' socket handler (see those two files) — socket.io
+  // invokes that callback once per actual emitted event, never collapsed,
+  // so every action's functional setState update is correctly queued and
+  // applied even when the resulting re-renders themselves get batched.
+  // The phase-tagged sweep below (clearing stale bubbles on a new street)
+  // stays here — it only cares about the current gameState.phase, not about
+  // replaying every individual action, so the collapsing problem above
+  // never applied to it.
   const currentPhaseRef = useRef(gameState.phase);
   useEffect(() => { currentPhaseRef.current = gameState.phase; });
-
-  useEffect(() => {
-    const seq = gameState.lastActionSeq ?? 0;
-    if (seq && seq !== prevActionSeqRef.current) {
-      const actorId = gameState.lastActionBy;
-      const label = gameState.lastActionLabel;
-      if (actorId && label) {
-        let text = null;
-        let folded = false;
-        let allIn = false;
-        let raise = false;
-        if (label.type === 'fold') { text = '弃牌'; folded = true; }
-        else if (label.type === 'allin') { text = `ALL IN ¥${label.amount.toLocaleString()}`; allIn = true; }
-        else if (label.type === 'raise') { text = `加注 ¥${label.amount.toLocaleString()}`; raise = true; }
-        else if (label.type === 'call') text = `跟注 ¥${label.amount.toLocaleString()}`;
-        else text = '过牌'; // check
-        // Action sfx itself no longer lives here — it's played straight off
-        // the action:happened socket event (see RoomPage.jsx/PvePage.jsx),
-        // not off this effect, because this effect only runs when a
-        // game:state render actually happens for this exact broadcast. Two
-        // broadcasts landing close enough together that React collapses
-        // them into one render used to mean the earlier one's sfx (and only
-        // its sfx — this bubble logic is fine, see below) never played at
-        // all (2026-08-14 user feedback: "有些动作没有发出声音"). The bubble
-        // text below doesn't have that problem: it merges into a keyed
-        // dict via a functional setState updater, so even a collapsed
-        // render still ends up with the right final bubble per player.
-        // Persistent now — no self-clearing timeout. The bubble stays until
-        // this same player's status/bet changes again (this effect re-fires
-        // and overwrites their entry) or a new street/hand clears everyone
-        // (see the phase-watching effect below). Tagged with the phase the
-        // action actually happened on — gameState.lastActionPhase, NOT
-        // gameState.phase. The street's last action triggers _nextStreet()
-        // server-side in the same tick that records it, so by the time this
-        // broadcast arrives, gameState.phase is already the NEXT street —
-        // tagging with it mislabeled every street-ending bubble as
-        // belonging to the new street, so it survived a whole extra street
-        // before the sweep below ever cleared it (user feedback, 2026-08-02:
-        // "新的一轮的时候，上一轮的气泡不应该还存在吧，除了弃牌那个气泡").
-        // lastActionPhase is recorded server-side before that mutation —
-        // see GameEngine._recordAction.
-        const key = Date.now();
-        const phase = gameState.lastActionPhase ?? gameState.phase;
-        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, allIn, raise, phase } }));
-      }
-    }
-    prevActionSeqRef.current = seq;
-  }, [gameState]);
 
   // The action that ENDS a hand (river call straight into showdown, or a
   // fold-to-one-left) gets tagged with gameState.phase as of THAT broadcast

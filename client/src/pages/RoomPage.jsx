@@ -3,6 +3,7 @@ import { useSocket } from '../hooks/useSocket';
 import { useActionLock } from '../hooks/useActionLock';
 import { useVoiceMesh } from '../hooks/useVoiceMesh';
 import { playActionFeedbackSfx } from '../utils/sfx';
+import { describeActionLabel } from '../utils/actionBubbleText';
 import GameTable from '../components/GameTable';
 import Lobby from '../components/Lobby';
 import SettlementModal from '../components/SettlementModal';
@@ -35,6 +36,12 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   const [handHistory, setHandHistory] = useState([]);
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
   const [chatBubble, setChatBubble] = useState(null); // { fromId, text, key } | null
+  // { [actorId]: { text, key, folded, allIn, raise, phase } } — set here (not
+  // in GameTable) because 'action:happened' fires once per actual server
+  // action; a gameState-diffing effect inside GameTable could silently drop
+  // an action whenever two broadcasts land in the same React render (see the
+  // long comment on the 'action:happened' handler below).
+  const [actionBubbles, setActionBubbles] = useState({});
   const [revealedPlayers, setRevealedPlayers] = useState({});
   // { [playerId]: { playerName, holeCards } }
   const settlementTimerRef = useRef(null);
@@ -139,13 +146,28 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       setRevealedPlayers(prev => ({ ...prev, [playerId]: { playerName, holeCards } }));
     },
     // Fired once per real action, independent of game:state — see this
-    // event's own comment in server/index.js (actionHappenedPayload) for
-    // why sound can't just ride along on the game:state render the way the
-    // action bubble text still does. Own actions are skipped here: ActionBar
-    // already played this the instant the button was tapped (see its
-    // playOwnActionSfx), well before this round-trip lands.
-    'action:happened': ({ actorId, label }) => {
+    // event's own comment in server/index.js (actionHappenedPayload). Own
+    // actions skip the sfx here: ActionBar already played it the instant the
+    // button was tapped (see its playOwnActionSfx), well before this
+    // round-trip lands. The action bubble, unlike the sfx, used to be set
+    // from a gameState-diffing effect in GameTable — moved here (2026-08-16)
+    // because that effect only fires once per React render of gameState,
+    // and the server can emit several game:state broadcasts back-to-back in
+    // the same tick (bots acting near-instantly); React collapses those into
+    // one render, so the effect only ever saw the LAST action's actorId,
+    // silently dropping every earlier actor's bubble in that batch (real
+    // playtest screenshot: an opponent's raise bubble never appeared).
+    // socket.io invokes this callback once per actual emitted event, never
+    // collapsed, so the functional setActionBubbles update below is
+    // correctly queued and applied for every action even when the resulting
+    // re-renders get batched.
+    'action:happened': ({ actorId, label, phase }) => {
       if (actorId !== playerId) playActionFeedbackSfx(label);
+      if (actorId && label) {
+        const { text, folded, allIn, raise } = describeActionLabel(label);
+        const key = Date.now();
+        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, allIn, raise, phase } }));
+      }
     },
   });
 
@@ -352,6 +374,8 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         onSendChat={sendChat}
         chatBubble={chatBubble}
         disconnectedIds={disconnectedIds}
+        actionBubbles={actionBubbles}
+        setActionBubbles={setActionBubbles}
       />
       {roomState?.awaitingTimerDecision && isHost && (
         <TimerDecisionModal

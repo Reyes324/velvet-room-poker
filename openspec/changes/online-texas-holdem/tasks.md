@@ -1416,3 +1416,10 @@
 - [x] **Bug 修复：A-2-3-4-5 轮子顺，赢家高亮漏掉 A（2026-08-16，方案见 design.md 同名章节）**
   - `GameEngine.js`：新增 `pokersolverCardRaw`，把 pokersolver 轮子顺返回的 `'1h'` 统一转回 `'Ah'`，两处 `bestCards` 构造都改用
   - **验收**：新增单测覆盖，服务端全量 396/396 通过。**真机验证还没做**——需要用户实测确认 A2345 顺子五张牌都亮
+
+- [x] **Bug 修复：对手的动作气泡有时不出现，结构性问题不是位置错（2026-08-16，方案见 design.md 同名章节）**
+  - `server/index.js`：`actionHappenedPayload` 补 `phase` 字段
+  - 新增 `client/src/utils/actionBubbleText.js`（`describeActionLabel`），供两个页面共用
+  - `RoomPage.jsx`/`PvePage.jsx`：新增 `actionBubbles` state，在各自 `action:happened` 回调里直接设置气泡（不再依赖 `GameTable.jsx` 里监听 `gameState` 的 effect），并把 `actionBubbles`/`setActionBubbles` 传给 `GameTable`
+  - `GameTable.jsx`：删掉本地 `actionBubbles` state 和监听 `gameState` 设置气泡的 effect，改成接收 props；按街道清空气泡的 sweep effect 不受影响，原样保留
+  - **验收**：客户端构建/lint 通过（lint 相比之前净减 2 个既有 error）；服务端全量 396/396（1 个已知 flake，跟改动无关）；`e2e/game.spec.js` 25/26（唯一失败项确认是改动前就存在的既有失败）；新增 `e2e/actionBubbleRegression.spec.js` 冒烟测试通过。**真正的时序竞态无法用脚本确定性复现，真机多打几手交叉确认还没做**
