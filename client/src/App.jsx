@@ -7,6 +7,7 @@ import VoiceCheckPage from './pages/VoiceCheckPage';
 import VoicePairPage from './pages/VoicePairPage';
 import StatesGallery from './StatesGallery';
 import ServerResetModal from './components/ServerResetModal';
+import ConnectingOverlay from './components/ConnectingOverlay';
 import { getSocket } from './hooks/useSocket';
 import {
   classifyServerChange, readStoredIdentity, writeStoredIdentity,
@@ -44,6 +45,28 @@ export default function App() {
   // server:hello 已到达（或已超时兜底）。会话恢复必须等它——见下面那个 effect。
   const [identityReady, setIdentityReady] = useState(false);
   const restoredRef = useRef(false);
+
+  // 白屏焦虑修复（用户反馈，2026-08-16，"刚打开网页的时候"）：socket 是否
+  // 已连上，独立于上面的 identityReady——identityReady 3 秒兜底之后即使
+  // 没连上也会放行渲染，避免会话恢复被永久卡住，但那不代表 socket 真的连
+  // 上了。这里单独跟踪连接状态，用来在还没连上时展示进度可见的等待态，见
+  // 下方 render 部分。
+  const [socketConnected, setSocketConnected] = useState(() => getSocket().connected);
+  useEffect(() => {
+    const socket = getSocket();
+    function onConnect() { setSocketConnected(true); }
+    function onDisconnect() { setSocketConnected(false); }
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    return () => { socket.off('connect', onConnect); socket.off('disconnect', onDisconnect); };
+  }, []);
+
+  // 静态 boot-loader（client/index.html）只是给 HTML 到达到 React 挂载完
+  // 这一小段空窗用的占位——真正接管画面之后就该让位，不然会跟下面的连接
+  // 中覆盖层重叠。
+  useEffect(() => {
+    document.getElementById('boot-loader')?.remove();
+  }, []);
 
   // 进程身份握手。必须在任何 rejoin 之前完成：以前的顺序是"先拿旧房间号去
   // rejoin → 服务器回'未找到房间' → toast 报错 → 人卡在原地"，玩家完全不知
@@ -222,12 +245,16 @@ export default function App() {
   const resetModal = serverReset
     ? <ServerResetModal kind={serverReset.kind} onDismiss={handleServerResetDismiss} />
     : null;
+  // 同样每个分支都带上——socket 没连上时哪个分支都不该让人以为界面能正常
+  // 交互（见 ConnectingOverlay 组件注释）。
+  const connectingOverlay = !socketConnected ? <ConnectingOverlay /> : null;
 
   if (pveName !== null) {
     return (
       <div className="stage-wrap">
         <PvePage playerName={pveName} seatCount={pveSeatCount} onLeave={handlePveLeave} />
         {resetModal}
+        {connectingOverlay}
       </div>
     );
   }
@@ -237,6 +264,7 @@ export default function App() {
       <>
         <HomePage onJoined={handleJoined} onPve={handlePve} initialCode={room?.autoJoinCode} />
         {resetModal}
+        {connectingOverlay}
       </>
     );
   }

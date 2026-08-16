@@ -36,7 +36,6 @@ function savePos(pos) {
 }
 
 export default function VoiceChatDock({
-  defaultTop, // 没拖拽过时的默认垂直位置（px，相对舞台）——跟玩家自己座位对齐
   voiceTalking,
   onStartTalking,
   onStopTalking,
@@ -49,8 +48,16 @@ export default function VoiceChatDock({
   const [closing, setClosing] = useState(false);
   const [chatText, setChatText] = useState('');
   const [pos, setPos] = useState(() => loadSavedPos());
+  // 拖拽过程中的自由跟手位置（用户反馈，2026-08-16："能不能也能跟随手移
+  // 动到中间任意地方只是松手的时候会吸附到两边"——原来拖拽时横向是立刻
+  // 锁定到左右哪一侧，跟手感差；改成拖着的时候整个胶囊在水平方向也真实
+  // 跟着指针走，只有松手那一刻才计算离哪边近、吸附过去）。null = 没在拖
+  // （此时用 pos/topPx 那套贴边定位）；拖拽中是 { leftPx, topPercent,
+  // edge }，edge 只用来在拖拽过程中让形状（半圆缺口朝哪边）跟着预览，不
+  // 影响实际跟手的水平位置。
+  const [dragPos, setDragPos] = useState(null);
   const dockRef = useRef(null);
-  const dragRef = useRef(null); // { startX, startY, moved, stageRect }
+  const dragRef = useRef(null); // { startX, startY, moved, stageRect, startLeftPx, dockWidth }
   const chatInputRef = useRef(null);
   const chatInputBoxRef = useRef(null); // 输入条外层容器，点空白处判断要用
   const closeTimerRef = useRef(null);
@@ -99,9 +106,9 @@ export default function VoiceChatDock({
     clearTimeout(closeTimerRef.current);
   }, [chatText, onSendChat]);
 
-  const topPx = pos != null
-    ? `${pos.topPercent * 100}%`
-    : (defaultTop != null ? `${defaultTop}px` : '50%');
+  // 没拖拽过时默认贴右边垂直居中（用户反馈，2026-08-16——原来是跟玩家自
+  // 己座位对齐，用户明确要求换成固定的屏幕垂直居中）。
+  const topPx = pos != null ? `${pos.topPercent * 100}%` : '50%';
   const edge = pos?.edge ?? 'right';
 
   const handlePointerDown = useCallback(e => {
@@ -111,9 +118,11 @@ export default function VoiceChatDock({
     // （用户反馈"展开后也希望能拖动"，2026-08-15）。
     const stageEl = dockRef.current?.closest('.game-stage');
     if (!stageEl) return;
+    const stageRect = stageEl.getBoundingClientRect();
+    const dockRect = dockRef.current.getBoundingClientRect();
     dragRef.current = {
       startX: e.clientX, startY: e.clientY, moved: false,
-      stageRect: stageEl.getBoundingClientRect(),
+      stageRect, startLeftPx: dockRect.left - stageRect.left, dockWidth: dockRect.width,
     };
     dockRef.current.setPointerCapture?.(e.pointerId);
   }, []);
@@ -127,8 +136,9 @@ export default function VoiceChatDock({
     drag.moved = true;
     const localY = e.clientY - drag.stageRect.top;
     const clampedPercent = Math.min(0.92, Math.max(0.08, localY / drag.stageRect.height));
-    const nextEdge = e.clientX < drag.stageRect.left + drag.stageRect.width / 2 ? 'left' : 'right';
-    setPos({ edge: nextEdge, topPercent: clampedPercent });
+    const leftPx = Math.min(drag.stageRect.width - drag.dockWidth, Math.max(0, drag.startLeftPx + dx));
+    const previewEdge = leftPx + drag.dockWidth / 2 < drag.stageRect.width / 2 ? 'left' : 'right';
+    setDragPos({ leftPx, topPercent: clampedPercent, edge: previewEdge });
   }, []);
 
   const handlePointerUp = useCallback(e => {
@@ -140,9 +150,12 @@ export default function VoiceChatDock({
       setExpanded(v => !v); // 没挪动过，算一次点击——展开/收起
       return;
     }
-    setPos(current => {
-      if (current) savePos(current);
-      return current;
+    // 松手才真正吸附——用最后一次 move 算出的 edge（离哪边近就吸哪边），
+    // 只落盘贴边坐标（edge + topPercent），自由跟手的 leftPx 只在拖拽过
+    // 程中用来渲染，松手后就丢弃。
+    setDragPos(current => {
+      if (current) setPos({ edge: current.edge, topPercent: current.topPercent });
+      return null;
     });
   }, []);
 
@@ -222,8 +235,10 @@ export default function VoiceChatDock({
     )}
     <div
       ref={dockRef}
-      className={`voice-dock voice-dock--${edge}${expanded ? ' voice-dock--expanded' : ''}`}
-      style={{ top: topPx }}
+      className={`voice-dock voice-dock--${dragPos?.edge ?? edge}${expanded ? ' voice-dock--expanded' : ''}${dragPos ? ' voice-dock--dragging' : ''}`}
+      style={dragPos
+        ? { top: `${dragPos.topPercent * 100}%`, left: `${dragPos.leftPx}px`, right: 'auto' }
+        : { top: topPx }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

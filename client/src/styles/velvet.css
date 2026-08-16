@@ -936,6 +936,11 @@
   transition:height .32s var(--ease-bounce), border-radius .3s var(--ease-out), width .28s var(--ease-out);
 }
 .voice-dock:active { cursor:grabbing; }
+/* 拖拽时（.voice-dock--dragging）横向位置真跟手，不能有过渡延迟；松手
+   吸附回边缘那一下才要有平滑动画，所以 left/top 的 transition 只加在
+   "没在拖"的状态上（用户反馈，2026-08-16——拖着能到屏幕中间任意位置，
+   只有松手才吸附两边）。 */
+.voice-dock:not(.voice-dock--dragging) { transition:height .32s var(--ease-bounce), border-radius .3s var(--ease-out), width .28s var(--ease-out), left .25s var(--ease-out), right .25s var(--ease-out), top .25s var(--ease-out); }
 .voice-dock--right { right:0; border-radius:50% 0 0 50% / 50% 0 0 50%; border-right:none; transform:translateY(-50%); }
 .voice-dock--left { left:0; border-radius:0 50% 50% 0 / 0 50% 50% 0; border-left:none; transform:translateY(-50%); }
 .voice-dock__icon { width:24px; height:24px; }
@@ -1212,6 +1217,24 @@
 .modal-btn--waiting { opacity: .55; cursor: default; }
 .modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,.68); backdrop-filter:blur(5px); display:flex; align-items:center; justify-content:center; z-index:60; animation:overlayFade .3s ease; }
 @keyframes overlayFade { from{opacity:0;} to{opacity:1;} }
+/* Socket 未连接时的全屏等待态（用户反馈，2026-08-16，"白屏焦虑"第二段——
+   见 ConnectingOverlay.jsx 头部注释）。position:fixed 而不是 absolute——
+   跟 .modal-overlay 不同，这个可能在任何祖先都还没建立 position:relative
+   之前就渲染出来（App.jsx 顶层，早于 stage-wrap），不能依赖祖先定位。视
+   觉上延续 index.html 里 #boot-loader 的同一套配色/转圈动画，两者交接时
+   不该有观感跳变。 */
+.connecting-overlay {
+  position:fixed; inset:0; z-index:9998;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; background:var(--surface-base); color:var(--gold-400);
+}
+.connecting-overlay-spinner {
+  width:34px; height:34px; border-radius:50%;
+  border:3px solid rgba(212,175,55,.25); border-top-color:var(--gold-400);
+  animation:connectingSpin .8s linear infinite;
+}
+.connecting-overlay-text { font-size:14px; letter-spacing:1px; opacity:.85; text-align:center; padding:0 24px; max-width:320px; }
+@keyframes connectingSpin { to { transform:rotate(360deg); } }
 /* Was #0C1E0E/#060C07 — same off-palette near-black as HomePage's old
    .home-card (see that file's comment), just never caught here because this
    is the popup dialog (menu/结算/账本/退出确认…) rather than a page

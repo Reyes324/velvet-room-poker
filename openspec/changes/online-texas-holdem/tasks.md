@@ -1363,3 +1363,16 @@
   - `server/index.js`、`PlayerSeat.jsx` 的 `POKE_EMOJI` 都追加 `🤨`/`❓`/`🤡`/`👏`（9→13 个）
   - `velvet.css` `.poke-picker` grid `gap` 2px→6px
   - **验收**：真实 Playwright（双人开局，点对手头像唤起选择器）确认 13 个表情格子全部渲染、实测相邻格子间距 ≈6.3px（此前 2px）、任意两格无重叠；服务端全量 395/395、客户端构建均通过。截图确认 4 行布局整齐（🥚/❓ 在无头 Chromium 里因缺 emoji 字体显示成占位符，真机浏览器不受影响）。
+
+- [x] **白屏焦虑：连接状态可视化（2026-08-16，方案见 design.md 同名章节）**
+  - 用 AskUserQuestion 确认用户说的"白屏"是哪种——答案是"真的纯白"（HTML 都还没到浏览器那种），代码层面无解；问了两条真正能解决的路（Service Worker 预缓存 / 升级 Render 付费档），用户选择"不改，接受现状"
+  - 转而做用户明确要求的第二段：`client/index.html` 新增纯静态 `#boot-loader`（内联硬编码色值，不依赖 JS/字体）；`App.jsx` 挂载后移除它，新增监听 `socket` `connect`/`disconnect` 的 `socketConnected` 状态；新组件 `ConnectingOverlay.jsx` 未连接时展示带计时的连接中覆盖层（5 秒后文案切换成"可能在冷启动"提示）
+  - **范围边界已跟用户确认**：不解决"HTML 都还没到浏览器"这种真正的冷启动前置空白，只解决"JS 已挂载但 socket 未连接"这段
+  - **验收**：真实 Playwright——正常连接不长时间卡住；`page.route` 人为延迟 socket.io 请求 8 秒模拟连不上，确认覆盖层出现→5 秒后文案切换→连上后消失，全部符合预期；截图确认视觉效果协调。服务端全量 395/395、客户端构建均通过。
+
+- [x] **语音/打字吸附入口默认位置改成右侧垂直居中 + 拖拽自由跟手（2026-08-16，方案见 design.md 同名章节）**
+  - `VoiceChatDock.jsx`：`topPx` 没拖拽过时统一用 `'50%'`，去掉 `defaultTop` 分支
+  - `GameTable.jsx`：删掉配套的 `pttTop`/`heroSlotRef`/测量 `useEffect`（死代码清理，含 JSX 里残留的 `ref={heroSlotRef}`/`defaultTop={pttTop}` 引用）
+  - `VoiceChatDock.jsx`：新增 `dragPos` state，拖拽中横向自由跟手（不再立即锁定贴边），松手才计算吸附哪一边
+  - `velvet.css`：`left`/`top`/`right` transition 只加在非拖拽状态，避免跟手延迟
+  - **验收**：真实 Playwright（双人开局）量 bounding box 确认——默认贴右边垂直居中（x=1280-58=1222，无拖拽记录时）；拖到屏幕正中间时胶囊真的停在中间（x≈611，明显不贴任何一边）；松手后吸附到最近的左边（x=0）。截图确认视觉正常。服务端全量 393/395（2 个失败是已知的 `integration.test.js` 全量套件计时 flake，单独跑 29/29 全绿，跟本次纯前端改动无关）；客户端构建通过。

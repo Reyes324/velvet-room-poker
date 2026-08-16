@@ -36,9 +36,34 @@
          性，键盘问题在那边靠 body overflow:hidden 解决，见 global.css。 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual" />
     <title>翡翠厅</title>
+    <!-- 白屏焦虑修复（用户反馈，2026-08-16）：内联、硬编码色值（不等 JS/
+         字体加载），HTML 一到浏览器就能立即绘制，覆盖"HTML 已到但 React
+         还没挂载完成"这一小段空窗。React 挂载后会移除这个 div（见
+         App.jsx）。真正"HTML 本身都还没到浏览器"（Render 免费档冷启动，
+         进程还没醒）那段空白，这里无能为力——那时候这段 HTML/CSS 也还没
+         送到，不是这个方案要解决的部分，见 design.md 同名章节。 -->
+    <style>
+      #boot-loader {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 14px; background: #17331E; color: #D4AF37;
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+      #boot-loader-spinner {
+        width: 34px; height: 34px; border-radius: 50%;
+        border: 3px solid rgba(212,175,55,.25); border-top-color: #D4AF37;
+        animation: boot-spin .8s linear infinite;
+      }
+      #boot-loader-text { font-size: 14px; letter-spacing: 1px; opacity: .85; }
+      @keyframes boot-spin { to { transform: rotate(360deg); } }
+    </style>
   </head>
   <body translate="no">
     <div id="root"></div>
+    <div id="boot-loader">
+      <div id="boot-loader-spinner"></div>
+      <div id="boot-loader-text">翡翠厅 加载中…</div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
