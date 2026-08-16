@@ -2628,7 +2628,22 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 - `handlePointerDown` 额外记录 `startLeftPx`（从 `dockRef` 当前实际渲染的 `getBoundingClientRect()` 量出来，不用假设它一定贴着某条边）和 `dockWidth`。
 - `handlePointerMove` 算 `leftPx = startLeftPx + dx`（`dx` 是指针的原始屏幕位移，边缘无关，天然正确跟手），裁到 `[0, 舞台宽度 - 胶囊宽度]` 不许拖出舞台；顺带算一个 `previewEdge`（`leftPx` 中点落在舞台哪一半）只用来给形状预览用。
 - `handlePointerUp` 用最后一次 move 算出的 `previewEdge` 吸附——落盘 `{ edge, topPercent }`，`leftPx` 这个自由坐标丢弃，`dragPos` 清空回 `null`，渲染切回原有的 `pos`/`topPx`/贴边 CSS 那一套。
-- `velvet.css`：`.voice-dock` 的 `left`/`top`/`right` transition 只加在**没在拖**（`:not(.voice-dock--dragging)`）的状态上——拖拽中如果还带着过渡动画会有跟手延迟，松手吸附回边缘那一下才需要平滑动画。，查证后确认是个长期存在的问题：`tokens.css` 定义了 6 个自定义字体变量（`--font-display`/`--font-body`/`--font-mono`/`--font-numerals`/`--font-card`/`--font-amount`），但 `index.html` 从项目最初的 commit 起就没有引入任何字体文件（没有 Google Fonts `<link>`，没有 `@font-face`），全都在用浏览器兜底字体渲染，不是这次改动引入的回归。用户目前只要求接入公共牌数字用的 `--font-card`（Oswald），其余 5 个字体暂时维持现状——如果后续也要接入，是同一个根因，同样在 `index.html` 加 `<link>` 即可。
+- `velvet.css`：`.voice-dock` 的 `left`/`top`/`right` transition 只加在**没在拖**（`:not(.voice-dock--dragging)`）的状态上——拖拽中如果还带着过渡动画会有跟手延迟，松手吸附回边缘那一下才需要平滑动画。
+
+### 部署：GitHub Actions 定时保活，防止 Render 免费档休眠（2026-08-16）
+
+**背景**：用户反馈"白屏时间这么久"，排查确认是 Render 免费档进程闲置 15 分钟自动休眠、下次访问要重新唤醒（约 1 分钟起步，实测经常感觉更久）。查证过体积增长（半个月内 dist 从 756KB 涨到 1.1MB，主要是新增的音效/蛋壳特效资源）不是主因，量级上跟冷启动比可以忽略。
+
+**方案选项（问过用户）**：升级 Render 付费档（约 $7/月，一次性彻底解决，不需要改代码）／加 Service Worker 预缓存页面壳子（免费但有工程成本和缓存失效风险）／定时保活请求（免费，不保证 100% 有效）。用户选择先试定时保活。
+
+**保活额度是否安全，查证了 Render 官方文档（render.com/docs/free）原文确认**：
+- "Render grants 750 Free instance hours to each workspace per calendar month"
+- "Render spins down a Free web service that goes 15 minutes without receiving any inbound traffic"
+- 一个月最多 744 小时（31 天），全月保活约耗 720-744 小时，在 750 小时额度以内**不会因为保活导致提前用完额度**——前提是这个 workspace 下只有这一个免费服务在跑，额度是整个 workspace 共享的。
+
+**实现**：没有用 cron-job.org 这类第三方服务（需要用户自己注册账号，Claude 没法代劳）——项目仓库是公开的（`Reyes324/velvet-room-poker`），GitHub Actions 的运行分钟数对公开仓库不计入用量额度，免费无限跑，改用仓库自己的 `.github/workflows/keep-alive.yml`：`schedule: cron '*/10 * * * *'`（每 10 分钟一次，留出安全余量应对 GitHub 定时任务可能有的调度延迟，不会卡到 15 分钟休眠线上）+ `workflow_dispatch` 手动触发入口，请求现有的 `/health` 健康检查接口（不需要新增服务端代码）。
+
+**已知局限（如实告知用户，没有夸大效果）**：不是 100% 保证——GitHub 定时任务本身允许有调度延迟、Render 自己的维护/重启窗口保活防不住、如果这个 workspace 以后加了别的常驻服务会一起分掉 750 小时额度。真要绝对稳，还是只有升级付费档这一条路。，查证后确认是个长期存在的问题：`tokens.css` 定义了 6 个自定义字体变量（`--font-display`/`--font-body`/`--font-mono`/`--font-numerals`/`--font-card`/`--font-amount`），但 `index.html` 从项目最初的 commit 起就没有引入任何字体文件（没有 Google Fonts `<link>`，没有 `@font-face`），全都在用浏览器兜底字体渲染，不是这次改动引入的回归。用户目前只要求接入公共牌数字用的 `--font-card`（Oswald），其余 5 个字体暂时维持现状——如果后续也要接入，是同一个根因，同样在 `index.html` 加 `<link>` 即可。
 
 ### Bug：人机对战选桌人数不生效，总是沿用上次的桌型（2026-08-16）
 

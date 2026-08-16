@@ -1376,3 +1376,8 @@
   - `VoiceChatDock.jsx`：新增 `dragPos` state，拖拽中横向自由跟手（不再立即锁定贴边），松手才计算吸附哪一边
   - `velvet.css`：`left`/`top`/`right` transition 只加在非拖拽状态，避免跟手延迟
   - **验收**：真实 Playwright（双人开局）量 bounding box 确认——默认贴右边垂直居中（x=1280-58=1222，无拖拽记录时）；拖到屏幕正中间时胶囊真的停在中间（x≈611，明显不贴任何一边）；松手后吸附到最近的左边（x=0）。截图确认视觉正常。服务端全量 393/395（2 个失败是已知的 `integration.test.js` 全量套件计时 flake，单独跑 29/29 全绿，跟本次纯前端改动无关）；客户端构建通过。
+
+- [x] **部署：GitHub Actions 定时保活，防止 Render 免费档休眠（2026-08-16，方案见 design.md 同名章节）**
+  - 新增 `.github/workflows/keep-alive.yml`：`cron '*/10 * * * *'` + `workflow_dispatch`，ping 现有的 `/health` 接口
+  - 查证 Render 官方文档（render.com/docs/free）确认 750 小时/月额度，全月保活（720-744 小时）不会超额；查证 Render 服务条款没有查到明确禁止保活 ping 的证据，社区里是常见做法
+  - **已知局限**：不保证 100%——GitHub 定时任务本身有调度延迟、Render 自己的维护窗口防不住；真要绝对稳只有升级付费档
