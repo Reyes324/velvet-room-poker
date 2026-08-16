@@ -10,9 +10,13 @@ function colorForId(id) {
 
 export default function SettlementModal({
   winners = [], myId, readyCount, totalCount, iAmReady, onReady,
-  isFoldWin = false, iAmWinner = false, myCardsRevealed = false, onReveal,
+  isFoldWin = false, iAmWinner = false, iFolded = false, myCardsRevealed = false, onReveal,
   endsAt = null,
 }) {
+  // Two people can opt into showing a hand nobody made them prove: the
+  // fold-win winner (nobody called them down), or anyone who folded this
+  // hand (showing off what they gave up).
+  const canReveal = (isFoldWin && iAmWinner) || iFolded;
   const secondsLeft = useSecondsLeft(endsAt);
 
   // 点过确认之后的文案。以前写的是"等待其他人确认…"，暗示要无限等别人——
@@ -47,7 +51,7 @@ export default function SettlementModal({
         })}
       </div>
 
-      {isFoldWin && iAmWinner ? (
+      {canReveal ? (
         <div className="modal-btns">
           <div
             className={`modal-btn modal-btn--secondary modal-btn--paired${myCardsRevealed ? ' modal-btn--revealed' : ''}`}

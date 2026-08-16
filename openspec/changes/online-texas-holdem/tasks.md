@@ -1342,3 +1342,24 @@
   - 输入条支持点空白处关闭（`pointerdown` 监听，语义等同 Escape：放弃不发送）+ 失焦即关闭（跟"键盘在不在"绑定，不只是"点了别的地方"这一种触发方式，用户反馈"输入框不用一直在，键盘唤起它才需要在"）；进/退场都有动画（`scale` 独立属性，不跟这个元素本来就有的 `transform:translateY(-50%)` 居中冲突，同一类坑聊天气泡自己的入场动画已经踩过一次）；点"发送"按钮本身用 `onPointerDown` 的 `preventDefault()` 挡掉误触发的失焦，不会跟提交流程抢跑
   - `PvePage.jsx`（人机对战）也接上了这套吸附组件——跟拍一拍在人机模式的处理方式一样，纯本地 state（`voiceTalking`/`chatBubble`），不接 `useVoiceMesh`，人机对战没有真实广播对象，用户反馈"方便我一个人测试样式"
   - **验收**：服务端全量 393 条通过（除已知 flake）；客户端构建/lint 持平基线；真实 Playwright 验证点空白处/失焦都触发退场动画且动画播完才真正移除、点发送不被失焦误关、人机对战模式吸附组件正常渲染并能收发
+
+- [x] **亮牌炫耀：扩大到所有弃牌玩家（2026-08-16，方案见 design.md 同名章节）**
+  - `server/index.js` `game:reveal-cards`：准入条件改成"fold-win 唯一赢家 或 这手牌里状态为 folded 的任意玩家"（新增场景，不替换原有 fold-win 赢家场景）
+  - `SettlementModal.jsx`：新增 `canReveal = (isFoldWin && iAmWinner) || iFolded`，亮牌按钮挂在合并条件上
+  - `RoomPage.jsx`：新增传入 `iFolded`（取自房间玩家状态 `status`），跟原有 `iAmWinner` 一起传给 `SettlementModal`
+  - **验收现状**：服务端全量 393 条通过（含原有 fold-win 亮牌测试，未回归）；客户端构建通过。**未补充**"真实摊牌中弃牌方亮牌"这个新场景的专门自动化测试——3 人局走完整手牌到摊牌需要脚本化 3 个真实 socket 玩家，成本较高，本轮先靠代码审查 + 现有回归覆盖；**真机验证也还没做**，下次有条件时找 3 人局补上。
+
+- [x] **Bug 修复：人机对战选桌人数不生效（2026-08-16，方案见 design.md 同名章节）**
+  - `server/index.js` `pve:start`：session 存在但请求的 `seatCount` 跟 `session.seatCount` 不一致时，先删除旧会话再落入新建分支
+  - `server/__tests__/pve.integration.test.js` 新增 2 项用例：选了不同人数 → 丢弃旧局开新的 4 人桌；选了相同人数 → 照常续局（`pot` 不重置）
+  - **验收**：`pve.integration.test.js` 14/14 通过；服务端全量 395/395 通过；客户端构建通过。**真机验证还没做**——需要真实浏览器里先开单挑局，返回首页选 4 人重开，确认真的变成 4 人桌。
+
+- [x] **计时开局倒计时改为全程常驻显示（2026-08-16，方案见 design.md 同名章节）**
+  - `GameTable.jsx`：`showCountdown` 去掉 5 分钟上限；`.top-bar-center` 改成房间号（标题）+ 倒计时（副标题）纵向堆叠
+  - `velvet.css`：`.top-bar-center` 加 `flex-direction:column`；房间号去边框/背景，改纯文字；倒计时非紧急态用淡色，最后 5 分钟切橙红紧急色
+  - **验收**：真实 Playwright（双人开计时局）确认倒计时开局即显示（不用等到最后 5 分钟）、跟房间号纵向堆叠不重叠（量了 bounding box：房间号 y=9.8~30.6，倒计时 y=32.6，无重叠）、非紧急态无 `--urgent` class、点房间号复制邀请链接功能不受影响；截图确认视觉效果协调。服务端全量 395/395、客户端构建均通过。
+
+- [x] **拍一拍表情白名单扩充：🤨❓🤡👏 + 选择器间距拉开（2026-08-16，方案见 design.md 同名章节）**
+  - `server/index.js`、`PlayerSeat.jsx` 的 `POKE_EMOJI` 都追加 `🤨`/`❓`/`🤡`/`👏`（9→13 个）
+  - `velvet.css` `.poke-picker` grid `gap` 2px→6px
+  - **验收**：真实 Playwright（双人开局，点对手头像唤起选择器）确认 13 个表情格子全部渲染、实测相邻格子间距 ≈6.3px（此前 2px）、任意两格无重叠；服务端全量 395/395、客户端构建均通过。截图确认 4 行布局整齐（🥚/❓ 在无头 Chromium 里因缺 emoji 字体显示成占位符，真机浏览器不受影响）。

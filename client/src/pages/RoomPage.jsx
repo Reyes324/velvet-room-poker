@@ -420,6 +420,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       {settlement && settlement.winners?.length > 0 && (() => {
         const isFoldWin = !!settlement.foldWin;
         const iAmWinner = isFoldWin && settlement.winners[0].id === playerId;
+        const iFolded = roomState?.players?.find(p => p.id === playerId)?.status === 'folded';
         const myCardsRevealed = !!revealedPlayers[playerId];
         return (
           <SettlementModal
@@ -432,6 +433,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
             onReady={handleReady}
             isFoldWin={isFoldWin}
             iAmWinner={iAmWinner}
+            iFolded={iFolded}
             myCardsRevealed={myCardsRevealed}
             onReveal={handleReveal}
           />

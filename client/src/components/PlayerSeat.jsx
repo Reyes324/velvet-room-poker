@@ -18,7 +18,7 @@ const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue'
 // than trusting the client. 🥚 additionally triggers the "egg splat"
 // special effect below (GitHub #26) — same broadcast, just a richer
 // render for this one glyph.
-const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚', '☕️', '😈'];
+const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚', '☕️', '😈', '🤨', '❓', '🤡', '👏'];
 
 // 两版纯 CSS 手画的"蛋壳裂开"（径向碎片版、两半壳分开版）用户都不满意，
 // 换成用户直接找来的透明背景 PNG 素材（client/src/assets/egg-splat.png，

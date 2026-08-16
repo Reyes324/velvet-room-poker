@@ -662,9 +662,11 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
 
   // 计时游戏 countdown — server is the authority on WHEN the timer ends
   // (an absolute timestamp), this just re-diffs against the client's own
-  // clock every second. Only rendered in the final 5 minutes per the
-  // original request — a full-session countdown badge would compete for
-  // attention with everything else in the top bar for most of the game.
+  // clock every second. Shown for the whole session now (user feedback,
+  // 2026-08-16 — used to only appear in the final 5 minutes, sharing the
+  // room-code slot exclusively; now stacks under the room code instead, so
+  // there's no exclusivity to gate on). Still switches to the urgent
+  // orange-red color in the final 5 minutes — see .timer-countdown--urgent.
   const [nowTick, setNowTick] = useState(Date.now());
   useEffect(() => {
     if (!gameTimerEndsAt) return;
@@ -672,7 +674,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     return () => clearInterval(id);
   }, [gameTimerEndsAt]);
   const timeLeftMs = gameTimerEndsAt ? gameTimerEndsAt - nowTick : null;
-  const showCountdown = timeLeftMs != null && timeLeftMs > 0 && timeLeftMs <= 5 * 60_000;
+  const showCountdown = timeLeftMs != null && timeLeftMs > 0;
+  const countdownUrgent = showCountdown && timeLeftMs <= 5 * 60_000;
   const countdownText = showCountdown
     ? `${String(Math.floor(timeLeftMs / 60000)).padStart(2, '0')}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`
     : null;
@@ -722,15 +725,16 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             剩余空间里"——用户看过 grid 三栏那版之后明确要求换回绝对居中
             （2026-08-14，见 velvet.css 的 .top-bar-center 注释）。 */}
         <div className="top-bar-center">
-          {countdownText ? (
-            <div className="timer-countdown">⏱ {countdownText}</div>
-          ) : roomCode && isPve ? (
+          {roomCode && isPve ? (
             <div className="top-room-code top-room-code--static">{roomCode}</div>
           ) : roomCode ? (
             <div className="top-room-code" onClick={copyRoomCode} title="点击复制邀请链接" role="button" aria-label="房间号，点击复制邀请链接">
               {codeCopied ? '已复制邀请链接 ✓' : roomCode}
             </div>
           ) : null}
+          {countdownText && (
+            <div className={`timer-countdown${countdownUrgent ? ' timer-countdown--urgent' : ''}`}>⏱ {countdownText}</div>
+          )}
         </div>
         <div className="top-bar-right">
           {/* 静音（用户反馈，2026-08-14）：一键开关下注/发牌/翻牌这几个

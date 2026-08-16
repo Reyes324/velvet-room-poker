@@ -782,7 +782,9 @@
    里居中，不管字形本身多宽，网格线永远对齐。8 个表情排成 4×2。之前
    放在最前面的"拍一拍（不带表情）"按钮已经去掉——双击头像本身就能
    触发（handleAvatarDoubleClick），选择器里留一个重复入口没必要。 */
-.poke-picker { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); display:grid; grid-template-columns:repeat(4, 32px); gap:2px; padding:5px 6px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:26; animation:actionBubbleIn .25s cubic-bezier(.34,1.56,.64,1) both; }
+/* gap 2px→6px（用户反馈，2026-08-16："互相之间间距稍微拉开一点点怕点
+   错"）——表情选项变多之后（现在 13 个）手指误触相邻格子的风险更明显。 */
+.poke-picker { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); display:grid; grid-template-columns:repeat(4, 32px); gap:6px; padding:5px 6px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:26; animation:actionBubbleIn .25s cubic-bezier(.34,1.56,.64,1) both; }
 .poke-picker-emoji { display:flex; align-items:center; justify-content:center; width:32px; height:32px; background:none; border:none; padding:0; font-size:18px; line-height:1; cursor:pointer; border-radius:8px; transition:background .12s ease, transform .12s ease; }
 .poke-picker-emoji:hover, .poke-picker-emoji:active { background:rgba(212,175,55,.18); transform:scale(1.15); }
 
@@ -1012,17 +1014,17 @@
 /* 跟顶部常规 toast 用同一套底色/圆角，但往下错开一整个 toast 的高度，
    避免语音报错和别的 toast（比如断线提示）同时出现时叠在同一行看不清。 */
 .voice-error-toast { top:calc(max(env(safe-area-inset-top,0px),20px) + 56px); }
-/* 计时游戏 final-5-minutes countdown — only ever shown in that window, so
-   the urgent orange-red (same hue as .think-overlay's action countdown,
-   not the everyday gold used everywhere else) is warranted the whole time
-   it's visible, no separate "almost urgent" state needed. Absolutely
-   centered in .top-bar (already position:relative) rather than a 3rd flex
-   child, so it doesn't disturb the existing menu-btn/bankroll spacing. */
+/* 计时游戏 countdown — 2026-08-16 起全程常驻显示（用户反馈），不再只在最
+   后 5 分钟出现。默认是跟房间号同色系的淡副标题态，不抢注意力；剩最后 5
+   分钟切到 .timer-countdown--urgent 的醒目橙红（跟 .think-overlay 的行动
+   倒计时同色系）——"紧急"这个设计意图保留，只是从"要不要显示"改成靠颜色
+   变化传达。房间号标题 + 这个副标题纵向堆叠在 .top-bar-center 里（见下）。 */
 .timer-countdown {
-  background:rgba(60,20,10,.35); border:1px solid rgba(255,122,69,.4); border-radius:14px;
-  padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
-  color:#FF7A45; letter-spacing:.5px; text-shadow:0 0 8px rgba(255,90,40,.35);
-  white-space:nowrap;
+  font-family:var(--font-mono); font-size:11px; font-weight:600;
+  color:rgba(212,175,55,.6); letter-spacing:.5px; white-space:nowrap;
+}
+.timer-countdown--urgent {
+  color:#FF7A45; text-shadow:0 0 8px rgba(255,90,40,.35);
 }
 /* Room code, top-center of the game screen (user feedback, #14 — others
    need a way to find the room to join). Lives in .top-bar-center, the
@@ -1035,12 +1037,11 @@
    .pause-btn, all de-framed). Font is smaller/looser than .room-code's
    lobby-only usage to fit comfortably in the top-bar strip alongside
    menu-btn/top-bar-right.
-   No border — even before the de-framing above, this one never had a
-   border of its own; keeping the soft fill + gold text lets it read as a
-   quieter label in the middle, not another button. */
+   2026-08-16：倒计时改成全程显示后，跟房间号纵向堆叠成"标题+副标题"（见
+   .top-bar-center 的 flex-direction:column），房间号顺势去掉了背景药丸/
+   圆角内边距，变成更朴素的标题文字，不再像个独立按钮。 */
 .top-room-code {
-  background:rgba(212,175,55,.1); border-radius:14px;
-  padding:5px 12px; font-family:var(--font-mono); font-size:13px; font-weight:700;
+  font-family:var(--font-mono); font-size:13px; font-weight:700;
   color:#D4AF37; letter-spacing:2px; cursor:pointer; white-space:nowrap;
 }
 /* 人机对战：这里显示的是字面量"人机对战"四个字，不是真实房间码，没有邀
@@ -1486,7 +1487,10 @@
    去框简化、实际宽度大幅收窄（见 .top-bar-right 里几个按钮改動）——两边
    都不再需要跟中间抢空间到会撞上的地步，靠 Playwright 实测的 bounding
    box 验证过，不是猜的。 */
-.top-bar-center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:flex; align-items:center; }
+/* 2026-08-16：倒计时改全程显示后，跟房间号不再互斥，纵向堆叠成"标题
+   （房间号）+ 副标题（倒计时）"，见 .top-room-code/.timer-countdown 的
+   同一条注释。 */
+.top-bar-center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:2px; }
 
 /* 用户追问（2026-07-28）：桌布边框能不能去掉、纹理是不是该布满全屏。
    之前那轮只是让 .game-stage 的纯色背景跟桌布同色系，桌布本身的编织纹理

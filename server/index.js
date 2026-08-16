@@ -21,7 +21,7 @@ const VALID_SEAT_COUNTS = [2, 4, 6, 8];
 // 果不够好，先从选择器里屏蔽（PlayerSeat.jsx 的 POKE_PICKER_EMOJI 不再
 // 包含它），换成更成熟的方案后再放出来——服务端白名单继续保留 🥚（不删），
 // 避免屏蔽期间万一有旧版前端缓存还在发这个表情时被拒绝。
-const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚', '☕️', '😈'];
+const POKE_EMOJI = ['😄', '😢', '👍', '😡', '❤️', '😂', '🥚', '☕️', '😈', '🤨', '❓', '🤡', '👏'];
 
 // 反馈提交的服务端校验上限——见下方 feedback:submit 处理逻辑。
 const FEEDBACK_MAX_TEXT_LENGTH = 2000;
@@ -1010,9 +1010,16 @@ function createServer({
       if (!room?.isAwaitingSettlementAck() || !room.game) return;
 
       const player = room.game.players.find(p => p.id === playerId);
-      // Must be a fold-win: this player didn't fold, and is the ONLY non-folded player
+      if (!player) return;
+      // Two people can legitimately opt into showing a hand nobody made
+      // them prove: (a) a fold-win winner — nobody called them down, so
+      // showing is purely voluntary; (b) anyone who folded this hand — they
+      // can show off what they gave up. Both only during the post-hand
+      // settlement wait, never mid-hand (that would leak live info to
+      // still-active opponents).
       const activePlayers = room.game.players.filter(p => p.status !== 'folded');
-      if (!player || player.status === 'folded' || activePlayers.length !== 1) return;
+      const isFoldWinWinner = player.status !== 'folded' && activePlayers.length === 1 && activePlayers[0].id === playerId;
+      if (!isFoldWinWinner && player.status !== 'folded') return;
       // No double-reveal
       if (!room.revealedPlayerIds) room.revealedPlayerIds = new Set();
       if (room.revealedPlayerIds.has(playerId)) return;
@@ -1029,10 +1036,12 @@ function createServer({
       // Same settlement-wait invariant room.lastShowdown already relies on:
       // no new hand can start until this one's wait resolves, so the most
       // recent handHistory entry is still this hand — patch its reveals in
-      // now that the winner opted in, instead of it staying permanently
-      // empty for a fold-win hand they later chose to show off.
+      // now that this player opted in, instead of their folded cards
+      // staying private forever. A folded player is never already in
+      // `reveals` (showdownReveal only ever contains contenders who didn't
+      // fold), so no dedupe check needed here.
       const lastHand = room.handHistory[room.handHistory.length - 1];
-      if (lastHand && lastHand.foldWin) {
+      if (lastHand) {
         lastHand.reveals.push({ id: playerId, name: player.name, holeCards: revealedHoleCards });
       }
     });
@@ -1196,10 +1205,22 @@ function createServer({
       socketToPveId.set(socket.id, pveId);
       pveActiveSocket.set(pveId, socket.id);
       let session = pveSessions.get(pveId);
+      // A picked seatCount that differs from the live session's own means
+      // the player explicitly chose a different table size (the seat
+      // picker buttons pass their own literal count; only the "继续上局"
+      // resume card ever passes back resumeCard.seatCount, which by
+      // construction always matches the existing session) — treat that as
+      // "start fresh", not "resume". Otherwise a stale session for this
+      // device's pveId would silently keep winning over whatever table
+      // size was just picked, forever.
+      const requestedSeatCount = Number(seatCount);
+      if (session && VALID_SEAT_COUNTS.includes(requestedSeatCount) && requestedSeatCount !== session.seatCount) {
+        pveSessions.delete(pveId);
+        session = null;
+      }
       if (!session) {
         const name = (playerName || '').trim() || '玩家';
-        const numericSeatCount = Number(seatCount);
-        const count = VALID_SEAT_COUNTS.includes(numericSeatCount) ? numericSeatCount : 2;
+        const count = VALID_SEAT_COUNTS.includes(requestedSeatCount) ? requestedSeatCount : 2;
         session = new PveSession(pveId, name, { seatCount: count });
         session.touch();
         pveSessions.set(pveId, session);

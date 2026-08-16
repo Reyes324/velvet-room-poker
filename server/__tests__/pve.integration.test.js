@@ -155,6 +155,43 @@ describe('集成测试 — PVE 人机对战', () => {
       expect(after.pot).toBe(before.pot); // same hand still in progress, not reset
     });
 
+    it('同一 pveId 再次 pve:start 时传了不同的 seatCount → 视为选了新桌型，丢弃旧会话开新局（用户反馈：选桌人数不生效，总是沿用上次的选择）', async () => {
+      const c1 = await connect();
+      const state1 = waitFor(c1, 'game:state');
+      c1.emit('pve:start', { playerName: 'Eve', pveId: 'p-reseat-1', seatCount: 2 });
+      const before = await state1;
+      expect(before.players).toHaveLength(2);
+
+      c1.disconnect();
+      await new Promise(r => setTimeout(r, 100));
+
+      const c2 = await connect();
+      const state2 = waitFor(c2, 'game:state');
+      c2.emit('pve:start', { playerName: 'Eve', pveId: 'p-reseat-1', seatCount: 4 });
+      const after = await state2;
+
+      expect(after.players).toHaveLength(4); // new 4-seat table, not the stale 2-seat one
+      expect(after.handNumber ?? 1).toBe(1); // brand-new hand, not the old one resumed
+    });
+
+    it('同一 pveId 再次 pve:start 且 seatCount 跟旧会话一致 → 照常续局，不受新分支影响', async () => {
+      const c1 = await connect();
+      const state1 = waitFor(c1, 'game:state');
+      c1.emit('pve:start', { playerName: 'Frank', pveId: 'p-reseat-2', seatCount: 4 });
+      const before = await state1;
+
+      c1.disconnect();
+      await new Promise(r => setTimeout(r, 100));
+
+      const c2 = await connect();
+      const state2 = waitFor(c2, 'game:state');
+      c2.emit('pve:start', { playerName: 'Frank', pveId: 'p-reseat-2', seatCount: 4 });
+      const after = await state2;
+
+      expect(after.players).toHaveLength(4);
+      expect(after.pot).toBe(before.pot); // same hand still in progress, not reset
+    });
+
     it('不同 pveId 各自独立——重连不会把两个不同玩家的对局混在一起', async () => {
       const c1 = await connect();
       const s1 = waitFor(c1, 'game:state');
