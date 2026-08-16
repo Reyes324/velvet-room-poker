@@ -26,6 +26,7 @@ SDD 文件位于 `openspec/changes/online-texas-holdem/`，包含 `design.md`（
 
 - 不经用户明确指令，不自动 push
 - commit message 用英文，格式：`type: description`
+- **push 前先查有没有人正在玩**：`curl https://velvet-room-poker.onrender.com/health`，看 `rooms` 是不是 0。push 会触发 Render 自动重新部署，服务器进程重启会清空内存里的牌局状态，正在玩的人会被直接踢出对局。`rooms > 0` 时先跟用户确认要不要等，不要闷头推（用户反馈，2026-08-16）。这只能查到联机房间数，查不到人机对战（PVE）在玩不在玩，PVE 本来就是纯本地会话、重启后客户端会自动感知重连失败）。
 
 ## 工作优先级
 
