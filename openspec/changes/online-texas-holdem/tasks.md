@@ -1397,3 +1397,8 @@
   - **验收**：真实 Playwright 确认 `document.fonts.check('700 15px Oswald')` 为 `true`；截图确认牌角字形正确（窄高的 Oswald 风格，不是缺字方块）。服务端全量 394/395（1 个已知全量套件 flake，单独跑 29/29 全绿，跟本次改动无关）；客户端构建通过；1.5KB 字体被 Vite 自动内联成 base64，不额外发请求
   - **后续追加（同一天）**：把剩余 4 个实际在用的字体（Cinzel/Crimson Pro/Space Mono/Inter）也一起自托管了，方案见 design.md 同名章节"后续追加"部分——共 11 个字重文件，子集化后约 100KB；顺手删掉死 token `--font-numerals`（DM Serif Display，0 处引用）、`index.html` 里的 Google Fonts `preconnect` 提示
   - **验收**：真实 Playwright 监听网络请求，确认走完一次开局流程零个 Google Fonts 请求；`document.fonts.check()` 对 5 个字体族全部返回 `true`；截图确认视觉正常。服务端全量 395/395、客户端构建通过
+
+- [x] **Bug 修复：微信内置浏览器悬浮前进/后退条盖住操作区（2026-08-16，方案见 design.md「URL 路由」章节的「修正」部分）**
+  - `App.jsx`：`handleJoined`/`handleLeave`/`handlePve`/`handlePveLeave` 里的 `window.history.pushState` 全部改成 `replaceState`，不再制造浏览历史，从根上不让微信弹出悬浮导航条
+  - **代价**：物理后退键不再能回首页，直接退出网页；首页有退出按钮，可接受
+  - **验收**：服务端全量 395/395 通过；客户端构建通过。**真机微信验证还没做**——这是微信内部未公开行为，需要用户在原截图那台设备上实测确认悬浮条不再出现、操作区不再被盖住

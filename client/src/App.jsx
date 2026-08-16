@@ -181,7 +181,7 @@ export default function App() {
   }
 
   function handleJoined(code, playerId, playerName, justCreated) {
-    window.history.pushState({}, '', '/room/' + code);
+    window.history.replaceState({}, '', '/room/' + code);
     setRoom({ code, playerId, playerName, justCreated });
   }
 
@@ -196,7 +196,7 @@ export default function App() {
     localStorage.removeItem('vr_pveActive');
     localStorage.removeItem('vr_pveLastActive');
     localStorage.removeItem('vr_pveSeatCount');
-    window.history.pushState({}, '', '/');
+    window.history.replaceState({}, '', '/');
     setRoom(null);
   }
 
@@ -208,7 +208,7 @@ export default function App() {
     // chose, instead of silently falling back to the pveSeatCount state
     // default (2) on a fresh page load.
     localStorage.setItem('vr_pveSeatCount', String(seatCount ?? 2));
-    window.history.pushState({}, '', '/pve');
+    window.history.replaceState({}, '', '/pve');
     setPveName(name);
     setPveSeatCount(seatCount ?? 2);
   }
@@ -217,7 +217,7 @@ export default function App() {
     localStorage.removeItem('vr_pveActive');
     localStorage.removeItem('vr_pveLastActive');
     localStorage.removeItem('vr_pveSeatCount');
-    window.history.pushState({}, '', '/');
+    window.history.replaceState({}, '', '/');
     setPveName(null);
   }
 
