@@ -1428,3 +1428,8 @@
   - `server/index.js`：新增 `roomPlayers`（所有联机房间里 `connected && !left` 的玩家数）、`pvePlayersOnline`（`pveActiveSocket.size`，真正连着的人机对战人数，不是 `pveSessions.size` 这种"可恢复对局数"）
   - **背景插曲**：加完之后正好碰上用户自己退出了人机对战但 `pveSessions` 还显示 1——借这个真实案例确认了 `pveSessions`（可恢复的局）跟 `pvePlayersOnline`（真的在线）是两码事，新字段选对了统计口径
   - **验收**：服务端全量 396/396 通过（另一次跑到 3 个失败，确认是已知的 `integration.test.js` 全量套件计时 flake，同一批测试单独跑/重跑就过，本次改动没碰任何逻辑分支，纯加一个只读字段，风险极低）
+
+- [x] **首页新增右上角"在线人数"徽标（2026-08-17，方案见 design.md 同名章节）**
+  - `HomePage.jsx`：新增 `onlineCount` state，30 秒轮询一次 `/health`，取 `roomPlayers + pvePlayersOnline`；0/未知时不渲染
+  - `HomePage.css`：新增 `.home-online-count`（跟 `.home-feedback-link` 镜像对称的圆角芯片）+ 跳动绿点 `.home-online-count__dot`（`prefers-reduced-motion` 关闭动画）
+  - **验收**：真实 Playwright（375×812）mock `/health` 确认渲染位置/无重叠/无溢出、0 人不渲染，截图确认视觉；客户端构建/lint 持平基线；`e2e/lobby.spec.js` 9/9 通过

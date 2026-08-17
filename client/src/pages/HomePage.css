@@ -236,6 +236,47 @@
 .home-feedback-link__icon { flex-shrink: 0; color: #D4AF37; }
 .home-feedback-link:active { background: rgba(212,175,55,.22); border-color: rgba(212,175,55,.45); opacity: .85; }
 
+/* 跟 .home-feedback-link 同一套"圆角芯片"语言、镜像贴在右上角，尺寸/字号
+   都对齐，读起来是一对，不是两个不相干的东西随便贴在页面上。 */
+.home-online-count {
+  position: absolute;
+  top: max(env(safe-area-inset-top, 0px), var(--sp-4));
+  right: var(--sp-4);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 15px;
+  background: rgba(212,175,55,.12);
+  border: 1px solid rgba(212,175,55,.3);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  color: var(--gold-200);
+}
+/* 唯一跳出金色主题的颜色——这是整个首页唯一需要传达"实时/活跃"这个含义
+   的地方，金色本身传达不出"活着"的信号感，跳动的绿点是被广泛认知的"在
+   线状态"视觉语言，比硬找一个金色系替代方案更直觉。 */
+.home-online-count__dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #4ADE80;
+  box-shadow: 0 0 6px rgba(74,222,128,.7);
+  animation: home-online-pulse 1.8s ease-in-out infinite;
+}
+@keyframes home-online-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(.7); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-online-count__dot { animation: none; }
+}
+
 .btn-primary {
   flex: 1;
   height: var(--control-h);

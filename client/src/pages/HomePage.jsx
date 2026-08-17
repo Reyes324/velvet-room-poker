@@ -20,6 +20,29 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   // 有会话时是 { type: 'room', code } 或 { type: 'pve', handNumber, seatCount }。
   const [resumeCard, setResumeCard] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  // 首页在线人数（用户需求，2026-08-17）——真人房间 + 人机对战一起算
+  // （用户明确选择"两者加起来"，不是只算真人对战）。null = 还没拿到第一
+  // 次结果，不渲染；拿到 0 也不渲染（同一次讨论确认："0 人在线"这种文案
+  // 反而显得冷清，不如干脆不出现，有人玩的时候才出现）。轮询 /health 而
+  // 不是走 socket，因为这是个信息性展示，不需要逐秒精确——/health 本身
+  // 很轻量（只是数几个 Map 的 size），30 秒一次的开销可以忽略不计。
+  const [onlineCount, setOnlineCount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        if (!cancelled) setOnlineCount((data.roomPlayers ?? 0) + (data.pvePlayersOnline ?? 0));
+      } catch {
+        // 冷启动/离线期间请求会失败——静默忽略，模块本来就在人数未知时
+        // 不渲染，不需要额外的错误状态。
+      }
+    }
+    poll();
+    const id = setInterval(poll, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   useEffect(() => {
     if (initialCode) {
@@ -278,6 +301,18 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
           带图标的金色芯片（GitHub issue #15 "反馈入口太不明显"），跟
           .menu-btn 同一套圆角矩形芯片语言，但依然只是次要入口，不跟"创
           建/加入房间"这两个主 CTA 抢视觉重量（2026-08-11）。 */}
+      {/* 在线人数（用户需求，2026-08-17）——跟左上角"问题反馈"对称放在右上
+          角，同一层级的次要信息展示，不是按钮。真人房间 + 人机对战人数相
+          加（用户明确选择"两者加起来"）。用一个跳动的绿点代替静态图标，
+          让"这是实时数据"这件事一眼可辨，不用靠文字说明；绿色特意跳出金
+          色主题——这是全局唯一一处需要传达"活的/在线"这个含义的地方，用
+          主题金色做不出「活着」的信号感，跟经典在线状态指示灯反而更像。 */}
+      {!!onlineCount && (
+        <div className="home-online-count">
+          <span className="home-online-count__dot" />
+          <span>{onlineCount} 人在桌</span>
+        </div>
+      )}
       <div className="home-feedback-link" onClick={() => setShowFeedback(true)}>
         <svg className="home-feedback-link__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M4 5.5C4 4.67 4.67 4 5.5 4h13c.83 0 1.5.67 1.5 1.5v10c0 .83-.67 1.5-1.5 1.5H9l-4 3.5v-3.5H5.5C4.67 17 4 16.33 4 15.5v-10Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
