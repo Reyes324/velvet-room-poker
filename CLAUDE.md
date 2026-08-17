@@ -26,7 +26,7 @@ SDD 文件位于 `openspec/changes/online-texas-holdem/`，包含 `design.md`（
 
 - 不经用户明确指令，不自动 push
 - commit message 用英文，格式：`type: description`
-- **push 前先查有没有人正在玩**：`curl https://velvet-room-poker.onrender.com/health`，看 `rooms`（联机房间数）和 `pveSessions`（人机对战会话数）是不是都是 0。push 会触发 Render 自动重新部署，服务器进程重启会清空内存里的牌局状态，正在玩的人会被直接踢出对局。任意一个 > 0 时先跟用户确认要不要等，不要闷头推（用户反馈，2026-08-16；`pveSessions` 是同一天补的，最初漏掉了人机对战这块）。
+- **push 前先查有没有人正在玩**：`curl https://velvet-room-poker.onrender.com/health`，看 `roomPlayers`（联机房间里真正连着的人数）和 `pvePlayersOnline`（真正连着的人机对战人数）是不是都是 0。push 会触发 Render 自动重新部署，服务器进程重启会清空内存里的牌局状态，正在玩的人会被直接踢出对局。任意一个 > 0 时先跟用户确认要不要等，不要闷头推（用户反馈，2026-08-16）。**不要用 `pveSessions`/`rooms` 判断"有没有人在玩"**——那两个是"存在多少个房间/多少个可恢复的对局"，跟"现在真的有人连着"是两码事：真实踩过一次，用户已经退出人机对战，`pveSessions` 却还显示 1（对局在 30 分钟窗口内被故意保留、方便断线重连），2026-08-17 加了 `roomPlayers`/`pvePlayersOnline` 这两个真实在线人数字段，改用这两个判断。
 
 ## 工作优先级
 
