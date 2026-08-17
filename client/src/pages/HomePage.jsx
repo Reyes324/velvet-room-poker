@@ -20,6 +20,12 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   // 有会话时是 { type: 'room', code } 或 { type: 'pve', handNumber, seatCount }。
   const [resumeCard, setResumeCard] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [toast, setToast] = useState(null); // { msg, type } | null
+
+  function showToast(msg, type = 'info') {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  }
   // 首页在线人数（用户需求，2026-08-17）——真人房间 + 人机对战一起算
   // （用户明确选择"两者加起来"，不是只算真人对战）。null = 还没拿到第一
   // 次结果，不渲染；拿到 0 也不渲染（同一次讨论确认："0 人在线"这种文案
@@ -122,7 +128,17 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
     if (!initialCode) return;
     function peek() {
       socket.emit('room:peek', { code: initialCode }, (res) => {
-        if (res && !res.error) setInviterName(res.hostName);
+        if (res && !res.error) { setInviterName(res.hostName); return; }
+        // 邀请链接指向的房间已经不存在（过期/被清理/打错）——之前这里什么
+        // 都不做，人直接停在"加入房间"表单上，房间码还预填在输入框里，
+        // 只有真的点了"加入"才会报错，等于让用户自己去踩一次才知道链接
+        // 失效了（用户反馈，2026-08-17）。现在直接在这一步就说清楚，退回
+        // 首页默认态——mode/code 只是本地 state，这里改了就跟着变，不需要
+        // App.jsx 那边的 initialCode 也变（它本来就只在挂载那一刻读一次）。
+        showToast('该邀请链接已失效，房间不存在', 'danger');
+        setMode(null);
+        setCode('');
+        window.history.replaceState({}, '', '/');
       });
     }
     if (socket.connected) peek(); else socket.once('connect', peek);
@@ -323,6 +339,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
         <span>问题反馈</span>
       </div>
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} playerName={name} />}
+      {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
     </div>
   );
 }

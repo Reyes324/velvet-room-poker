@@ -76,6 +76,17 @@ test.describe('大厅流程', () => {
     await ctx1.close();
     await ctx2.close();
   });
+
+  test('过期/不存在的邀请链接：提示房间已失效，退回首页默认态，不停在加入表单上（用户反馈，2026-08-17）', async ({ page }) => {
+    await page.goto('/room/000000'); // 6位格式合法，但这个房间从没被创建过
+    await expect(page.locator('.toast')).toBeVisible();
+    await expect(page.locator('.toast')).toContainText('失效');
+    // 不再是"加入房间"模式——首页默认的创建/加入两个按钮应该重新出现
+    await expect(page.locator('button:has-text("创建房间")')).toBeVisible();
+    await expect(page.locator('.home-input--code')).toHaveCount(0);
+    // URL 也应该退回裸域名，不留着那个失效的邀请链接
+    await expect(page).toHaveURL(/\/$/);
+  });
 });
 
 test.describe('冷启动会话恢复（切 App 被系统回收标签页 → 整页重载）', () => {

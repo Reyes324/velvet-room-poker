@@ -1433,3 +1433,8 @@
   - `HomePage.jsx`：新增 `onlineCount` state，30 秒轮询一次 `/health`，取 `roomPlayers + pvePlayersOnline`；0/未知时不渲染
   - `HomePage.css`：新增 `.home-online-count`（跟 `.home-feedback-link` 镜像对称的圆角芯片）+ 跳动绿点 `.home-online-count__dot`（`prefers-reduced-motion` 关闭动画）
   - **验收**：真实 Playwright（375×812）mock `/health` 确认渲染位置/无重叠/无溢出、0 人不渲染，截图确认视觉；客户端构建/lint 持平基线；`e2e/lobby.spec.js` 9/9 通过
+
+- [x] **Bug 修复：过期邀请链接停在加入表单上没提示（2026-08-17，方案见 design.md 同名章节）**
+  - `HomePage.jsx`：新增 `toast` state；`room:peek` 探测失败时弹 toast + 重置 mode/code 回首页默认态 + URL 退回裸域名
+  - `e2e/lobby.spec.js`：新增回归用例
+  - **验收**：`e2e/lobby.spec.js` 10/10 通过；客户端构建/lint 持平基线
