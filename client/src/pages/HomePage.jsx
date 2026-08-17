@@ -310,7 +310,7 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
       {!!onlineCount && (
         <div className="home-online-count">
           <span className="home-online-count__dot" />
-          <span>{onlineCount} 人在桌</span>
+          <span>{onlineCount} 人在线</span>
         </div>
       )}
       <div className="home-feedback-link" onClick={() => setShowFeedback(true)}>
