@@ -1372,7 +1372,7 @@ function createServer({
   // memory forever with nothing to ever clear it. Sweeps every 15 minutes;
   // .unref() so this interval alone never keeps the Node process (or a test
   // run) alive.
-  const ROOM_IDLE_TTL_MS = 12 * 60 * 60 * 1000;
+  const ROOM_IDLE_TTL_MS = 60 * 60 * 1000; // 用户反馈（2026-08-17）：12 小时太久了，缩到 1 小时
   const sweepInterval = setInterval(() => rooms.sweepIdleRooms(ROOM_IDLE_TTL_MS), 15 * 60 * 1000);
   sweepInterval.unref();
 
