@@ -278,7 +278,19 @@ function createServer({
   const SETTLEMENT_DISPLAY_MS = settlementDisplayMs;
 
   app.use(express.static(path.join(__dirname, '../client/dist')));
-  app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.rooms.size, pveSessions: pveSessions.size }));
+  app.get('/health', (_, res) => {
+    let roomPlayers = 0;
+    for (const room of rooms.rooms.values()) {
+      roomPlayers += room.players.filter(p => p.connected && !p.left).length;
+    }
+    res.json({
+      ok: true,
+      rooms: rooms.rooms.size,
+      roomPlayers,
+      pveSessions: pveSessions.size,
+      pvePlayersOnline: pveActiveSocket.size,
+    });
+  });
   // Pass root+relative (not a raw absolute path) so express/send's dotfile
   // check only inspects "index.html", not every ancestor directory in the
   // checkout path — a raw absolute path 404s if the checkout lives under

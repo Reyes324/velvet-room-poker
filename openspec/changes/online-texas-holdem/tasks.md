@@ -1423,3 +1423,8 @@
   - `RoomPage.jsx`/`PvePage.jsx`：新增 `actionBubbles` state，在各自 `action:happened` 回调里直接设置气泡（不再依赖 `GameTable.jsx` 里监听 `gameState` 的 effect），并把 `actionBubbles`/`setActionBubbles` 传给 `GameTable`
   - `GameTable.jsx`：删掉本地 `actionBubbles` state 和监听 `gameState` 设置气泡的 effect，改成接收 props；按街道清空气泡的 sweep effect 不受影响，原样保留
   - **验收**：客户端构建/lint 通过（lint 相比之前净减 2 个既有 error）；服务端全量 396/396（1 个已知 flake，跟改动无关）；`e2e/game.spec.js` 25/26（唯一失败项确认是改动前就存在的既有失败）；新增 `e2e/actionBubbleRegression.spec.js` 冒烟测试通过。**真正的时序竞态无法用脚本确定性复现，真机多打几手交叉确认还没做**
+
+- [x] **`/health` 增加在线人数字段（2026-08-17，用户询问"能不能看在线人数"）**
+  - `server/index.js`：新增 `roomPlayers`（所有联机房间里 `connected && !left` 的玩家数）、`pvePlayersOnline`（`pveActiveSocket.size`，真正连着的人机对战人数，不是 `pveSessions.size` 这种"可恢复对局数"）
+  - **背景插曲**：加完之后正好碰上用户自己退出了人机对战但 `pveSessions` 还显示 1——借这个真实案例确认了 `pveSessions`（可恢复的局）跟 `pvePlayersOnline`（真的在线）是两码事，新字段选对了统计口径
+  - **验收**：服务端全量 396/396 通过（另一次跑到 3 个失败，确认是已知的 `integration.test.js` 全量套件计时 flake，同一批测试单独跑/重跑就过，本次改动没碰任何逻辑分支，纯加一个只读字段，风险极低）
