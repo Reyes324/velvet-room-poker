@@ -713,6 +713,18 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               )}
             </div>
           )}
+          {/* 聊天记录（用户反馈 2026-08-28）：从菜单里挪出来单独一个顶部图
+              标——菜单是"低频操作抽屉"，聊天记录是"想到就想立刻翻一下"的
+              东西，藏在菜单第三层不够顺手。跟静音/暂停同一套 44px 圆角矩
+              形图标按钮语言。PVE 没有真人聊天可回溯（PvePage 的聊天纯本
+              地气泡、不走服务端），不显示这个按钮。 */}
+          {!isPve && (
+            <div className="top-chat-history-btn" onClick={() => onOpenChatHistory?.()} aria-label="聊天记录" role="button">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true">
+                <path d="M4 5h16v11H8l-4 4V5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+              </svg>
+            </div>
+          )}
         </div>
       </div>
       {paused && (
@@ -737,12 +749,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
             <div className="menu-row" onClick={() => { setShowMenu(false); onOpenLedger?.(); }}>账本</div>
             <div className="menu-row" onClick={() => { setShowMenu(false); onOpenHandHistory?.(); }}>牌局记录</div>
-            {/* PVE 没有真人聊天可回溯（PvePage 的聊天纯本地气泡，不走服务端），
-                这条只在真人房间显示，跟 voiceEnabled 只在真人房间打开是同一个
-                "isPve 直接砍掉不适用功能"的做法。 */}
-            {!isPve && (
-              <div className="menu-row" onClick={() => { setShowMenu(false); onOpenChatHistory?.(); }}>聊天记录</div>
-            )}
             {isHost && (
               <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
             )}

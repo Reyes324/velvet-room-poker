@@ -885,11 +885,11 @@
   width:32px; height:36px; display:flex; align-items:center; justify-content:center;
   color:#D4AF37; cursor:pointer;
 }
-.top-mute-btn, .pause-btn {
+.top-mute-btn, .pause-btn, .top-chat-history-btn {
   width:32px; height:36px; display:flex; align-items:center; justify-content:center;
   color:#D4AF37; cursor:pointer; transition:color .2s ease, opacity .15s;
 }
-.top-mute-btn:active, .pause-btn:active { opacity:.6; }
+.top-mute-btn:active, .pause-btn:active, .top-chat-history-btn:active { opacity:.6; }
 .pause-btn--active { color:#27AE60; }
 
 /* 暂停态遮罩：只挡操作，不挡视觉——手牌/公共牌照常可见，只是盖一层半透
