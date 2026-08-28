@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ICE_SERVERS, micErrorText, shouldReportVoiceDiagnostic } from '../utils/voice';
+import { ICE_SERVERS, micErrorText, shouldReportVoiceDiagnostic, detectEnv } from '../utils/voice';
 
 // 语音诊断上报的轮询间隔——见 design.md「生产环境语音诊断上报」。10 秒
 // 是"够密集到能抓住 SPEAKING_SILENCE_WINDOW_MS（5 秒）那个窗口、又不会
@@ -63,7 +63,17 @@ export function useVoiceMesh({ socket, emit, playerId }) {
       }
     };
     document.addEventListener('pointerdown', retry);
-    return () => document.removeEventListener('pointerdown', retry);
+    // 微信内置浏览器（XWeb 内核）对"什么算用户手势"判断比标准浏览器更严格——
+    // 一个 `pointerdown` 事件监听器里异步调用的 `.play()`，在微信里不一定被
+    // 认可为用户触发，标准解法是额外监听微信自己的 `WeixinJSBridgeReady`
+    // （用户反馈 2026-08-27：在微信内置浏览器里从头到尾听不到任何人说话，
+    // 且确认点过按钮——单靠 pointerdown 重试没能恢复，符合这个已知坑）。
+    // 非微信环境这个事件永远不会触发，注册了也没有副作用。
+    document.addEventListener('WeixinJSBridgeReady', retry);
+    return () => {
+      document.removeEventListener('pointerdown', retry);
+      document.removeEventListener('WeixinJSBridgeReady', retry);
+    };
   }, [enabled]);
 
   // 实时音量（0..1），playerId -> 强度，自己和对方共用同一张表。刻意不进
@@ -174,7 +184,20 @@ export function useVoiceMesh({ socket, emit, playerId }) {
       el.srcObject = stream;
       el.autoplay = true;
       el.playsInline = true;
-      el.play?.().catch(() => { pendingPlayRef.current.add(el); });
+      el.play?.().catch(() => {
+        pendingPlayRef.current.add(el);
+        // 跟 bytesReceived 停滞那种"包没到"的诊断是两类完全不同的失败——这里
+        // 音频包已经到了（ontrack 已触发），单纯是浏览器不让播，会被现有的
+        // shouldReportVoiceDiagnostic 判定漏掉（那个只看 bytesReceived），所以
+        // 单独上报一次，见 design.md「#48 语音听不到」2026-08-27 复查记录。
+        emit('voice:diagnostic', {
+          kind: 'autoplay-blocked',
+          remotePlayerId,
+          ua: navigator.userAgent,
+          isWechat: detectEnv().isWechat,
+          at: Date.now(),
+        });
+      });
       pc.__audioEl = el;
       attachAnalyser(remotePlayerId, stream);
     };
