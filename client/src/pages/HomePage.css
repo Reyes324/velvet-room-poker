@@ -158,11 +158,14 @@
 
 .home-pve-link {
   /* 贴近页面底部，跟卡片本身（垂直居中）的位置脱钩——不管卡片多高、
-     视口多高，这个入口始终在接近视口底边的地方，而不是紧跟在卡片下方。 */
+     视口多高，这个入口始终在接近视口底边的地方，而不是紧跟在卡片下方。
+     用户反馈（2026-08-29）"入口往上一点"——从贴着视口底边（--sp-8/32px）
+     抬到 --sp-16/64px，还是明显跟卡片本身的"创建/加入房间"分开一层，
+     不是紧跟在卡片下面，只是没有以前那么贴底。 */
   position: absolute;
   left: 0;
   right: 0;
-  bottom: max(env(safe-area-inset-bottom, 0px), var(--sp-8));
+  bottom: max(env(safe-area-inset-bottom, 0px), var(--sp-16));
   z-index: 1;
   text-align: center;
   font-family: var(--font-mono);
