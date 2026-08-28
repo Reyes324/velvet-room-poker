@@ -291,6 +291,19 @@ function createServer({
       pvePlayersOnline: pveActiveSocket.size,
     });
   });
+  // 谁在线（用户反馈 2026-08-28）——/health 只给数量，push 前想知道"是不是
+  // 认识的人在玩、能不能等"就得猜。跟 /health 分开一个接口，不是往里面加
+  // 字段：/health 给自动化健康检查用，越精简越好；这个是给人看的，可以带
+  // 名字。不加鉴权——这个项目现在只有几个朋友玩，跟 /health 本身已经公开
+  // 暴露房间数/人数是同一个信任级别，不是新增的风险面。
+  app.get('/status', (_, res) => {
+    const roomsOut = [];
+    for (const room of rooms.rooms.values()) {
+      const players = room.players.filter(p => p.connected && !p.left).map(p => p.name);
+      if (players.length > 0) roomsOut.push({ code: room.code, players });
+    }
+    res.json({ ok: true, rooms: roomsOut });
+  });
   // Pass root+relative (not a raw absolute path) so express/send's dotfile
   // check only inspects "index.html", not every ancestor directory in the
   // checkout path — a raw absolute path 404s if the checkout lives under

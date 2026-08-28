@@ -49,6 +49,18 @@ describe('集成测试 — 房间管理', () => {
     expect(data.playerId).toBe('p1');
   });
 
+  it('/status 列出当前在线的房间和玩家名字，没人在的房间不列出', async () => {
+    const c1 = await connect();
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'p1', playerName: 'Alice' });
+    const { code } = await joined1;
+
+    const res = await fetch(`${url}/status`);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.rooms).toEqual([{ code, players: ['Alice'] }]);
+  });
+
   it('两个玩家加入同一房间，双方都收到 room:state', async () => {
     const [c1, c2] = await Promise.all([connect(), connect()]);
 
