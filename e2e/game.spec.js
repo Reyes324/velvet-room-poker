@@ -265,6 +265,57 @@ test.describe('Bug 回归', () => {
     await ctx1.close();
     await ctx2.close();
   });
+
+  // 用户反馈（2026-08-29）："中途弃牌的人也应该能在结算弹窗里亮牌炫耀"——
+  // 代码里这条逻辑（SettlementModal 的 canReveal）2026-08-16 就写了，但
+  // RoomPage.jsx 算 iFolded 时读的是 roomState.players（房间级花名册，
+  // 从来不带 status 字段），不是 gameState.players（GameEngine 每手实际
+  // 广播的、真正带 status 的那份）——canReveal 因此永远是 false，这个功
+  // 能从一开始就没真的生效过，此前也没有 e2e 覆盖到，才拖了两周多没人
+  // 发现。这条测试就是补这个覆盖空白，不是泛泛地测亮牌功能。
+  test('中途弃牌的玩家，真摊牌结算后能看到"亮牌炫耀"（不只是 fold-win 赢家）', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    const ctx3 = await browser.newContext();
+    const p1 = await ctx1.newPage(); // 会主动弃牌
+    const p2 = await ctx2.newPage();
+    const p3 = await ctx3.newPage();
+
+    const code = await createRoom(p1, 'Alice');
+    await joinRoom(p2, 'Bob', code);
+    await joinRoom(p3, 'Carol', code);
+    await startGame(p1);
+
+    const pages = [p1, p2, p3];
+    let folded = false;
+    for (let i = 0; i < 40 && !(await p2.locator(S.settlement).isVisible().catch(() => false)); i++) {
+      for (const p of pages) {
+        if (!(await p.locator(S.actionBar).isVisible().catch(() => false))) continue;
+        if (p === p1 && !folded && await p.locator(S.foldBtn).isVisible().catch(() => false)) {
+          await p.locator(S.foldBtn).click();
+          folded = true;
+          continue;
+        }
+        if (await p.locator(S.checkBtn).isVisible().catch(() => false)) await p.locator(S.checkBtn).click();
+        else if (await p.locator(S.callBtn).isVisible().catch(() => false)) await p.locator(S.callBtn).click();
+      }
+    }
+
+    await expect(p2.locator(S.settlement)).toBeVisible({ timeout: 10000 });
+    expect(folded, 'P1 应该在测试过程中真的弃过一次牌').toBe(true);
+    // 真摊牌（不是 fold-win）——脚本只让 P1 弃过牌，P2/P3 全程只 check/
+    // call、从没弃过，两人都留到了结算，说明这是真摊牌分出的胜负，不是
+    // "唯一没弃牌的人直接赢"的 fold-win，跟这条要验证的场景对得上。
+    const revealBtn = p1.locator('.modal-btn--secondary.modal-btn--paired');
+    await expect(revealBtn).toBeVisible({ timeout: 5000 });
+    await expect(revealBtn).toHaveText('亮牌炫耀');
+    await revealBtn.click();
+    await expect(revealBtn).toHaveText('已亮牌 ✓');
+
+    await ctx1.close();
+    await ctx2.close();
+    await ctx3.close();
+  });
 });
 
 // ─── S4：游戏中途加人（第十轮起：允许加入，旁观至下一手）────────────────────────

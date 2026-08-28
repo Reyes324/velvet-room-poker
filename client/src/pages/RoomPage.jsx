@@ -466,7 +466,15 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       {settlement && settlement.winners?.length > 0 && (() => {
         const isFoldWin = !!settlement.foldWin;
         const iAmWinner = isFoldWin && settlement.winners[0].id === playerId;
-        const iFolded = roomState?.players?.find(p => p.id === playerId)?.status === 'folded';
+        // `roomState.players` is the persistent room roster (id/name/chips/
+        // debt/connected/left) — it never carries a per-hand `status` field
+        // at all (see RoomManager.js's toJSON()), so reading `.status` off
+        // it was always `undefined` and this always evaluated to `false`.
+        // The real per-hand fold/active/allin status lives on `gameState.
+        // players` (GameEngine.getPublicState()), which is still the
+        // just-finished hand's state at this point — a new hand's
+        // `game:state` doesn't arrive until after settlement resolves.
+        const iFolded = gameState?.players?.find(p => p.id === playerId)?.status === 'folded';
         const myCardsRevealed = !!revealedPlayers[playerId];
         return (
           <SettlementModal
