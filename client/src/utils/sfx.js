@@ -23,6 +23,18 @@ let muted = (() => {
   try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; }
 })();
 
+// Safari's AudioSession API (iOS/macOS only — no-op elsewhere): once any
+// <audio> element has played, Safari defaults it to the exclusive "playback"
+// session category, which keeps ducking/blocking the user's other audio
+// (background music, other apps) even after our own mute toggle is off and
+// nothing is actually playing. These are short table SFX, not something
+// that should ever take over the device's audio session — "ambient" mixes
+// with whatever else is playing and also respects the hardware mute switch.
+// 用户反馈 2026-08-26（issue #51）："打牌音效即使关了，也占用系统其他声音的播放"。
+try {
+  if (navigator.audioSession) navigator.audioSession.type = 'ambient';
+} catch { /* unsupported browser — no-op */ }
+
 export function isSfxMuted() { return muted; }
 
 export function setSfxMuted(next) {
