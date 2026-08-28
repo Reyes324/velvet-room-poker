@@ -716,15 +716,15 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           {/* 聊天记录（用户反馈 2026-08-28）：从菜单里挪出来单独一个顶部图
               标——菜单是"低频操作抽屉"，聊天记录是"想到就想立刻翻一下"的
               东西，藏在菜单第三层不够顺手。跟静音/暂停同一套 44px 圆角矩
-              形图标按钮语言。PVE 没有真人聊天可回溯（PvePage 的聊天纯本
-              地气泡、不走服务端），不显示这个按钮。 */}
-          {!isPve && (
-            <div className="top-chat-history-btn" onClick={() => onOpenChatHistory?.()} aria-label="聊天记录" role="button">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true">
-                <path d="M4 5h16v11H8l-4 4V5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-              </svg>
-            </div>
-          )}
+              形图标按钮语言。PVE 也显示（用户反馈 2026-08-29："方便我自
+              己测试"）——数据来源不一样（PvePage 走本地 state，不是服务
+              端 chatLog），但入口和面板本身复用同一套，按钮这层不用关心
+              这个区别，交给 onOpenChatHistory 各自实现。 */}
+          <div className="top-chat-history-btn" onClick={() => onOpenChatHistory?.()} aria-label="聊天记录" role="button">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true">
+              <path d="M4 5h16v11H8l-4 4V5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+            </svg>
+          </div>
         </div>
       </div>
       {paused && (

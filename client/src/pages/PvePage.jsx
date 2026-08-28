@@ -8,6 +8,7 @@ import SettlementModal from '../components/SettlementModal';
 import BustDecisionModal from '../components/BustDecisionModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
+import ChatHistoryModal from '../components/ChatHistoryModal';
 import FeedbackModal from '../components/FeedbackModal';
 
 // Same pacing as RoomPage's real-showdown reveal — see that file's own
@@ -36,8 +37,14 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   const [toast, setToast] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
   const [showHandHistory, setShowHandHistory] = useState(false);
+  const [showChatHistory, setShowChatHistory] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
+  // 聊天记录面板在人机对战里没有服务端 chatLog 可拉（PvePage 的聊天纯本
+  // 地气泡，见 sendChat 和上面 pokedSeat 那条注释）——用户反馈（2026-08-29）
+  // "希望人机对战也有入口，方便我自己测试"，跟 pokedSeat/voiceTalking 是
+  // 同一类需求：不接服务端，纯本地攒一份列表，够自己看效果就行。
+  const [chatHistoryLocal, setChatHistoryLocal] = useState([]);
   const settlementTimerRef = useRef(null);
   // 拍一拍在人机对战里没有服务端广播这条路可走（AI 收不到，也没有第二个
   // 真人需要同步）——用户反馈（2026-08-13）："人机对战也保留发表情这个
@@ -63,6 +70,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
     setTimeout(() => {
       setChatBubble(b => (b?.key === key ? null : b));
     }, 6000); // 跟 RoomPage.jsx 的真实实现时长保持一致
+    setChatHistoryLocal(prev => [...prev, { fromId: fromId ?? null, text, at: Date.now() }]);
   }
 
   // fromId 作为参数传入（调用处 onPoke={(targetId, emoji) => poke(targetId,
@@ -201,6 +209,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         settlementOpen={!!settlement}
         onOpenLedger={() => setShowLedger(true)}
         onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
+        onOpenChatHistory={() => setShowChatHistory(true)}
         onOpenFeedback={() => setShowFeedback(true)}
         onPoke={(targetId, emoji) => poke(targetId, emoji, me?.id)}
         pokedSeat={pokedSeat}
@@ -227,6 +236,14 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
           hands={handHistory}
           myId={me?.id}
           onClose={() => setShowHandHistory(false)}
+        />
+      )}
+      {showChatHistory && (
+        <ChatHistoryModal
+          messages={chatHistoryLocal}
+          players={gameState.players}
+          myId={me?.id}
+          onClose={() => setShowChatHistory(false)}
         />
       )}
 {/* 用户反馈 #5（2026-08-04）："结算弹窗没出来，就先出来这个了，我都
