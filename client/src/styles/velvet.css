@@ -706,7 +706,10 @@
      中心放大+淡入淡出——足够表达"话冒出来"这个意思，且不管走哪种定位
      方式都只有一条路径，不会有方向相关的差异。 */
   transform-origin:50% 50%;
-  animation:chatBubbleIn .28s cubic-bezier(.34,1.56,.64,1) both, chatBubbleOut .3s ease-in 3.7s forwards;
+  /* 淡出延迟要跟 RoomPage.jsx/PvePage.jsx 里清 chatBubble 状态的 setTimeout
+     对齐（6000ms，2026-08-28 从 4000ms 拉长）——延迟到 5.7s 开始、.3s 淡出，
+     刚好在 JS 那边把气泡从 DOM 里砍掉之前走完，不会被提前截断。 */
+  animation:chatBubbleIn .28s cubic-bezier(.34,1.56,.64,1) both, chatBubbleOut .3s ease-in 5.7s forwards;
 }
 @keyframes chatBubbleIn {
   0%   { opacity:0; scale:.5; }

@@ -133,14 +133,14 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     },
     // 打字聊天气泡（2026-08-15）——复用拍一拍这套"单个 key 化气泡+定时自
     // 清"的机制，不是另起一套状态管理。文字比表情需要更长的阅读时间，
-    // 拉到 4s（拍一拍那个 1.6s 是给一个 emoji + 几个字的短标签，聊天是一
-    // 整句话）。
+    // 拉到 6s（拍一拍那个 1.6s 是给一个 emoji + 几个字的短标签，聊天是一
+    // 整句话；原本是 4s，用户反馈稍微短了点，2026-08-28 拉到 6s）。
     'chat:message': ({ fromId, text }) => {
       const key = Date.now();
       setChatBubble({ fromId, text, key });
       setTimeout(() => {
         setChatBubble(b => (b?.key === key ? null : b));
-      }, 4000);
+      }, 6000);
     },
     'game:cards-revealed': ({ playerId, playerName, holeCards }) => {
       setRevealedPlayers(prev => ({ ...prev, [playerId]: { playerName, holeCards } }));

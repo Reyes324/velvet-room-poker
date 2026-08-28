@@ -62,7 +62,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
     setChatBubble({ fromId: fromId ?? null, text, key });
     setTimeout(() => {
       setChatBubble(b => (b?.key === key ? null : b));
-    }, 4000); // 跟 RoomPage.jsx 的真实实现时长保持一致
+    }, 6000); // 跟 RoomPage.jsx 的真实实现时长保持一致
   }
 
   // fromId 作为参数传入（调用处 onPoke={(targetId, emoji) => poke(targetId,
