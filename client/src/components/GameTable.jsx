@@ -640,6 +640,15 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           <div className="top-feedback-link" onClick={() => onOpenFeedback?.()} role="button" aria-label="反馈">
             <span>反馈</span>
           </div>
+          {/* 补偿间隔条（用户反馈 2026-08-29"感觉没有居中"）——房间号本身
+              的像素中心一直是真正的屏幕正中央，"看着不居中"是因为左右两
+              组按钮宽度不等，两侧的可见空隙跟着不对称。右边现在是三个图
+              标（静音/暂停/聊天记录），比左边（菜单+反馈）宽一截，用一
+              条不可见的占位补上这个差，不是去改居中算法本身（量过，换
+              哪种居中实现结果都一样，问题不在算法）。宽度对应右边多出
+              的那一个图标按钮（32px + 半个间距），不是量出来的魔法数字，
+              往后右边图标数量再变，这条也该跟着重新核对。 */}
+          <div className="top-bar-left-spacer" aria-hidden="true" />
         </div>
         {/* Room code sits in the same absolutely-centered slot as the final-5-
             minutes timer countdown — mutually exclusive with it (the timer

@@ -859,6 +859,7 @@
 /* "反馈"挪到左边、跟菜单按钮放一起了（用户反馈，2026-08-14 三次调整），
    包一层 flex 容器让两者贴着对齐，跟 .top-bar-right 是同一个模式。 */
 .top-bar-left { display:flex; align-items:center; gap:6px; }
+.top-bar-left-spacer { width:22px; flex-shrink:0; }
 .menu-btn { width:36px; height:36px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:26px; color:#D4AF37; cursor:pointer; }
 /* 牌桌顶部不再用这个（换成了下面的语音说话指示条），但 Lobby.jsx 的筹码
    显示仍在用同一个 class，样式留着。 */
@@ -1526,16 +1527,20 @@
    页顶栏/操作栏底下的留白色调跟桌布本身更接近，不再像单独镶了一圈黑框。 */
 .game-stage { position:relative; width:100%; height:100dvh; height:calc(var(--vh, 1dvh) * 100); display:flex; flex-direction:column; overflow:hidden; background:radial-gradient(ellipse at 50% 45%, var(--felt-700) 0%, var(--felt-900) 55%, var(--surface-base) 100%); }
 /* 左右两块 flex two-ends，中间 .top-bar-center 是真正的绝对屏幕居中（见
-   它自己的规则）——第一版试过三栏 grid 让中间"居中在剩余空间里"，用户看
-   完效果覺得偏移太明显，改回硬居中，靠右边按钮组去框收窄宽度（而不是
-   中间让步）来避免重叠。 */
+   它自己的规则）。踩过的坑：房间号自己的像素中心永远等于屏幕中心（这点
+   grid/flex/absolute 三种实现方式量出来都一样，跟居中方式本身无关），
+   但"看起来居不居中"其实取决于房间号两侧的**可见空隙**是否对称——那由
+   左右两组按钮各自的实际宽度决定，宽度不等，空隙就不对称，肉眼看着就
+   像偏了（哪怕房间号的像素中心真的没偏）。第一版两组宽度本来就凑巧接
+   近；加了第三个图标（聊天记录）到右边组后，右边比左边多出一截，2026-
+   08-29 用户反馈"感觉没有居中"——重新用 Playwright 量了两组的真实宽度
+   （左 75px / 右 100px），确认差的正是新加的那个图标，不是居中算法本
+   身的锅，靠下面 .top-bar-left 里的补偿间隔条配平，不是换一套居中实现
+   （换了也解决不了，已经拿两种实现方式量过是同一个结果）。 */
 .game-stage .top-bar { position:relative; flex:0 0 auto; padding:14px 14px 10px; padding-top:max(env(safe-area-inset-top,0px),14px); display:flex; justify-content:space-between; align-items:center; z-index:10; }
 /* 用户看完"居中在中间栏"的效果后明确要真正的绝对屏幕居中，不要跟着两边
    宽度偏——回到 position:absolute 卡视口正中央这套（2026-08-14 二次修
-   订）。能这样做而不重新引入最初那次重叠 bug，前提是右边那组按钮已经
-   去框简化、实际宽度大幅收窄（见 .top-bar-right 里几个按钮改動）——两边
-   都不再需要跟中间抢空间到会撞上的地步，靠 Playwright 实测的 bounding
-   box 验证过，不是猜的。 */
+   订）。 */
 /* 2026-08-16：倒计时改全程显示后，跟房间号不再互斥，纵向堆叠成"标题
    （房间号）+ 副标题（倒计时）"，见 .top-room-code/.timer-countdown 的
    同一条注释。 */
