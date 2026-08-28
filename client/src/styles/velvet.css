@@ -1472,13 +1472,41 @@
 /* 聊天记录（ChatHistoryModal）——复用上面 .hh-panel 这套外壳（overlay/
    header/empty 完全共用），只有内容区是简单的单栏消息列表，不需要
    .hh-panel-body 那套双栏 rail+content，直接铺满即可。 */
-.ch-list { flex:1 1 auto; min-height:0; overflow-y:auto; padding:10px 16px calc(20px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:10px; }
-.ch-row { display:flex; flex-direction:column; gap:3px; }
-.ch-row-meta { display:flex; align-items:baseline; gap:8px; }
+/* .ch-panel 是 .hh-panel 的窄版兄弟——外壳属性（定位/背景/边框/阴影/入场
+   动画）原样照抄，只有宽度不同：用户反馈（2026-08-29）"只出来一半就好，
+   不用全页面，临时查看一下的东西，字体不要太小"。55vw 封顶 300px——手机
+   上大致是屏幕一半宽（375px 屏约等于 206px，接近一半），桌面端不会跟着
+   vw 涨到离谱，同时留够空间让文字不用挤成两三个字一行。 */
+.ch-panel {
+  position:absolute; top:0; right:0; bottom:0; width:min(300px, 55vw);
+  background:linear-gradient(165deg,var(--surface-raised),var(--surface-base));
+  border-left:1px solid rgba(212,175,55,.22);
+  box-shadow:-16px 0 48px rgba(4,14,7,.5);
+  display:flex; flex-direction:column;
+  animation:hhPanelIn .38s cubic-bezier(.16,1,.3,1) both;
+}
+@media (prefers-reduced-motion: reduce) { .ch-panel { animation:none; } }
+.ch-list { flex:1 1 auto; min-height:0; overflow-y:auto; padding:12px 14px calc(20px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:14px; }
+/* 每条消息一个"泡"，不是裸文字列表——跟牌桌上那个即时冒出来的聊天气泡
+   （.poke-bubble--chat：象牙白底+金边）是同一套视觉语言，翻记录时读起
+   来像是"回看刚才那些气泡"，不是另开一套新样式（用户反馈 2026-08-29：
+   "里面的内容要用设计 skills 看一下"，原来纯文字列表跟这个牌桌的视觉
+   语言脱节）。自己发的消息靠右、别人的靠左——这是聊天记录最基本的可扫
+   读性，不用逐条看名字就知道是谁说的。 */
+.ch-row { display:flex; flex-direction:column; gap:4px; max-width:88%; align-self:flex-start; }
+.ch-row--me { align-self:flex-end; align-items:flex-end; }
+.ch-row-meta { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; padding:0 2px; }
+.ch-row--me .ch-row-meta { flex-direction:row-reverse; }
 .ch-row-name { font-family:var(--font-body); font-size:12px; font-weight:700; color:#D4AF37; }
 .ch-row--me .ch-row-name { color:var(--state-safe); }
 .ch-row-time { font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); }
-.ch-row-text { font-family:var(--font-body); font-size:14px; color:var(--text-primary); line-height:1.4; word-break:break-word; }
+.ch-row-bubble {
+  background:#FBF6EC; border:1.5px solid var(--gold-400); border-radius:13px;
+  padding:8px 13px; box-shadow:0 3px 10px rgba(0,0,0,.28);
+  font-family:var(--font-body); font-size:15px; font-weight:600; color:var(--ink-black);
+  line-height:1.45; word-break:break-word;
+}
+.ch-row--me .ch-row-bubble { border-color:var(--state-safe); }
 
 /* ── LOBBY ────────────────────────────────────────────────── */
 /* Contrast fix (user feedback: "整个页面很多文字看不清"): several lobby

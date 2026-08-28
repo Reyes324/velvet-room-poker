@@ -4,9 +4,12 @@ function formatTime(ts) {
 
 // 文字聊天回溯（用户反馈 2026-08-28，issue #52 拆分出的文字部分）——气泡本
 // 身只停 6 秒（见 chatText），错过了就彻底没了，这里给一个能翻回去看的常
-// 驻列表。复用 HandHistoryModal 那套 .hh-panel 全屏侧滑面板样式（不是重新
-// 做一套视觉语言），但内容简单得多，不需要它那套双栏 rail+scrollspy——就
-// 是一条按时间顺序往下排的消息列表。
+// 驻列表。复用 HandHistoryModal 那套 overlay/header/empty 视觉语言（同一
+// 套 hh-panel-* class），但面板本身用独立的 .ch-panel，不是 .hh-panel——
+// 用户反馈（2026-08-29）"只出来一半就好，不用全页面，临时看一眼的东西"，
+// 牌局记录是要坐下来慢慢翻的数据密集页面，配得上接近全屏宽度；聊天记录
+// 是随手扫一眼的轻量东西，两者故意不共用同一个宽度。内容也简单得多，不
+// 需要牌局记录那套双栏 rail+scrollspy——就是一条按时间顺序往下排的列表。
 //
 // `messages` 是服务端 chatLog 的原样（`{ fromId, text, at }`），发送者名
 // 字不在这里存副本，用 `players` 现查——跟牌桌其余地方（比如聊天气泡本
@@ -20,7 +23,7 @@ export default function ChatHistoryModal({ messages, players, myId, onClose }) {
 
   return (
     <div className="hh-panel-overlay" onClick={onClose}>
-      <div className="hh-panel" onClick={e => e.stopPropagation()}>
+      <div className="ch-panel" onClick={e => e.stopPropagation()}>
         <div className="hh-panel-header">
           <div className="hh-panel-back" onClick={onClose}>‹</div>
           <div className="hh-panel-title">聊天记录</div>
@@ -36,7 +39,7 @@ export default function ChatHistoryModal({ messages, players, myId, onClose }) {
                   <span className="ch-row-name">{nameOf(m.fromId)}</span>
                   <span className="ch-row-time">{formatTime(m.at)}</span>
                 </div>
-                <div className="ch-row-text">{m.text}</div>
+                <div className="ch-row-bubble">{m.text}</div>
               </div>
             ))}
           </div>
