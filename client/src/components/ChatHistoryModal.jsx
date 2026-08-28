@@ -11,6 +11,10 @@ function formatTime(ts) {
 // 是随手扫一眼的轻量东西，两者故意不共用同一个宽度。内容也简单得多，不
 // 需要牌局记录那套双栏 rail+scrollspy——就是一条按时间顺序往下排的列表。
 //
+// 消息行本来试过一版气泡卡片样式（借牌桌上即时聊天气泡的配色），用户
+// 看完反馈"就正常的文字就好了，按时间顺序往下铺"——改回纯文字，不分左
+// 右对齐、不带卡片背景，字号维持之前"不要太小"那版定下的 15px。
+//
 // `messages` 是服务端 chatLog 的原样（`{ fromId, text, at }`），发送者名
 // 字不在这里存副本，用 `players` 现查——跟牌桌其余地方（比如聊天气泡本
 // 身）解析 fromId 的方式一致，房间的 players 数组从不真正删行，历史消息
@@ -34,12 +38,12 @@ export default function ChatHistoryModal({ messages, players, myId, onClose }) {
         ) : (
           <div className="ch-list">
             {messages.map((m, i) => (
-              <div key={i} className={`ch-row${m.fromId === myId ? ' ch-row--me' : ''}`}>
+              <div key={i} className="ch-row">
                 <div className="ch-row-meta">
                   <span className="ch-row-name">{nameOf(m.fromId)}</span>
                   <span className="ch-row-time">{formatTime(m.at)}</span>
                 </div>
-                <div className="ch-row-bubble">{m.text}</div>
+                <div className="ch-row-text">{m.text}</div>
               </div>
             ))}
           </div>
