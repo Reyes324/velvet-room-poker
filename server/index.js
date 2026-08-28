@@ -874,6 +874,17 @@ function createServer({
       io.to(room.code).emit('chat:message', { fromId: playerId, text: result.text });
     });
 
+    // 聊天记录面板打开时按需拉取，不是每次 room:state 广播都带上——room:state
+    // 几乎每个牌局动作都会广播一次，把整份聊天记录塞进去纯属浪费；面板本身
+    // 也不需要实时刷新，打开那一刻拉一次全量就够，新消息仍然走已有的
+    // chat:message 广播（用于气泡），面板开着的话客户端自己再追加进列表。
+    // 跟 room:get-hand-history → room:chat-history 同一个"请求-单播响应"
+    // 模式，不用 ack 回调——项目里已有的先例，不用另起一套。
+    socket.on('room:get-chat-history', ({ playerId } = {}) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      socket.emit('room:chat-history', room?.chatLog ?? []);
+    });
+
     socket.on('room:restart', ({ playerId }) => {
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return socket.emit('game:error', '未找到房间');

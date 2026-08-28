@@ -5,6 +5,7 @@ const BIG_BLIND = 20;
 const POKE_COOLDOWN_MS = 2000;
 const CHAT_COOLDOWN_MS = 2000; // 跟拍一拍用同一个节流量级——都是"手抖连点"该被吞掉的场景
 const CHAT_MAX_LEN = 40; // 气泡浮层展示，不是聊天面板，太长的字会溢出/被截断，从源头卡住
+const CHAT_LOG_MAX = 200; // 常驻聊天记录的封顶条数，见 Room 构造函数里 chatLog 的注释
 // 断线跨手自动离座（nextRound）的最短持续时长——见 setConnected 上方注释，
 // 一次瞬时的 disconnect 事件不代表人真的走了，只有断线撑过这个时长才在手
 // 牌边界移出。2026-08-14 用户定的值：长到能滤掉正常网络抖动/切后台，又不
@@ -47,6 +48,14 @@ class Room {
     // with chips/debt (a fresh night), but NOT by the host's "结束游戏"
     // (which deliberately keeps the session's numbers intact).
     this.handHistory = [];
+    // 文字聊天回溯（用户反馈 2026-08-28，issue #52 拆分出的文字部分——语音
+    // 那半维持原来的"暂不做"）。跟 handHistory 同一个存法：只在内存里，
+    // 跟房间一起生命周期，不做单独持久化。跟聊天气泡不是一回事——气泡是
+    // "刚才有人说了句话"这个即时提示，6 秒自己消失（见 chatText 那套）；
+    // 这个是"翻一下最近聊了啥"的常驻记录，两套状态各自独立，互不影响。
+    // 封顶 CHAT_LOG_MAX 条，不是无限攒——避免极端情况下（比如挂机刷屏）
+    // 内存无限增长，200 条对朋友局的聊天量级绰绰有余。
+    this.chatLog = [];
     // Idle-expiry bookkeeping (see RoomManager.sweepIdleRooms) — updated by
     // touch() on essentially every successful room event. Deliberately NOT
     // touched by a disconnect itself (that's the absence of activity, not
@@ -238,7 +247,10 @@ class Room {
     const last = this.chatCooldowns.get(fromId);
     if (last && Date.now() - last < CHAT_COOLDOWN_MS) return { ignored: true };
     this.chatCooldowns.set(fromId, Date.now());
-    return { ok: true, text: trimmed.slice(0, CHAT_MAX_LEN) };
+    const finalText = trimmed.slice(0, CHAT_MAX_LEN);
+    this.chatLog.push({ fromId, text: finalText, at: Date.now() });
+    if (this.chatLog.length > CHAT_LOG_MAX) this.chatLog.shift();
+    return { ok: true, text: finalText };
   }
 
   // Whole-session tally of egg pokes landed on each target — used by the
@@ -421,6 +433,7 @@ class Room {
     this.game = null;
     this.awaitingBustResolution = false;
     this.handHistory = [];
+    this.chatLog = [];
     this.gameTimerEndsAt = null;
     this.awaitingTimerDecision = false;
     this.dealerId = this.players.find(p => !p.left)?.id ?? null;

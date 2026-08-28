@@ -61,6 +61,28 @@ describe('集成测试 — 房间管理', () => {
     expect(body.rooms).toEqual([{ code, players: ['Alice'] }]);
   });
 
+  it('room:get-chat-history 拿到这个房间的完整聊天记录（issue #52）', async () => {
+    const [c1, c2] = await Promise.all([connect(), connect()]);
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'p1', playerName: 'Alice' });
+    const { code } = await joined1;
+    const state2 = waitFor(c2, 'room:state');
+    c2.emit('room:join', { code, playerId: 'p2', playerName: 'Bob' });
+    await state2;
+
+    c1.emit('chat:message', { playerId: 'p1', text: '大家好' });
+    c2.emit('chat:message', { playerId: 'p2', text: '你好呀' });
+    await new Promise(r => setTimeout(r, 50)); // 让两条广播都真正落到服务端的 chatLog 里
+
+    const history = waitFor(c2, 'room:chat-history');
+    c2.emit('room:get-chat-history', { playerId: 'p2' });
+    const messages = await history;
+    expect(messages.map(m => ({ fromId: m.fromId, text: m.text }))).toEqual([
+      { fromId: 'p1', text: '大家好' },
+      { fromId: 'p2', text: '你好呀' },
+    ]);
+  });
+
   it('两个玩家加入同一房间，双方都收到 room:state', async () => {
     const [c1, c2] = await Promise.all([connect(), connect()]);
 

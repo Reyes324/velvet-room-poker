@@ -729,6 +729,35 @@ describe('RoomManager — 打字聊天（2026-08-15）', () => {
     room.chatCooldowns.set('p1', Date.now() - 3000);
     expect(room.chat('p1', '第二条').ok).toBe(true);
   });
+
+  it('成功发送的消息会记进 chatLog（用于聊天记录回溯，issue #52）', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.chat('p1', '第一条');
+    room.chatCooldowns.set('p1', Date.now() - 3000);
+    room.chat('p1', '第二条');
+    expect(room.chatLog.map(m => m.text)).toEqual(['第一条', '第二条']);
+    expect(room.chatLog[0].fromId).toBe('p1');
+    expect(typeof room.chatLog[0].at).toBe('number');
+  });
+
+  it('冷却期内被忽略/空消息报错的都不进 chatLog', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.chat('p1', '第一条');
+    room.chat('p1', '第二条'); // 冷却内，ignored
+    room.chat('p1', '   '); // 空消息，error
+    expect(room.chatLog).toHaveLength(1);
+  });
+
+  it('chatLog 超过上限时丢最早的一条，不是无限增长', () => {
+    const room = rooms.create('p1', 'Alice');
+    for (let i = 0; i < 205; i++) {
+      room.chat('p1', `msg${i}`);
+      room.chatCooldowns.set('p1', Date.now() - 3000); // 每条都绕开冷却
+    }
+    expect(room.chatLog).toHaveLength(200);
+    expect(room.chatLog[0].text).toBe('msg5'); // 前 5 条（msg0~msg4）被挤掉
+    expect(room.chatLog.at(-1).text).toBe('msg204');
+  });
 });
 
 describe('RoomManager — 被扔鸡蛋计数（用户反馈，2026-08-14："底部能否加上谁被扔鸡蛋多少次，只需要显示最多次数的那个"）', () => {

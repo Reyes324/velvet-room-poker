@@ -11,6 +11,7 @@ import BustDecisionModal from '../components/BustDecisionModal';
 import BustWaitModal from '../components/BustWaitModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
+import ChatHistoryModal from '../components/ChatHistoryModal';
 import TimerDecisionModal from '../components/TimerDecisionModal';
 import FeedbackModal from '../components/FeedbackModal';
 
@@ -32,8 +33,10 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   const [settlementProgress, setSettlementProgress] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
   const [showHandHistory, setShowHandHistory] = useState(false);
+  const [showChatHistory, setShowChatHistory] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
   const [pokedSeat, setPokedSeat] = useState(null); // { targetId, key } | null
   const [chatBubble, setChatBubble] = useState(null); // { fromId, text, key } | null
   // { [actorId]: { text, key, folded, allIn, raise, phase } } — set here (not
@@ -112,6 +115,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     },
     'game:error': (msg) => { showToast(msg, 'danger'); unlockAction(); },
     'room:hand-history': (hands) => setHandHistory(hands),
+    'room:chat-history': (messages) => setChatHistory(messages),
     // No separate transient toast for game:timer-expired — it's redundant
     // with (and visually overlapped, confirmed on a real render) the
     // persistent state already driven off roomState.awaitingTimerDecision
@@ -311,6 +315,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           onExit={leaveRoom}
           onOpenLedger={() => setShowLedger(true)}
           onOpenHandHistory={() => { emit('room:get-hand-history', { playerId }); setShowHandHistory(true); }}
+          onOpenChatHistory={() => { emit('room:get-chat-history', { playerId }); setShowChatHistory(true); }}
           copied={copied}
         />
         {showLedger && (
@@ -327,6 +332,14 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
             hands={handHistory}
             myId={playerId}
             onClose={() => setShowHandHistory(false)}
+          />
+        )}
+        {showChatHistory && (
+          <ChatHistoryModal
+            messages={chatHistory}
+            players={roomState?.players ?? []}
+            myId={playerId}
+            onClose={() => setShowChatHistory(false)}
           />
         )}
         {toast && <div className={`toast toast--${toast.type}`}>{toast.msg}</div>}
@@ -350,6 +363,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         onRebuy={rebuy}
         onOpenLedger={() => setShowLedger(true)}
         onOpenHandHistory={() => { emit('room:get-hand-history', { playerId }); setShowHandHistory(true); }}
+        onOpenChatHistory={() => { emit('room:get-chat-history', { playerId }); setShowChatHistory(true); }}
         onOpenFeedback={() => setShowFeedback(true)}
         onPoke={poke}
         pokedSeat={pokedSeat}
@@ -388,6 +402,14 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           hands={handHistory}
           myId={playerId}
           onClose={() => setShowHandHistory(false)}
+        />
+      )}
+      {showChatHistory && (
+        <ChatHistoryModal
+          messages={chatHistory}
+          players={roomState?.players ?? []}
+          myId={playerId}
+          onClose={() => setShowChatHistory(false)}
         />
       )}
       {/* 用户反馈 #5（2026-08-04）：破产那一手看不到结算，不知道自己怎么输

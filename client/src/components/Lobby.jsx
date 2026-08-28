@@ -10,7 +10,7 @@ function colorForId(id) {
 // Lobby / waiting room — styled by shared velvet.css (.lobby/.room-code/.pl-row/...)
 const TIMER_OPTIONS = [15, 30, 60];
 
-export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, onRebuy, onExit, onOpenLedger, onOpenHandHistory, copied, maxSeats = 9 }) {
+export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, onRestart, onRebuy, onExit, onOpenLedger, onOpenHandHistory, onOpenChatHistory, copied, maxSeats = 9 }) {
   const [showExit, setShowExit] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [rebuying, setRebuying] = useState(false);
@@ -45,6 +45,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
           <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
             <div className="menu-row" onClick={() => { setShowMenu(false); onOpenLedger?.(); }}>账本</div>
             <div className="menu-row" onClick={() => { setShowMenu(false); onOpenHandHistory?.(); }}>牌局记录</div>
+            <div className="menu-row" onClick={() => { setShowMenu(false); onOpenChatHistory?.(); }}>聊天记录</div>
             <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowExit(true); }}>退出房间</div>
           </div>
         </div>

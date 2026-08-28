@@ -1443,3 +1443,10 @@
   - `server/index.js`：`ROOM_IDLE_TTL_MS` 从 `12 * 60 * 60 * 1000` 改成 `60 * 60 * 1000`
   - **代价（已跟用户确认是明确取舍）**：原来覆盖的"隔夜回来看账本"场景不再覆盖
   - **验收**：服务端全量 396/396（另一次跑到 2 个失败，确认是已知的 `integration.test.js` 计时 flake，单独跑重跑就过，本次改动只是改一个常量数值，没碰任何逻辑分支）
+
+- [x] **文字聊天记录回溯（2026-08-28，issue #52 拆分出的文字部分，方案见 design.md 同名章节）**
+  - `server/RoomManager.js`：`Room` 新增 `chatLog`（内存、随房间生命周期、封顶 200 条），`chat()` 成功时追加
+  - `server/index.js`：新增 `room:get-chat-history` → `room:chat-history`（单播，跟 `room:get-hand-history` 同一模式）
+  - 新增 `client/src/components/ChatHistoryModal.jsx`（复用 `HandHistoryModal` 的 `.hh-panel` 视觉语言）；`Lobby.jsx`/`GameTable.jsx` 菜单各加"聊天记录"一行（PVE 不显示）
+  - **没做**：语音留痕维持原"暂不做"
+  - **验收**：`RoomManager.test.js` 新增 3 条、`integration.test.js` 新增 1 条真实双 socket 测试，全过；客户端构建/lint 持平基线（27/9）

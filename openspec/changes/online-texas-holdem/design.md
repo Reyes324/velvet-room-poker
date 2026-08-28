@@ -2804,3 +2804,17 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 **修法**：`room:peek` 返回 `error` 时，弹一条 toast（"该邀请链接已失效，房间不存在"，复用 `RoomPage.jsx` 已有的 `.toast`/`.toast--danger` 样式，不是新造一套），把本地 `mode`/`code` state 重置回首页默认态，并把 URL 用 `replaceState` 退回裸域名（不留着这条失效链接，刷新也不会再触发同一次探测）。不需要动 `App.jsx` 的 `initialCode` prop 本身——那个 prop 只在组件挂载那一刻被读一次（对应的 `useEffect` 依赖 `[initialCode]`，值不变就不会再触发），后续 UI 状态完全由 `HomePage.jsx` 自己的本地 state 决定。
 
 **验收**：真实 Playwright 新增用例（直接访问一个从没被创建过的 6 位房间码路径，确认 toast 出现且包含"失效"字样、"创建房间"默认按钮重新可见、房间码输入框消失、URL 退回裸域名），`e2e/lobby.spec.js` 全量 10/10 通过；客户端构建/lint 持平基线。
+
+### 新增：文字聊天记录回溯（用户反馈，2026-08-28，issue #52 拆分出的文字部分）
+
+**背景**：issue #52 原文"文字消息和语音消息想要有个记录回溯"，此前用四点框架评估后"暂不做"（跟"匿名不留痕"的实时设计冲突）。跟用户重新讨论后拆分成两半：语音留痕（要存音频文件）维持原结论不变；文字留痕重新评估——成本量级完全不同（存几句话 vs 存录音文件），四点过一遍都站得住：需求合理（气泡只停 6 秒，错过就彻底没了）、当前阶段就有必要（不是大规模场景才需要）、成本低（不用数据库，内存里存跟房间生命周期绑定，没有语音那种"存不存录音"的隐私顾虑）、复杂度可控（一个入口+一个只读面板，不牵扯交互权限模型）。**结论：接受，只做文字，语音部分维持不做。**
+
+**实现**：
+- `server/RoomManager.js`：`Room` 新增 `chatLog` 数组（跟 `handHistory` 同一个存法——内存里、随房间生命周期、`restart()` 时一起清空，不做单独持久化）。`chat()` 成功发送时把 `{ fromId, text, at }` 追加进去，封顶 `CHAT_LOG_MAX = 200` 条（`shift()` 掉最早的），冷却期内被忽略/空消息报错的都不进日志。
+- `server/index.js`：新增 `room:get-chat-history` → `room:chat-history`（单播回给请求的 socket），跟已有的 `room:get-hand-history` → `room:hand-history` 同一个"请求-单播响应"模式，不新起 ack 回调这套机制。不在 `room:state` 广播里带聊天记录——那个广播太频繁，每次都带一份完整聊天记录纯属浪费；面板本身也不需要实时刷新，打开那一刻拉一次全量就够。
+- 客户端新增 `ChatHistoryModal.jsx`，复用 `HandHistoryModal` 那套 `.hh-panel` 全屏侧滑面板视觉语言（overlay/header/empty 完全共用 CSS class），内容是简单的单栏消息列表（`.ch-list`/`.ch-row`），不需要牌局记录那套双栏 rail+scrollspy。发送者名字不在消息里存副本，用房间当前 `players` 列表按 `fromId` 现查（历史消息里哪怕对应的人已经离开，`players` 数组从不真正删行，仍然查得到名字）。
+- `Lobby.jsx`/`GameTable.jsx` 的菜单里各加一条"聊天记录"，跟"账本"/"牌局记录"同一排。PVE（人机对战）不显示这条——`PvePage.jsx` 的聊天纯本地气泡、不走服务端，没有真人聊天可回溯。
+
+**没做的事**：语音留痕（维持原"暂不做"结论）；跨房间保留聊天记录（回溯范围就是"这个房间生命周期内"，跟账本/牌局记录的范围一致）。
+
+**验收**：`server/__tests__/RoomManager.test.js` 新增 3 条（chatLog 正确记录、被忽略/报错的消息不进日志、超过 200 条上限时挤掉最早的）；`server/__tests__/integration.test.js` 新增 1 条真实双 socket 集成测试（两人各发一条消息，第三方请求 `room:get-chat-history` 拿到完整、顺序正确的记录）。服务端全量 401 条（1 个已知的 `integration.test.js` 计时 flake，单独跑/全量反复验证过跟这次改动无关）。客户端构建通过；lint 27 errors/9 warnings，跟改动前持平（无新增）。
