@@ -25,23 +25,20 @@ let muted = (() => {
 
 // Safari's AudioSession API (iOS/macOS only — no-op elsewhere). This is a
 // page-wide setting (shared with useVoiceMesh.js's voice audio, not scoped
-// per <audio> element), and Apple's fixed type presets couple two
-// properties that this app wants decoupled: whether audio respects the
-// hardware mute switch, and whether it mixes with other apps' audio
-// instead of taking over playback.
+// per <audio> element). "ambient" mixes with other apps' audio but goes
+// silent when the hardware mute switch is on — this was the 2026-08-26 fix
+// for issue #51 ("打牌音效即使关了，也占用系统其他声音的播放").
 //
-//   - "ambient": mixes with other audio, but goes silent when the mute
-//     switch is on. This was the 2026-08-26 fix for issue #51 ("打牌音效
-//     即使关了，也占用系统其他声音的播放").
-//   - "playback": ignores the mute switch, but per Apple's own docs is
-//     exclusive by default — it can duck/pause other apps' audio. This is
-//     the type currently in use (用户反馈 2026-08-29："我要的是物理按键，
-//     不影响声效"，愿意接受这个代价 — see design.md's write-up of this
-//     decision for the real-device verification that should follow, since
-//     the Web AudioSession spec doesn't document this trade-off precisely
-//     enough to be certain from documentation alone).
+// 2026-08-29：briefly tried "playback" (ignores the mute switch) per user
+// request, but that type is exclusive by default and risks reintroducing
+// #51 — the two properties (respect the mute switch / don't take over
+// other apps' audio) are bundled together in Apple's fixed type presets,
+// and the Web AudioSession API doesn't expose a combination that gets both
+// "ignore the switch" and "never interrupt other apps" (that's a native-app-
+// only capability via AVAudioSession's mixWithOthers option). User decided
+// not blocking other apps' music matters more, reverted back to "ambient".
 try {
-  if (navigator.audioSession) navigator.audioSession.type = 'playback';
+  if (navigator.audioSession) navigator.audioSession.type = 'ambient';
 } catch { /* unsupported browser — no-op */ }
 
 export function isSfxMuted() { return muted; }
