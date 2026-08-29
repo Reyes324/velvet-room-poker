@@ -23,16 +23,25 @@ let muted = (() => {
   try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; }
 })();
 
-// Safari's AudioSession API (iOS/macOS only — no-op elsewhere): once any
-// <audio> element has played, Safari defaults it to the exclusive "playback"
-// session category, which keeps ducking/blocking the user's other audio
-// (background music, other apps) even after our own mute toggle is off and
-// nothing is actually playing. These are short table SFX, not something
-// that should ever take over the device's audio session — "ambient" mixes
-// with whatever else is playing and also respects the hardware mute switch.
-// 用户反馈 2026-08-26（issue #51）："打牌音效即使关了，也占用系统其他声音的播放"。
+// Safari's AudioSession API (iOS/macOS only — no-op elsewhere). This is a
+// page-wide setting (shared with useVoiceMesh.js's voice audio, not scoped
+// per <audio> element), and Apple's fixed type presets couple two
+// properties that this app wants decoupled: whether audio respects the
+// hardware mute switch, and whether it mixes with other apps' audio
+// instead of taking over playback.
+//
+//   - "ambient": mixes with other audio, but goes silent when the mute
+//     switch is on. This was the 2026-08-26 fix for issue #51 ("打牌音效
+//     即使关了，也占用系统其他声音的播放").
+//   - "playback": ignores the mute switch, but per Apple's own docs is
+//     exclusive by default — it can duck/pause other apps' audio. This is
+//     the type currently in use (用户反馈 2026-08-29："我要的是物理按键，
+//     不影响声效"，愿意接受这个代价 — see design.md's write-up of this
+//     decision for the real-device verification that should follow, since
+//     the Web AudioSession spec doesn't document this trade-off precisely
+//     enough to be certain from documentation alone).
 try {
-  if (navigator.audioSession) navigator.audioSession.type = 'ambient';
+  if (navigator.audioSession) navigator.audioSession.type = 'playback';
 } catch { /* unsupported browser — no-op */ }
 
 export function isSfxMuted() { return muted; }
