@@ -1367,6 +1367,13 @@
 .ledger-cell--net.net-neutral { color:#8A9C8C; }
 .ledger-note { font-family:var(--font-body); font-size:11px; color:var(--text-secondary); text-align:center; line-height:1.5; }
 .ledger-egg-note { font-family:var(--font-body); font-size:12px; font-weight:600; color:var(--gold-300); text-align:center; margin-top:6px; }
+.ledger-recap { margin-top:14px; padding-top:12px; border-top:1px solid rgba(212,175,55,.18); }
+.ledger-recap__title { font-family:var(--font-display); font-size:12px; font-weight:700; letter-spacing:1px; color:var(--gold-300); text-align:center; margin-bottom:8px; }
+.ledger-recap__empty { font-family:var(--font-body); font-size:12px; color:var(--text-secondary); text-align:center; }
+.ledger-recap__row { display:flex; align-items:baseline; gap:8px; padding:5px 0; font-family:var(--font-body); font-size:12px; }
+.ledger-recap__award { flex-shrink:0; font-weight:700; color:var(--gold-200); }
+.ledger-recap__who { flex-shrink:0; font-weight:600; color:var(--text-primary); }
+.ledger-recap__reason { color:var(--text-secondary); line-height:1.4; }
 
 /* ── HAND HISTORY PANEL（牌局记录 — 结果摘要，不是逐动作回放） ──
    Full-screen page that slides in from the right, not a centered modal —
