@@ -1,4 +1,5 @@
 const { GameEngine } = require('./GameEngine');
+const { accumulateHand } = require('./playstyleStats');
 
 const STARTING_CHIPS = 1000;
 const BIG_BLIND = 20;
@@ -56,6 +57,9 @@ class Room {
     // 封顶 CHAT_LOG_MAX 条，不是无限攒——避免极端情况下（比如挂机刷屏）
     // 内存无限增长，200 条对朋友局的聊天量级绰绰有余。
     this.chatLog = [];
+    // 打法点评（本场之最）的 per-player 计数器 —— 跟 handHistory/chatLog 同一个
+    // 生命周期：只在内存、随房间、restart() 清空、"结束游戏"不清、服务重启自然没。
+    this.playstyleStats = {};
     // Idle-expiry bookkeeping (see RoomManager.sweepIdleRooms) — updated by
     // touch() on essentially every successful room event. Deliberately NOT
     // touched by a disconnect itself (that's the absence of activity, not
@@ -253,6 +257,12 @@ class Room {
     return { ok: true, text: finalText };
   }
 
+  // 每手结束调用一次（server/index.js 的 handleActionResult showdown 分支）。
+  // hand: { actionLog, allHoleCards, communityCards, dealtInIds }
+  recordHandForPlaystyle(hand) {
+    accumulateHand(this.playstyleStats, hand);
+  }
+
   // Whole-session tally of egg pokes landed on each target — used by the
   // ledger's "谁被扔鸡蛋最多" line (用户反馈，2026-08-14). Only egg pokes
   // count here (index.js only calls this when the validated emoji is 🥚),
@@ -434,6 +444,7 @@ class Room {
     this.awaitingBustResolution = false;
     this.handHistory = [];
     this.chatLog = [];
+    this.playstyleStats = {};
     this.gameTimerEndsAt = null;
     this.awaitingTimerDecision = false;
     this.dealerId = this.players.find(p => !p.left)?.id ?? null;

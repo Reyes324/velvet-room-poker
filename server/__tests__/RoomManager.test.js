@@ -1069,3 +1069,37 @@ describe('RoomManager — 断线跨手自动离座', () => {
     expect(dealtIds).toContain('p2');
   });
 });
+
+describe('Room — 打法点评计数器', () => {
+  it('新房间 playstyleStats 为空对象', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(room.playstyleStats).toEqual({});
+  });
+
+  it('recordHandForPlaystyle 累加进 playstyleStats', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.recordHandForPlaystyle({
+      dealtInIds: ['p1', 'p2'],
+      communityCards: [],
+      allHoleCards: [{ id: 'p1', holeCards: ['Ah', 'Kh'] }, { id: 'p2', holeCards: ['7c', '2d'] }],
+      actionLog: [
+        { playerId: 'p1', phase: 'preflop', type: 'raise', amount: 600 },
+        { playerId: 'p2', phase: 'preflop', type: 'fold', amount: 0 },
+      ],
+    });
+    expect(room.playstyleStats.p1.handsPFR).toBe(1);
+    expect(room.playstyleStats.p1.handsDealt).toBe(1);
+    expect(room.playstyleStats.p2.handsDealt).toBe(1);
+  });
+
+  it('restart() 清空 playstyleStats', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.recordHandForPlaystyle({
+      dealtInIds: ['p1'], communityCards: [],
+      allHoleCards: [{ id: 'p1', holeCards: ['Ah', 'Kh'] }],
+      actionLog: [{ playerId: 'p1', phase: 'preflop', type: 'raise', amount: 600 }],
+    });
+    room.restart();
+    expect(room.playstyleStats).toEqual({});
+  });
+});
