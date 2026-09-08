@@ -233,6 +233,64 @@ describe('RoomManager — 闲置房间自动清理（sweepIdleRooms）', () => {
   });
 });
 
+describe('RoomManager — 连接对账（reconcileConnections）', () => {
+  it('socket 不在活连接表里 → connected 翻 false 且补 disconnectedAt', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    // p1 的 socket 还活着，p2 的已经没了（disconnect 事件丢失的模拟）
+    const alive = new Set(['socketHost']);
+    room.players.find(p => p.id === 'p1').socketId = 'socketHost';
+
+    const touched = rooms.reconcileConnections(id => alive.has(id));
+
+    expect(touched).toEqual([room]);
+    const p1 = room.players.find(p => p.id === 'p1');
+    const p2 = room.players.find(p => p.id === 'p2');
+    expect(p1.connected).toBe(true);
+    expect(p2.connected).toBe(false);
+    expect(p2.disconnectedAt).toBeGreaterThan(0);
+  });
+
+  it('已经断线的行不重置 disconnectedAt（保留最早的断线时刻）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    const p2 = room.players.find(p => p.id === 'p2');
+    p2.connected = false;
+    p2.disconnectedAt = 111;
+
+    rooms.reconcileConnections(() => false);
+
+    expect(p2.disconnectedAt).toBe(111);
+  });
+
+  it('left 的行不动，socket 仍在表里的行不动，没有改动时返回空数组', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.leave('p2'); // p2.left = true
+    room.players.find(p => p.id === 'p1').socketId = 'socketHost';
+
+    const touched = rooms.reconcileConnections(id => id === 'socketHost');
+
+    expect(touched).toEqual([]);
+    expect(room.players.find(p => p.id === 'p1').connected).toBe(true);
+  });
+
+  it('对账翻 false 后，原本卡住的房间能被 sweepIdleRooms 回收', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.lastActivityAt = Date.now() - 10_000;
+    // 两个 socket 都没了，但没有任何 disconnect 事件把 connected 翻掉
+    expect(room.players.every(p => p.connected)).toBe(true);
+    rooms.sweepIdleRooms(1000);
+    expect(rooms.rooms.has(room.code)).toBe(true); // 幽灵卡住，扫不掉
+
+    rooms.reconcileConnections(() => false);
+    rooms.sweepIdleRooms(1000);
+
+    expect(rooms.rooms.has(room.code)).toBe(false);
+  });
+});
+
 describe('RoomManager — 连接状态', () => {
   it('新创建/新加入的玩家默认 connected 为 true', () => {
     const room = rooms.create('p1', 'Alice');

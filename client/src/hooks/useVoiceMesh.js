@@ -40,6 +40,20 @@ export function useVoiceMesh({ socket, emit, playerId }) {
   // 期间每 10 秒重复上报同一条证据。speaking 变化或连接重建时清掉。
   const reportedRef = useRef(new Set());
   const localStreamRef = useRef(null);
+  // 用户当前是否仍按着"说话"键。麦克风首次申请要几百毫秒，这段时间里
+  // 用户可能已经松手——getUserMedia 返回后要靠这个 ref 判断"这次还算不
+  // 算在说话"，而不是无脑升级连接 + 广播（那样会出现按钮已回到未说话
+  // 态、麦克风却开着还在广播、UI 关不掉的悬空状态）。
+  const heldRef = useRef(false);
+  // getUserMedia 是否正在进行中。没有这道锁的话，用户在首次申请返回前每
+  // 多按一次"说话"就会再发一个 getUserMedia——浏览器（安卓 X5 / iOS
+  // WKWebView 尤甚）对并发的麦克风申请会直接拒绝，抛 NotReadableError /
+  // AbortError，表现就是"反复按、反复弹麦克风报错"（用户反馈 2026-09-08）。
+  const micRequestInFlightRef = useRef(false);
+  // 本地音轨是否已经接进现有的每一条 pc（升级成 sendrecv + attachAnalyser）。
+  // "提前松手"分支会拿到流但跳过这步，下次真正按住时要补上，靠这个标记
+  // 避免重复 attachAnalyser（每次都会新建一个 MediaStreamSource，重复接会漏）。
+  const localTrackWiredRef = useRef(false);
   const enabledRef = useRef(false);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
@@ -258,34 +272,62 @@ export function useVoiceMesh({ socket, emit, playerId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, playerId]);
 
+  // 把本地音轨挂到当前每一条连接上并接好自己的音量分析——每条连接会各自
+  // 触发一次 onnegotiationneeded，自动完成升级成 sendrecv 的重新协商，不用
+  // 手动再发 offer。幂等：直接用现有流反复调也安全（attachAnalyser 只在
+  // 第一次真正接）。之后新建的 pc 由 buildPc 自己带上音轨，不走这里。
+  const wireLocalTrack = useCallback(() => {
+    const stream = localStreamRef.current;
+    const track = stream?.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = true;
+    for (const { pc } of pcsRef.current.values()) {
+      if (pc.__transceiver.direction !== 'sendrecv') pc.__transceiver.direction = 'sendrecv';
+      if (pc.__transceiver.sender.track !== track) pc.__transceiver.sender.replaceTrack(track);
+    }
+    if (!localTrackWiredRef.current) {
+      // 自己的说话波纹强度跟对方共用同一张 volumesRef 表，key 用自己的
+      // playerId——PlayerSeat 读音量时不用区分"这是我自己还是对方"。
+      attachAnalyser(playerId, stream);
+      localTrackWiredRef.current = true;
+    }
+  }, [attachAnalyser, playerId]);
+
   const startTalking = useCallback(async () => {
     if (!enabled) return;
+    heldRef.current = true;
+    setMicError(null); // 每次按下先清掉上一次残留的报错，否则成功了红条也不消失
+
     if (!localStreamRef.current) {
+      if (micRequestInFlightRef.current) return; // 已有一个申请在路上，别再并发一个
+      micRequestInFlightRef.current = true;
+      let stream;
       try {
-        localStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       } catch (e) {
         setMicError(micErrorText(e));
         return;
+      } finally {
+        micRequestInFlightRef.current = false;
       }
-      const track = localStreamRef.current.getAudioTracks()[0];
-      // 把这条新拿到的音轨一次性挂到所有已存在的连接上——每条连接都会
-      // 各自触发一次 onnegotiationneeded，自动完成升级成 sendrecv 所需的
-      // 重新协商，这里不用手动再发一次 offer。
-      for (const { pc } of pcsRef.current.values()) {
-        pc.__transceiver.direction = 'sendrecv';
-        pc.__transceiver.sender.replaceTrack(track);
-      }
-      // 自己的说话波纹强度跟对方共用同一张 volumesRef 表，key 用自己的
-      // playerId——PlayerSeat 读音量时不用区分"这是我自己还是对方"。
-      attachAnalyser(playerId, localStreamRef.current);
-    } else {
-      localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = true; });
+      localStreamRef.current = stream;
+      setMicError(null); // 申请中途可能又被别的路径塞了报错，成功就以成功为准
     }
+
+    // 走到这里一定有流（刚申请到 / 之前就有）。申请麦克风的这几百毫秒里
+    // 用户如果已经松手，流留着给下次用，但这次不升级连接、不广播"正在
+    // 说话"——否则按钮已回到未说话态、麦克风却开着还在广播、UI 关不掉。
+    if (!heldRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = false; });
+      return;
+    }
+    wireLocalTrack();
     setTalking(true);
     emit('voice:speaking', { playerId, speaking: true });
-  }, [enabled, emit, playerId, attachAnalyser]);
+  }, [enabled, emit, playerId, wireLocalTrack]);
 
   const stopTalking = useCallback(() => {
+    heldRef.current = false;
     localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
     setTalking(false);
     emit('voice:speaking', { playerId, speaking: false });

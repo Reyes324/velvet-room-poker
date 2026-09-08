@@ -62,11 +62,23 @@ function createServer({
   turnBaseMs = 20 * 1000,
   timeBankPerHandMs = 30 * 1000,
   turnExtendStepMs = 15 * 1000,
+  // 连接对账的周期，见下方 reconcileInterval。可注入跟上面几个计时参数是
+  // 同一个理由——不希望一个 30 秒的后台定时器在某条集成测试跑到一半时触
+  // 发、往正在断言的 socket 上多推一条 room:state。默认在 Vitest 下直接关
+  // 掉（跑真实 server 的测试有近十个，逐个传参不如一处默认干净），需要时
+  // 单条测试仍可显式传一个正数打开。0 = 不启动这个定时器。
+  reconcileIntervalMs = process.env.VITEST ? 0 : 30 * 1000,
 } = {}) {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: { origin: '*' },
+    // 显式写死心跳参数（原来吃 socket.io 默认值）。这是死连接被发现、
+    // socket 从 io.sockets.sockets 里移除的节奏，reconcileConnections
+    // 的兜底对账依赖它——25s 一个 ping，20s 收不到 pong 就判死，最坏
+    // ~45s 内死连接会被清掉。
+    pingInterval: 25_000,
+    pingTimeout: 20_000,
     // socket.io defaults to 1MB, which is below our own feedback size limits —
     // without raising this, an over-limit feedback image payload is silently
     // dropped at the transport before our own size check ever runs, hanging
@@ -297,10 +309,22 @@ function createServer({
   // 名字。不加鉴权——这个项目现在只有几个朋友玩，跟 /health 本身已经公开
   // 暴露房间数/人数是同一个信任级别，不是新增的风险面。
   app.get('/status', (_, res) => {
+    const now = Date.now();
     const roomsOut = [];
     for (const room of rooms.rooms.values()) {
       const players = room.players.filter(p => p.connected && !p.left).map(p => p.name);
-      if (players.length > 0) roomsOut.push({ code: room.code, players });
+      if (players.length > 0) {
+        roomsOut.push({
+          code: room.code,
+          players,
+          status: room.status, // waiting（还在大厅）| playing（已开局）
+          // 距上次真实房间事件（touch()）多少秒。判断"活局还是弃局"用这个：
+          // 真在打的桌子 idleSec 是个位/两位数；弃局会一路涨到 1 小时的
+          // ROOM_IDLE_TTL 才被 sweep。比名单本身可靠——名单里可能全是还没被
+          // reconcileConnections 扫掉的幽灵。
+          idleSec: Math.round((now - room.lastActivityAt) / 1000),
+        });
+      }
     }
     res.json({ ok: true, rooms: roomsOut });
   });
@@ -1399,6 +1423,23 @@ function createServer({
   const ROOM_IDLE_TTL_MS = 60 * 60 * 1000; // 用户反馈（2026-08-17）：12 小时太久了，缩到 1 小时
   const sweepInterval = setInterval(() => rooms.sweepIdleRooms(ROOM_IDLE_TTL_MS), 15 * 60 * 1000);
   sweepInterval.unref();
+
+  // 连接对账（见 RoomManager.reconcileConnections）：每 30 秒拿 io 的活连接
+  // 表核对一遍，把 connected 卡在 true、但 socket 早已不存在的幽灵行翻回
+  // false——否则 /health 在线人数虚高、幽灵所在房间永远不被 sweepIdleRooms
+  // 回收。正常断线由 disconnect 事件即时处理，这里只兜底事件没送达 / 定时
+  // 器随 dyno 重启丢失的情况。30 秒跟上面 pingTimeout 发现死连接的量级一致。
+  if (reconcileIntervalMs > 0) {
+    const reconcileInterval = setInterval(() => {
+      const changedRooms = rooms.reconcileConnections(id => io.sockets.sockets.has(id));
+      for (const room of changedRooms) {
+        // 只 emit room:state，不走 broadcastRoom——后者会 touch() 刷新
+        // lastActivityAt，把刚被认定全员离线的房间的 sweep 往后推。
+        io.to(room.code).emit('room:state', room.getLobbyState());
+      }
+    }, reconcileIntervalMs);
+    reconcileInterval.unref();
+  }
 
   return { app, server, io, rooms };
 }

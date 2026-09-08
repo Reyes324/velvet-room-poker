@@ -1976,6 +1976,29 @@ if (active.length < 2) {
 
 **验收**：客户端构建通过；eslint 与基线持平（39/30，零新增）；e2e `turnTimeout.spec.js`（4 条，验证"+15s"挪位置后延时/倒计时流程不受影响）与 `voiceTable.spec.js`（4 条，验证说话按钮挪位置后按住说话/建连/清理流程不受影响）全过；额外写了一个抛弃式 e2e（两个真实浏览器 context 各自建房/加入同一房间，断言不管谁在行动、`.ptt-btn` 在 A、B 两边的屏幕上都始终可见可点）验证过这次改动要保住的关键点——说话按钮的可见性只取决于 `voiceEnabled`，不取决于 `myTurn`，跑完即删，不进正式测试套件；用 9 人满座的 dev fixture（`/?states=` 对应"9人满桌·密集"那条）截图确认新位置在满座时不再压住任何座位头像。
 
+### Bug 修复：反复按"说话"就弹麦克风报错（用户反馈，2026-09-08）
+
+**现象（用户原话转述）**：多次使用语音都报错，提示跟麦克风有关。
+
+**根因**（读 `useVoiceMesh.js` 的 `startTalking`/`stopTalking` 和 `VoiceChatDock.jsx` 说话区事件绑定，能对上 4 处真实缺陷，共同表现为"反复按、反复报错"）：
+
+1. **并发 `getUserMedia`**：`startTalking` 只用 `if (!localStreamRef.current)` 判断要不要申请麦克风。首次申请在手机/微信里要几百毫秒，这期间 `localStreamRef.current` 一直是 `null`，用户每按一次说话就多发一次 `getUserMedia`。浏览器（安卓 X5 / iOS WKWebView 尤甚）对并发的麦克风申请会拒绝，抛 `NotReadableError`（"被占用"）或 `AbortError`（"被中断"）——就是用户反复看到的提示。缺"申请中"的锁。
+2. **报错提示不会清**：`micError` 只在 `enable()` 开头和重连回调里被清空，`startTalking` 成功那次不清。哪怕后面某次申请成功了，红色报错条仍挂在屏幕上，观感就是"每次都报错"。
+3. **手指微动掐断说话**：`VoiceChatDock` 说话区在 `pointerdown` 里 `stopPropagation()`，外层的 `setPointerCapture` 因此不生效；同时它自己监听 `onPointerLeave → stopTalking`。按住说话时手指移动几像素就触发 `pointerleave`，说话被中断，用户以为没生效再按——叠加第 1 条形成连环报错。
+4. **"按下还没拿到麦克风就松手"会让麦克风偷偷常开**：`stopTalking` 跑的时候若 `getUserMedia` 还没 resolve，`localStreamRef.current` 是 `null`、什么都没做；等流回来后照常 `setTalking(true)` + 广播 speaking。麦克风开着还在广播，但按钮已回到"未说话"，UI 关不掉。
+
+**修法**（结构化，集中在一处状态机，不逐个症状打补丁）：
+
+- `startTalking` 进入即 `setMicError(null)`；新增 `micRequestInFlightRef`，申请中直接 return，杜绝并发 `getUserMedia`。
+- 新增 `heldRef` 记录用户当前是否仍按着说话键。`getUserMedia` 返回后如果 `heldRef` 已为 false（提前松手），把音轨 `enabled = false`、不升级 transceiver、不广播 speaking，只把流留着给下次用。
+- `getUserMedia` 成功后再清一次 `micError`。
+- `stopTalking` 同步置 `heldRef.current = false`。
+- `VoiceChatDock` 说话区改用 pointer capture：`pointerdown` 时 `setPointerCapture`，只保留 `pointerup`/`pointercancel` 收尾，去掉 `pointerleave` 触发的 `stopTalking`（有 capture 后 `pointerup` 一定能收到，不需要 leave 兜底）。
+
+**验证**：`cd client && npm run build` 通过；`npx eslint src` 与基线持平（27 errors / 9 warnings，零新增）。抛弃式 Playwright 脚本（`e2e` 目录外，未进套件）模拟"说话键 100ms 内连点 5 次 + 首次 `getUserMedia` reject `NotReadableError`"：实测连点期间只发起 **1 次** `getUserMedia`（并发锁生效），首次失败弹出报错条，之后单独按一次触发第 2 次申请并 resolve，报错条消失——两条都通过。`voiceTable.spec.js` 4 条在本沙盒全部失败，但 stash 掉本次改动后在干净 `main` 上同样 4 条全失败——是 headless chromium 建不起真实 WebRTC ICE 的既有限制（design.md 多处已记录），非本次回归。真机微信环境的并发/自动播放策略本地模拟不了，`pointerleave` 去掉后的按住手感也要真机确认。
+
+**顺带修的一处**：说话区 `onPointerDown` 里 `setPointerCapture(e.pointerId)` 对非法/合成 pointerId 会抛 `NotFoundError`，若不 try/catch 会挡住同一个 handler 里后面的 `onStartTalking`——已包 try/catch。
+
 ## 暂停/继续功能（用户反馈，2026-08-11，实现完成）
 
 完整设计过程见 `docs/superpowers/specs/2026-08-11-pause-resume-design.md`（brainstorming 产出），实施计划见 `docs/superpowers/plans/2026-08-11-pause-resume.md`。这里只记实现完成后的落地要点，不重复展开决策过程。
@@ -2844,3 +2867,31 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 **第二轮反馈**："里面的内容你要用设计 skills 看一下"——原来是裸文字列表（名字+时间+一行字），跟牌桌本身的视觉语言脱节。改成气泡卡片：复用 `.poke-bubble--chat`（牌桌上即时冒出的那个聊天气泡）同一套配色——象牙白底 `#FBF6EC` + 金/绿描边（`var(--gold-400)`/`var(--state-safe)`，区分他人/自己）+ `var(--ink-black)` 文字，翻记录时读起来像"回看刚才那些气泡"，不是另开一套新样式。自己发的消息靠右、别人的靠左，不用逐条看名字就知道是谁说的——聊天界面最基本的可扫读性。正文字号 14px 提到 15px（用户明确要求"字体不要太小"）。
 
 **验收**：`npm run build`/`npx eslint .` 通过，lint 27/9 持平基线；真实 Playwright 双人房间截图确认气泡渲染、左右对齐、面板宽度符合预期（约半屏宽，桌面端不会跟着 vw 涨到离谱）。
+
+### Bug 修复：`/health` 在线人数虚高（幽灵连接，用户反馈 2026-09-08）
+
+**现象**：`/health` 返回 `roomPlayers: 8`，但实际并没有 8 个人在玩。`/status`（带名字的版本）里同一个名字（"老野"）同时出现在 3 个房间、另一个（"小野"）在 2 个房间，还有两个房间各只挂着 1 个"在线"玩家——德州不可能一个人打，是被遗弃、没清掉的房间。
+
+**根因**：`roomPlayers`（以及 `/status`、`getLobbyState`）一律用 `players.filter(p => p.connected && !p.left)` 统计，**只信内存里的 `connected` 标志，从不核对 `p.socketId` 是否还对应一个活着的 socket**（`io.sockets.sockets`）。而 `connected` 只有两条路径会被翻成 `false`：
+
+1. 收到 `disconnect` 事件时的 `Room.markDisconnectedIfCurrent`；
+2. 大厅宽限期（`GRACE_PERIOD_MS`）那个 `setTimeout` 里的 `rooms.leave()`。
+
+这两条都可能整个丢掉，且丢了之后**没有任何兜底会再翻它**：
+
+- **Render 免费档 dyno 重启**（每次部署、以及闲置休眠后被唤醒）会清掉所有 pending `setTimeout`。此刻正处在大厅宽限期的玩家：`disconnect` 已经触发过一次了、移除定时器随重启没了、以后也不会再有第二个 `disconnect` 事件——这行 `connected` 就永久卡在 `true`。（对局中断线按设计**根本没有** per-player 定时器，完全依赖 `disconnect` 事件本身送达。）
+- **手机/微信**：socket 没有干净的关闭帧就死了（切后台、锁屏、WiFi↔蜂窝切换）。免费档实例被限流/半休眠时，最后一个 socket 的 `disconnect` 有时根本不会送到服务端。
+- `markDisconnectedIfCurrent` 在 `p.socketId !== socketId` 时故意 no-op（对付"迟到的旧 socket"是对的）——但如果丢的正好是**当前** socket 的 `disconnect`，就再没有别的东西会翻这个标志。
+
+**放大效应**：`sweepIdleRooms` 要求 `players.every(p => p.connected === false || p.left)` 才回收房间。一个卡住的幽灵行就能让**整个房间**（连同里面真的已断线的人）永远被计数、永远不被 sweep，只要还有任何活动在 `touch()` 它。同一个 `connected` 判断还用在 `getLobbyState`，所以真人玩家大概率还在座位上看到这个幽灵。
+
+**修法（改数据源，不在统计处打补丁）**：拿 socket.io 自己的活连接表当唯一事实来源，加一个周期对账。
+
+- `RoomManager.js` 新增 `reconcileConnections(isSocketAlive)`：遍历所有房间的所有 `!left && connected` 玩家行，`!p.socketId || !isSocketAlive(p.socketId)` 的，翻成 `connected = false` 并补 `disconnectedAt`（`markDisconnectedIfCurrent` 那套"只在缺失/匹配时才动"的谨慎不需要——这里的判据本身就是"socket 确实不在活连接表里"，比 socketId 字符串比较更硬）。返回被改动的房间数组。
+- `server/index.js` `createServer()` 内新增一个 `setInterval`（周期 `reconcileIntervalMs`），用 `id => io.sockets.sockets.has(id)` 调 `reconcileConnections`，对每个被改动的房间**只 emit `room:state`**（不走 `broadcastRoom`——它会 `touch()` 刷新 `lastActivityAt`，把刚被认定全员离线的房间的 sweep 往后推）。`.unref()`。
+- 30 秒这个量级跟 socket.io 自己 `pingTimeout` 发现死连接的节奏一致，不额外制造"断线中"闪烁：正常断线由 `disconnect` 事件即时处理，对账只兜底"事件没送达 / 定时器随重启丢失"这些情况，正常重连流程里它扫过去无事可做。
+- `reconcileIntervalMs` 做成 `createServer` 可注入参数（跟 `settlementDisplayMs`/`turnBaseMs` 同一个"测试不吃真实计时"的模式），**默认在 Vitest 下为 0**（`process.env.VITEST`）——跑真实 server 的服务端测试有近十个，一个 30 秒后台定时器在某条慢集成测试跑到一半时触发、多推一条 `room:state`，会加剧本来就存在的 `integration.test.js` 计时 flake。生产默认 30s 不变。
+- 顺带把 socket.io 的 `pingInterval`/`pingTimeout` 显式配成 25s/20s（原来吃默认值，没写死），算小加固。
+- `/status` 每个房间多带 `status`（waiting/playing）和 `idleSec`（距上次 `touch()` 多少秒）。排查这次问题时全靠人肉看名单猜"活局还是弃局"——名单里可能全是还没被对账扫掉的幽灵，不可靠。`idleSec` 是硬信号：真在打的桌子个位/两位数，弃局一路涨到 1 小时 TTL。push 前的"有没有人在玩"判断以后看这个。
+
+**验证**：`server/__tests__/RoomManager.test.js` 新增 4 条 `reconcileConnections` 用例（socket 不在活连接表 → 翻 false 且补 disconnectedAt；已断线的行不重置 disconnectedAt；`left` 的行 + 仍在表里的行都不动、无改动返回空数组；翻 false 后配合 `sweepIdleRooms` 能把原本卡住的房间正常回收）。服务端全量 **405/405**（首跑偶有 1 条 `integration.test.js` 计时 flake，失败的每次是不同的、且包含跟本次改动无关的 game-flow 用例，重跑即 405 全过——是该文件既有的负载相关 flake，非本次引入）。`staleDisconnect`/`reconnect`/`pauseResume`/`turnClock` 单独跑 24/24。不新增 e2e（这个 bug 的触发依赖 Render 免费档 dyno 重启 / 真实移动网络丢事件，沙盒模拟不出，跟语音那几处同一个限制）。

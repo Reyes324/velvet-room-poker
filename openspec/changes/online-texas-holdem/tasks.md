@@ -1450,3 +1450,15 @@
   - 新增 `client/src/components/ChatHistoryModal.jsx`（复用 `HandHistoryModal` 的 `.hh-panel` 视觉语言）；`Lobby.jsx`/`GameTable.jsx` 菜单各加"聊天记录"一行（PVE 不显示）
   - **没做**：语音留痕维持原"暂不做"
   - **验收**：`RoomManager.test.js` 新增 3 条、`integration.test.js` 新增 1 条真实双 socket 测试，全过；客户端构建/lint 持平基线（27/9）
+
+- [ ] **Bug 修复：反复按"说话"就弹麦克风报错（2026-09-08，用户反馈，方案见 design.md 同名章节）**
+  - `client/src/hooks/useVoiceMesh.js`：`startTalking` 进入即清 `micError` + `micRequestInFlightRef` 挡并发 `getUserMedia`；`heldRef` 记录是否仍按住，提前松手则拿到流后不升级/不广播；成功后再清一次 `micError`；`stopTalking` 同步置 `heldRef=false`
+  - `client/src/components/VoiceChatDock.jsx`：说话区 `pointerdown` 时 `setPointerCapture`（try/catch 包住，非法 pointerId 不阻断 `onStartTalking`），去掉 `pointerleave→stopTalking`，只留 `pointerup`/`pointercancel` 收尾
+  - **验收**：`npm run build` 通过、`eslint src` 与基线持平（27/9，零新增）；抛弃式 Playwright 脚本模拟 100ms 内连点 5 次说话键 + 首次 `getUserMedia` reject，实测只发起 1 次 `getUserMedia`、报错条在下次成功后消失；`voiceTable.spec.js` 沙盒内 4 条全失败但干净 `main` 上同样全失败（headless chromium 无真实 ICE 的既有限制），非本次回归。真机按住手感 + 微信并发场景待用户实测
+
+- [ ] **Bug 修复：`/health` 在线人数虚高（幽灵连接，2026-09-08，用户反馈，方案见 design.md 同名章节）**
+  - 根因：`roomPlayers`/`/status`/`getLobbyState` 只信内存 `connected` 标志，不核对 socket 是否还活着；`connected` 只由 `disconnect` 事件或大厅宽限期定时器翻 false，两者都可能随 Render 免费档 dyno 重启 / 移动网络丢事件而丢失，且丢了没有兜底
+  - `server/RoomManager.js`：新增 `reconcileConnections(isSocketAlive)`——`!left && connected` 但 socket 不在活连接表里的行翻成 `connected=false` + 补 `disconnectedAt`，返回被改动的房间
+  - `server/index.js`：`createServer()` 内新增 30s 一次的 `setInterval`（`.unref()`，`reconcileIntervalMs` 可注入、Vitest 下默认 0），用 `io.sockets.sockets.has` 调 `reconcileConnections`，对改动过的房间只 emit `room:state`（不走 `broadcastRoom`，避免 `touch()` 推迟 sweep）；顺带显式配 `pingInterval`/`pingTimeout` = 25s/20s
+  - `server/index.js` `/status`：每个房间多带 `status`（waiting/playing）+ `idleSec`（距上次 `touch()` 秒数），用来判断活局/弃局，取代人肉看名单猜
+  - **验收**：`RoomManager.test.js` 新增 `reconcileConnections` 用例（socket 不在表→翻 false+补时间戳、仍在表→不动、`left` 行不动、翻 false 后配合 `sweepIdleRooms` 能回收原本卡住的房间）；服务端全量 405/405（首跑偶有 1 条既有 `integration.test.js` 计时 flake，重跑即全过，非本次引入）；不新增 e2e（触发依赖 dyno 重启 / 真实移动网络丢事件，沙盒模拟不出）

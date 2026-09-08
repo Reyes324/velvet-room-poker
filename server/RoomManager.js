@@ -714,6 +714,37 @@ class RoomManager {
     }
   }
 
+  // 兜底对账：`connected` 只由收到的 `disconnect` 事件（markDisconnectedIfCurrent）
+  // 或大厅宽限期定时器翻成 false。这两条都可能整个丢掉——Render 免费档 dyno
+  // 重启会清掉所有 pending setTimeout（宽限期中的人从此既没有事件也没有定时
+  // 器）；免费档实例被限流/半休眠时，手机/微信最后一个 socket 的 disconnect
+  // 也可能根本不送到服务端。结果是 `connected` 卡在 true、socketId 指向一个
+  // 早已不存在的 socket：/health 在线人数虚高，幽灵所在房间因为
+  // sweepIdleRooms 要求"全员 connected===false || left"而永远不被回收，真人
+  // 还会在座位上看到这个幽灵。
+  //
+  // 这里拿 socket.io 自己的活连接表当唯一事实来源，把对不上的行翻回 false。
+  // isSocketAlive(socketId) -> boolean，由调用方用 io.sockets.sockets.has 提供。
+  // 返回被改动的房间数组，调用方据此广播。markDisconnectedIfCurrent 那套
+  // "socketId 缺失/不匹配就不动"的谨慎这里不需要——判据本身就是"这个 socket
+  // 确实不在活连接表里"，比字符串比较更硬。
+  reconcileConnections(isSocketAlive) {
+    const touched = [];
+    for (const room of this.rooms.values()) {
+      let changed = false;
+      for (const p of room.players) {
+        if (p.left || p.connected === false) continue;
+        if (!p.socketId || !isSocketAlive(p.socketId)) {
+          p.connected = false;
+          if (p.disconnectedAt == null) p.disconnectedAt = Date.now();
+          changed = true;
+        }
+      }
+      if (changed) touched.push(room);
+    }
+    return touched;
+  }
+
   getRoomByPlayer(playerId) {
     const code = this.playerRoom.get(playerId);
     return code ? this.rooms.get(code) : null;
