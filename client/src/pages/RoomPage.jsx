@@ -32,6 +32,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   const [iAmReady, setIAmReady] = useState(false);
   const [settlementProgress, setSettlementProgress] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
+  const [styleRecap, setStyleRecap] = useState(null);
   const [showHandHistory, setShowHandHistory] = useState(false);
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -103,7 +104,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       // Host deliberately ending the night, not the chips-ran-out auto-pause
       // — surface the final tally immediately instead of leaving everyone to
       // dig for it in the menu after the fact.
-      if (hostEnded) setShowLedger(true);
+      if (hostEnded) { setStyleRecap(null); emit('room:get-style-recap', { playerId }); setShowLedger(true); }
     },
     'room:kicked': () => {
       showToast('你已被房主移出房间', 'danger');
@@ -114,6 +115,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       setTimeout(onLeave, 2500);
     },
     'game:error': (msg) => { showToast(msg, 'danger'); unlockAction(); },
+    'room:style-recap': ({ awards }) => setStyleRecap(awards ?? []),
     'room:hand-history': (hands) => setHandHistory(hands),
     'room:chat-history': (messages) => setChatHistory(messages),
     // No separate transient toast for game:timer-expired — it's redundant
@@ -313,7 +315,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           onRestart={() => { emit('room:restart', { playerId }); showToast('已重新开始，筹码已重置', 'info'); }}
           onRebuy={rebuy}
           onExit={leaveRoom}
-          onOpenLedger={() => setShowLedger(true)}
+          onOpenLedger={() => { setStyleRecap(null); emit('room:get-style-recap', { playerId }); setShowLedger(true); }}
           onOpenHandHistory={() => { emit('room:get-hand-history', { playerId }); setShowHandHistory(true); }}
           onOpenChatHistory={() => { emit('room:get-chat-history', { playerId }); setShowChatHistory(true); }}
           copied={copied}
@@ -325,6 +327,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
             myId={playerId}
             onClose={() => setShowLedger(false)}
             eggCounts={roomState?.eggCounts}
+            styleRecap={styleRecap}
           />
         )}
         {showHandHistory && (
@@ -361,7 +364,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         amPlaying={amPlaying}
         myChips={myRoomChips}
         onRebuy={rebuy}
-        onOpenLedger={() => setShowLedger(true)}
+        onOpenLedger={() => { setStyleRecap(null); emit('room:get-style-recap', { playerId }); setShowLedger(true); }}
         onOpenHandHistory={() => { emit('room:get-hand-history', { playerId }); setShowHandHistory(true); }}
         onOpenChatHistory={() => { emit('room:get-chat-history', { playerId }); setShowChatHistory(true); }}
         onOpenFeedback={() => setShowFeedback(true)}
@@ -461,6 +464,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
           myId={playerId}
           onClose={() => setShowLedger(false)}
           eggCounts={roomState?.eggCounts}
+          styleRecap={styleRecap}
         />
       )}
       {settlement && settlement.winners?.length > 0 && (() => {
