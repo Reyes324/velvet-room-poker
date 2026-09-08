@@ -59,7 +59,7 @@ describe('集成测试 — 房间管理', () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.rooms).toHaveLength(1);
-    expect(body.rooms[0]).toMatchObject({ code, players: ['Alice'], status: 'waiting' });
+    expect(body.rooms[0]).toMatchObject({ code, players: ['Alice'], hostName: 'Alice', status: 'waiting' });
     expect(typeof body.rooms[0].idleSec).toBe('number');
   });
 

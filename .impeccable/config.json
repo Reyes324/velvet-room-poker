@@ -1,0 +1,18 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "client/src/pages/HomePage.css",
+          "src/pages/HomePage.css"
+        ],
+        "createdAt": "2026-09-08T09:10:32.830Z",
+        "reason": "existing brand wordmark (.home-logo 翡翠厅 gradient), pre-existing and outside the room-list task scope"
+      }
+    ]
+  }
+}

@@ -323,9 +323,11 @@ function createServer({
     for (const room of rooms.rooms.values()) {
       const players = room.players.filter(p => p.connected && !p.left).map(p => p.name);
       if (players.length > 0) {
+        const host = room.players.find(p => p.id === room.hostId);
         roomsOut.push({
           code: room.code,
           players,
+          hostName: host?.name ?? players[0] ?? null, // 首页房间列表用它当每行的标识
           status: room.status, // waiting（还在大厅）| playing（已开局）
           // 距上次真实房间事件（touch()）多少秒。判断"活局还是弃局"用这个：
           // 真在打的桌子 idleSec 是个位/两位数；弃局会一路涨到 1 小时的
@@ -745,6 +747,15 @@ function createServer({
       socket.join(code.toUpperCase());
       socket.emit('room:joined', { code: code.toUpperCase(), playerId: actualId });
       io.to(code.toUpperCase()).emit('room:state', result.room.getLobbyState());
+      // 从首页房间列表点进一局"打牌中"的房间：join 本身只广播 lobby 状态，
+      // 客户端要 status==='playing' 且拿到 game:state 才渲染牌桌，否则会先
+      // 看到"等待房主开始"的大厅界面直到下一次有人行动才刷新。这里补一发
+      // 当前牌局状态给刚进来的人，让他直接落到牌桌上（还没入座，下一手才
+      // 发牌——GameTable 已经能处理 amPlaying=false 的旁观态）。
+      if (result.room.game) {
+        const gs = result.room.getStateForPlayer(actualId);
+        if (gs) socket.emit('game:state', gs);
+      }
     });
 
     socket.on('room:start', ({ playerId, durationMinutes }) => {

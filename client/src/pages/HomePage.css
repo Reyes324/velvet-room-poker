@@ -2,10 +2,25 @@
   min-height: 100dvh;
   min-height: calc(var(--vh, 1dvh) * 100);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   position: relative;
-  overflow: hidden;
+}
+
+/* 卡片 + 卡片下方的房间列表 一起作为一个块。margin:auto 在可滚动 flex 容器
+   里是"装得下就居中、装不下就从顶部可滚动"的可靠写法（justify-content:
+   center 在溢出时会把顶部裁掉够不着）。底部 padding 给固定在视口底的
+   "人机对战"入口留滚动净空。 */
+.home-stack {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: var(--sp-6) 0 calc(var(--sp-8) + 44px);
+  box-sizing: border-box;
 }
 
 /* Software keyboard is up (tracked in HomePage.jsx via visualViewport, not
@@ -15,14 +30,13 @@
    height and get its lower fields covered — top-align instead and allow
    scrolling, so the focused field's own onFocus scrollIntoView has room to
    bring it above the keyboard. */
-.home--keyboard-open {
-  align-items: flex-start;
-  overflow-y: auto;
-  padding-top: var(--sp-8);
+.home--keyboard-open .home-stack {
+  margin-top: var(--sp-8);
+  margin-bottom: auto;
 }
 
 .home-bg {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background:
     radial-gradient(ellipse at 50% 60%, var(--felt-600) 0%, var(--felt-800) 40%, var(--surface-base) 75%);
@@ -159,7 +173,7 @@
 .home-pve-link {
   /* 贴近页面底部，跟卡片本身（垂直居中）的位置脱钩——不管卡片多高、
      视口多高，这个入口始终在接近视口底边的地方，而不是紧跟在卡片下方。 */
-  position: absolute;
+  position: fixed;
   left: 0;
   right: 0;
   bottom: max(env(safe-area-inset-bottom, 0px), var(--sp-8));
@@ -213,7 +227,7 @@
    文字更抓眼，但只用小尺寸/低饱和度，不跟"创建/加入房间"两个主 CTA 抢
    视觉重量（2026-08-11）。 */
 .home-feedback-link {
-  position: absolute;
+  position: fixed;
   top: max(env(safe-area-inset-top, 0px), var(--sp-4));
   left: var(--sp-4);
   z-index: 1;
@@ -239,7 +253,7 @@
 /* 跟 .home-feedback-link 同一套"圆角芯片"语言、镜像贴在右上角，尺寸/字号
    都对齐，读起来是一对，不是两个不相干的东西随便贴在页面上。 */
 .home-online-count {
-  position: absolute;
+  position: fixed;
   top: max(env(safe-area-inset-top, 0px), var(--sp-4));
   right: var(--sp-4);
   z-index: 1;
@@ -349,6 +363,129 @@
   color: var(--text-secondary);
 }
 
+/* 首页房间列表（用户需求，2026-09-08）——卡片下方、独立一块（用户反馈：
+   不放卡片里）。跟 .home-card 同宽同边距，读起来是一对、又清楚地是"另一
+   件事"。没有房间时整块不渲染（HomePage.jsx 里 visibleRooms.length > 0）。
+   每行两行信息（房主名 / 人数·状态）+ 右侧独立"加入"按钮。状态沿用首页
+   已有的"绿点=活的"语言：打牌中=绿点，等人中=暗金点。 */
+.home-rooms {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  margin: var(--sp-4) var(--sp-6) 0;
+  box-sizing: border-box;
+  text-align: left;
+}
+.home-rooms__label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: var(--sp-2);
+  padding-left: 2px;
+}
+.home-rooms__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  /* ~3 行可见，再多列表内部滚动。矮屏（≤700）下整块可能超出居中区，此时
+     .home 整体可滚动（margin:auto 退成从顶部滚），不会被裁掉。 */
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212,175,55,.3) transparent;
+}
+.home-rooms__list::-webkit-scrollbar { width: 4px; }
+.home-rooms__list::-webkit-scrollbar-thumb {
+  background: rgba(212,175,55,.3);
+  border-radius: 2px;
+}
+
+.home-room-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px 12px 10px 14px;
+  border-radius: var(--r-md);
+  background: rgba(212,175,55,.06);
+  border: 1px solid rgba(212,175,55,.18);
+}
+
+.home-room-row__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.home-room-row__host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.home-room-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.home-room-row__count {
+  font-family: var(--font-mono);
+  color: var(--gold-300);
+  opacity: .75;
+}
+.home-room-row__sep { color: var(--gold-300); opacity: .4; }
+.home-room-row__status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: .5px;
+}
+.home-room-row__dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.home-room-row__status--live { color: #6EE79E; }
+.home-room-row__status--live .home-room-row__dot {
+  background: #4ADE80;
+  box-shadow: 0 0 6px rgba(74,222,128,.6);
+}
+.home-room-row__status--waiting { color: var(--gold-300); }
+.home-room-row__status--waiting .home-room-row__dot {
+  background: rgba(212,175,55,.55);
+}
+
+.home-room-row__join {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  background: rgba(212,175,55,.16);
+  border: 1px solid rgba(212,175,55,.45);
+  color: var(--gold-100);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.home-room-row__join:hover,
+.home-room-row__join:active {
+  background: rgba(212,175,55,.28);
+  border-color: rgba(212,175,55,.6);
+}
+
 .changelog-modal { text-align: left; max-width: 360px; }
 .changelog-list { max-height: 50vh; overflow-y: auto; margin: var(--sp-3) 0; }
 .changelog-entry { padding: var(--sp-2) 0; border-bottom: 1px solid rgba(255,255,255,.06); }
@@ -372,4 +509,6 @@
     letter-spacing: .08em;
   }
   .btn-ghost { padding: 0 12px; }
+  /* 跟 .home-card 移动端左右边距对齐 */
+  .home-rooms { margin-left: var(--sp-3); margin-right: var(--sp-3); }
 }

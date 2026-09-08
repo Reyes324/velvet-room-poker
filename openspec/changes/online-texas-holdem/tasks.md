@@ -1467,3 +1467,8 @@
   - `server/index.js`：`createServer()` 内加 `voiceDiagLog` 环形缓冲（封顶 200）；`voice:diagnostic` handler 在 `console.log` 之外把同一条记录 push 进去（`at` 缺省补 `Date.now()`）；新增 `GET /debug/voice-diag`（`?limit=N`），不加鉴权（跟 `/status` 同信任级别）
   - 目的：排查"听不到别人说话"不用登 Render 后台翻日志、不受 7 天保留限制
   - **验收**：`voiceMesh.test.js` 新增 2 条（能从接口拿到完整字段、被忽略的诊断不进缓冲），14/14；服务端全量测试通过
+
+- [x] **首页房间列表：点一行直接加入（2026-09-08，用户需求，方案见 design.md 同名章节）**
+  - `server/index.js`：`/status` 每个房间补 `hostName`；`room:join` handler 对 `room.game` 存在的房间补发一次当前玩家的 `game:state`（否则从列表点进"打牌中"的房间会先看到大厅界面）
+  - `client/src/pages/HomePage.jsx` + `HomePage.css`：**卡片下方独立一块**"当前牌局"列表（用户反馈：不放卡片里），卡片+列表包进 `.home-stack`（`margin:auto` 居中/可滚动），`.home` 改 `overflow-y:auto`、三个悬浮元素改 `position:fixed`。每行两行信息（房主名 / 人数·状态，打牌中=绿点、等人中=金点）+ **右侧独立"加入"按钮**（用户反馈），点按钮走现有加入流程（有昵称直接进、没昵称落加入表单预填房间码），自己当前房间不列入，空列表不渲染
+  - **验收**：Playwright 1280×900/390×844/375×667/320×640 + 键盘弹起态截图（渲染/状态区分/超长昵称截断/矮屏可滚不裁/键盘弹起退顶对齐）；功能实测（无昵称点加入→加入表单预填；有昵称点"打牌中"→直接进牌桌旁观态）；`integration.test.js` 的 `/status` 用例补 `hostName` 断言，服务端 407/407；客户端构建通过、lint 持平基线（27/9）；impeccable 检测器（仓库根跑）零命中

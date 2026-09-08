@@ -50,6 +50,25 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  // 首页房间列表（用户需求，2026-09-08）——列出当前所有活着的多人房间，点
+  // 一行就走加入流程。数据源跟上面在线人数一样是轮询 /status（人机对战天
+  // 生不在 rooms 里，本来就排除）。空列表时整块不渲染，跟"X人在线"一个
+  // 哲学。/status 已经带 hostName / players / status 字段。
+  const [rooms, setRooms] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const res = await fetch('/status');
+        const data = await res.json();
+        if (!cancelled) setRooms(Array.isArray(data.rooms) ? data.rooms : []);
+      } catch { /* 静默，同 onlineCount */ }
+    }
+    poll();
+    const id = setInterval(poll, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
   useEffect(() => {
     if (initialCode) {
       setCode(initialCode);
@@ -204,9 +223,23 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
     emit('room:join', { code: code.trim().toUpperCase(), playerId: getPlayerId(), playerName: name.trim() });
   }
 
+  // 点首页房间列表里的一行。已经存过昵称的直接加入（最高准则：能少一步是
+  // 一步）；没存过的落到"加入"表单、房间码预填好，跟点邀请链接同一条路。
+  function handleRoomRowClick(roomCode) {
+    if (name.trim()) {
+      emit('room:join', { code: roomCode, playerId: getPlayerId(), playerName: name.trim() });
+    } else {
+      setCode(roomCode);
+      setMode('join');
+    }
+  }
+  // 别把自己当前的房间也列进去——那个已经有"继续上局"卡片管了，重复列没意义。
+  const visibleRooms = rooms.filter(r => r.code !== localStorage.getItem('vr_roomCode'));
+
   return (
     <div className={`home${keyboardOpen ? ' home--keyboard-open' : ''}`}>
       <div className="home-bg" />
+      <div className="home-stack">
       <div className="home-card">
         <div className="home-logo">翡翠厅</div>
         <p className="home-tagline">Texas Hold'em · No Limit</p>
@@ -299,6 +332,32 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
             </>
           )}
         </div>
+
+      </div>
+
+      {mode === null && visibleRooms.length > 0 && (
+        <div className="home-rooms">
+          <div className="home-rooms__label">当前牌局</div>
+          <div className="home-rooms__list">
+            {visibleRooms.map(r => (
+              <div key={r.code} className="home-room-row">
+                <div className="home-room-row__info">
+                  <span className="home-room-row__host">{r.hostName || '房间'}</span>
+                  <span className="home-room-row__meta">
+                    <span className="home-room-row__count">{(r.players?.length ?? 0)}人</span>
+                    <span className="home-room-row__sep">·</span>
+                    <span className={`home-room-row__status home-room-row__status--${r.status === 'playing' ? 'live' : 'waiting'}`}>
+                      <span className="home-room-row__dot" />
+                      {r.status === 'playing' ? '打牌中' : '等人中'}
+                    </span>
+                  </span>
+                </div>
+                <button className="home-room-row__join" onClick={() => handleRoomRowClick(r.code)}>加入</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       </div>
       {mode === null && (
         // 找不到真人对战时自己练练手——刻意放在卡片外面、页面下方，跟"创建/
