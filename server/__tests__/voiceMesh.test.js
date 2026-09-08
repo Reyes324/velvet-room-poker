@@ -265,4 +265,34 @@ describe('语音诊断上报（voice:diagnostic）', () => {
     await new Promise(resolve => setTimeout(resolve, 100));
     expect(logSpy).not.toHaveBeenCalled();
   });
+
+  it('上报的诊断同时进内存缓冲，GET /debug/voice-diag 能拿到', async () => {
+    const a = await connect();
+    const b = await connect();
+    const { code } = await createRoom(a, 'p-a');
+    await joinRoom(b, code, 'p-b', 'Bob');
+    await meshJoin(a, 'p-a');
+    await meshJoin(b, 'p-b');
+
+    a.emit('voice:diagnostic', { kind: 'autoplay-blocked', remotePlayerId: 'p-b', isWechat: true });
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const res = await fetch(`${url}/debug/voice-diag`);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.count).toBe(1);
+    expect(body.entries[0]).toMatchObject({
+      kind: 'autoplay-blocked', remotePlayerId: 'p-b', isWechat: true,
+      roomCode: code, fromPlayerId: 'p-a',
+    });
+    expect(typeof body.entries[0].at).toBe('number');
+  });
+
+  it('被忽略的诊断（没进 mesh）不进内存缓冲', async () => {
+    const a = await connect();
+    a.emit('voice:diagnostic', { remotePlayerId: 'whatever' });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const body = await (await fetch(`${url}/debug/voice-diag`)).json();
+    expect(body.count).toBe(0);
+  });
 });

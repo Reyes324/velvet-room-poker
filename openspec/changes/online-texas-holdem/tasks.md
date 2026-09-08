@@ -1462,3 +1462,8 @@
   - `server/index.js`：`createServer()` 内新增 30s 一次的 `setInterval`（`.unref()`，`reconcileIntervalMs` 可注入、Vitest 下默认 0），用 `io.sockets.sockets.has` 调 `reconcileConnections`，对改动过的房间只 emit `room:state`（不走 `broadcastRoom`，避免 `touch()` 推迟 sweep）；顺带显式配 `pingInterval`/`pingTimeout` = 25s/20s
   - `server/index.js` `/status`：每个房间多带 `status`（waiting/playing）+ `idleSec`（距上次 `touch()` 秒数），用来判断活局/弃局，取代人肉看名单猜
   - **验收**：`RoomManager.test.js` 新增 `reconcileConnections` 用例（socket 不在表→翻 false+补时间戳、仍在表→不动、`left` 行不动、翻 false 后配合 `sweepIdleRooms` 能回收原本卡住的房间）；服务端全量 405/405（首跑偶有 1 条既有 `integration.test.js` 计时 flake，重跑即全过，非本次引入）；不新增 e2e（触发依赖 dyno 重启 / 真实移动网络丢事件，沙盒模拟不出）
+
+- [ ] **语音诊断日志加内存回捞接口（2026-09-08，#48 三查，方案见 design.md「#48 三查」章节）**
+  - `server/index.js`：`createServer()` 内加 `voiceDiagLog` 环形缓冲（封顶 200）；`voice:diagnostic` handler 在 `console.log` 之外把同一条记录 push 进去（`at` 缺省补 `Date.now()`）；新增 `GET /debug/voice-diag`（`?limit=N`），不加鉴权（跟 `/status` 同信任级别）
+  - 目的：排查"听不到别人说话"不用登 Render 后台翻日志、不受 7 天保留限制
+  - **验收**：`voiceMesh.test.js` 新增 2 条（能从接口拿到完整字段、被忽略的诊断不进缓冲），14/14；服务端全量测试通过

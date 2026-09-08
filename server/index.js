@@ -95,6 +95,15 @@ function createServer({
   });
 
   const rooms = new RoomManager();
+
+  // 语音诊断的内存环形缓冲（2026-09-08）：voice:diagnostic 事件原来只
+  // console.log 进 Render 日志——免费档只留 7 天、且要进后台才看得到，排查
+  // "听不到别人说话"时经常已经被冲掉。这里额外把最近 200 条留在内存里，配
+  // 下面的 GET /debug/voice-diag 直接 curl 拿。进程重启会清空（免费档 dyno
+  // 重启就没了），够用：要查的就是"最近有没有人遇到、当时什么网络/什么内核"。
+  const VOICE_DIAG_LOG_MAX = 200;
+  const voiceDiagLog = [];
+
   // PVE (人机对战): deliberately NOT stored in `rooms` — see design.md
   // 「新增：单人人机对战（PVE）模式」. Reconnect support added 2026-07-28
   // (user feedback: closing the browser and coming back showed "对局不存
@@ -327,6 +336,15 @@ function createServer({
       }
     }
     res.json({ ok: true, rooms: roomsOut });
+  });
+  // 语音诊断回捞（见 voiceDiagLog 上方注释）——排查"听不到别人说话"用，不
+  // 用进 Render 后台翻日志、也不受 7 天保留限制。跟 /status 同一个信任级别：
+  // 不加鉴权，内容是 UA / ICE candidate 类型 / playerId / 房间号，比 /status
+  // 已经公开的真实昵称更不敏感。?limit=N 只要最近 N 条（默认全部，最多 200）。
+  app.get('/debug/voice-diag', (req, res) => {
+    const limit = Math.min(VOICE_DIAG_LOG_MAX, Math.max(1, parseInt(req.query.limit, 10) || VOICE_DIAG_LOG_MAX));
+    const entries = voiceDiagLog.slice(-limit);
+    res.json({ ok: true, count: voiceDiagLog.length, returned: entries.length, entries });
   });
   // Pass root+relative (not a raw absolute path) so express/send's dotfile
   // check only inspects "index.html", not every ancestor directory in the
@@ -1235,7 +1253,10 @@ function createServer({
       const fromPlayerId = socket.data.voicePlayerId;
       if (!fromPlayerId) return;
       const room = rooms.getRoomByPlayer(fromPlayerId);
-      console.log('[voice-diag]', JSON.stringify({ ...payload, roomCode: room?.code ?? null, fromPlayerId, fromSocketId: socket.id }));
+      const entry = { ...payload, roomCode: room?.code ?? null, fromPlayerId, fromSocketId: socket.id, at: payload.at ?? Date.now() };
+      console.log('[voice-diag]', JSON.stringify(entry));
+      voiceDiagLog.push(entry);
+      if (voiceDiagLog.length > VOICE_DIAG_LOG_MAX) voiceDiagLog.shift();
     });
 
     socket.on('voice:mesh-leave', () => {

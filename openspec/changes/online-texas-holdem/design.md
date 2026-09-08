@@ -1945,6 +1945,17 @@ if (active.length < 2) {
 
 **验证**：`cd client && npm run build`、`npx eslint src/hooks/useVoiceMesh.js` 通过；`e2e/voiceTable.spec.js` + `e2e/voicePair.spec.js` 全部 11 条通过（沙盒环境模拟不出微信内核，这轮测试只保证没引入回归，验证不了新加的两处改动本身）。
 
+### #48 三查：诊断日志加内存回捞接口（2026-09-08）
+
+**背景**：又一次想查"听不到别人说话"，卡在同一个地方——`voice:diagnostic` 事件只 `console.log('[voice-diag]', ...)` 进 Render 日志，免费档只留 7 天、且必须登进 Render 后台才看得到。想查的时候日志经常已经被冲掉；协作方（Claude）也没有 Render 登录态，够不到。
+
+**改动**（`server/index.js`，纯增量，不碰事件处理逻辑）：
+- `createServer()` 内加一个内存环形缓冲 `voiceDiagLog`（封顶 200 条）。`voice:diagnostic` handler 在原有 `console.log` 之外，把同一条结构化记录 `push` 进去（`at` 缺省补 `Date.now()`）。没走过 `mesh-join` 的 socket 发的诊断照旧被忽略、也不进缓冲。
+- 新增 `GET /debug/voice-diag`（`?limit=N`，默认 200）：返回 `{ ok, count, returned, entries }`。进程重启即清空（免费档 dyno 重启就没了），可接受——要查的就是"最近有没有人遇到、当时什么网络/什么内核"。
+- **不加鉴权**，跟 `/status` 同一个判断：内容是 UA / ICE candidate 类型 / playerId / 房间号，比 `/status` 已经公开的真实昵称更不敏感；这个项目所有接口都没有鉴权（房间靠 6 位码），单给这个加一套不成比例。
+
+**验证**：`server/__tests__/voiceMesh.test.js` 新增 2 条（上报的诊断能从 `/debug/voice-diag` 拿到且字段完整、被忽略的诊断不进缓冲），该文件 14/14。服务端全量测试通过。
+
 ### 波纹样式修正 + 说话按钮重新设计（真机看完效果后反馈，2026-08-11）
 
 **背景**：上面那版波纹推上线后，用户反馈两点：波纹长得像"方框在放大"而不是水波纹，而且有点卡；另外按住说话的悬浮按钮是牌桌上唯一一个纯圆形元素，跟其余全部圆角矩形风格的 UI（`menu-btn`/`avatar-card`/座位卡）不搭，显得突兀。
