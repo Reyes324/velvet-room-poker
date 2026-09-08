@@ -6,6 +6,7 @@ const { RoomManager } = require('./RoomManager');
 const { parseCard } = require('./GameEngine');
 const { PveSession } = require('./PveSession');
 const { getServerIdentity } = require('./serverIdentity');
+const { computeAwards } = require('./playstyleAwards');
 
 // 固定四档，非法/缺省一律回退单挑——不接受任意人数。Module scope (not
 // re-allocated per pve:start call) and coerced with Number() before the
@@ -737,6 +738,15 @@ function createServer({
         reveals: result.showdownReveal, // public — sent to everyone as-is
         _privateHoleCards: result.allHoleCards, // never broadcast directly — see room:get-hand-history
       });
+
+      // 打法点评（本场之最）——每手结束把逐动作日志喂给计数器，随后 game
+      // 对象连同其 actionLog 一起在下一手/结束时被替换掉，不长期保留。
+      room.recordHandForPlaystyle({
+        actionLog: room.game.actionLog,
+        allHoleCards: result.allHoleCards,
+        communityCards: result.state.communityCards,
+        dealtInIds: result.allHoleCards.map(c => c.id),
+      });
     }
   }
 
@@ -1106,6 +1116,17 @@ function createServer({
         return { ...pub, reveals };
       });
       socket.emit('room:hand-history', personalized);
+    });
+
+    // 打法点评（本场之最）——账本弹出时客户端请求一次，服务端现算。跟
+    // room:get-hand-history 同一个"请求-单播响应"模式。全员看到同一份（v1
+    // 不做剔除自己）。
+    socket.on('room:get-style-recap', ({ playerId } = {}) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const present = room.players.filter(p => !p.left).map(p => ({ id: p.id, name: p.name }));
+      const awards = computeAwards(room.playstyleStats, present);
+      socket.emit('room:style-recap', { awards });
     });
 
     socket.on('room:sync', ({ playerId }) => {

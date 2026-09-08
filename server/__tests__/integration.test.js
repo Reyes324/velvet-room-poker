@@ -784,4 +784,56 @@ describe('集成测试 — 游戏流程', () => {
     expect(p1.connected).toBe(false); // still marked disconnected — just no longer excluded from the deal
     expect(room.game.players.map((p) => p.id).sort()).toEqual(['p1', 'p2']);
   });
+
+  it('room:get-style-recap 打若干手后返回奖项数组（结构正确）', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    // 打 ~20 手：轮到谁就 fold，showdown 后双方确认推进到下一手，
+    // 直到 game:ended 或够 20 手（兜底超时）。
+    const TARGET_HANDS = 20;
+    let hands = 0;
+    await new Promise((resolve) => {
+      let fallback;
+      const done = () => {
+        clearTimeout(fallback);
+        c1.off('game:state', onState);
+        c1.off('game:showdown', onShowdown);
+        c1.off('game:ended', done);
+        resolve();
+      };
+      const onState = (st) => {
+        const actor = st && st.actionPlayerId;
+        if (!actor) return;
+        const c = actor === 'p1' ? c1 : c2;
+        c.emit('game:action', { playerId: actor, action: 'fold' });
+      };
+      const onShowdown = () => {
+        hands += 1;
+        if (hands >= TARGET_HANDS) return done();
+        c1.emit('game:ready-next', { playerId: 'p1' });
+        c2.emit('game:ready-next', { playerId: 'p2' });
+      };
+      c1.on('game:state', onState);
+      c1.on('game:showdown', onShowdown);
+      c1.on('game:ended', done);
+      fallback = setTimeout(done, 12000); // 兜底
+      // 第一手的 game:state 已在 room:start 时发过、被上面的 await 消费掉了，
+      // 用一次 room:sync 把当前手的状态重新推出来，驱动循环启动。
+      c1.emit('room:sync', { playerId: 'p1' });
+    });
+
+    const recap = waitFor(c1, 'room:style-recap');
+    c1.emit('room:get-style-recap', { playerId: 'p1' });
+    const body = await recap;
+    expect(Array.isArray(body.awards)).toBe(true);
+    for (const a of body.awards) {
+      expect(typeof a.award).toBe('string');
+      expect(typeof a.playerId).toBe('string');
+      expect(typeof a.playerName).toBe('string');
+      expect(typeof a.reason).toBe('string');
+    }
+  }, 20000);
 });
