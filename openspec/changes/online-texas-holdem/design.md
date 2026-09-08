@@ -2922,3 +2922,16 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 **明确的权衡（已跟用户确认）**："打牌中"的房间也对所有人可见可加入，等于陌生人能中途坐进一局正在打的牌局（带 1000 起始筹码入座下一手）。项目网址基本只在熟人圈流传，接受这个开放度，不做房主"公开/私密"开关。
 
 **验证**：真实 Playwright 四个视口（1280×900 / 390×844 / 375×667 / 320×640）+ 键盘弹起态截图——列表渲染、绿点/金点状态区分、超长昵称截断、"加入"按钮不挤、矮屏下整块可滚动不被裁、底部"人机对战"入口不被列表压住、键盘弹起时正确退成顶对齐（`.home--keyboard-open .home-stack` 分支）。功能实测：无昵称点"加入"→切到加入表单且房间码预填；有昵称点"打牌中"的行→直接进且落在牌桌（旁观中·下一手自动入座），不是大厅界面。`server/__tests__/integration.test.js` 的 `/status` 用例补 `hostName` 断言，服务端全量 407/407。客户端构建通过、`eslint client/src` 与基线持平（27 errors / 9 warnings，零新增）。impeccable 检测器（仓库根目录跑）对改动文件零命中——`.home-logo` 品牌渐变字是既有的、非本次引入，已在 `.impeccable/config.json` 加窄范围抑制。
+
+### `/debug/players`：谁在线（详版，含 IP 归属地区）（用户需求，2026-09-08）
+
+**背景**：push 前发现线上有人在打人机对战（`pvePlayersOnline: 1`），想知道是谁、要不要等他打完再推。`/status` 只列真人房间的昵称，人机对战只有个计数，认不出人。
+
+**决策**：
+
+1. **独立 `/debug/players` 接口**，不塞进 `/status`（那个首页房间列表在用，要精简）。返回 `rooms`（每个真人房间的在场玩家）+ `pve`（每个人机对战会话）。每条带：昵称、`connectedSec`（socket 连了多久，从 `handshake.issued` 算）、`device`（从 UA 粗分：微信 / iOS / Android / Mac·Chrome 之类）、`ip`、`region`（IP 归属地区）；`pve` 额外带 `seatCount` / `hand`（打到第几手）/ `ageSec`（`PveSession.createdAt` 起，新增字段，不随 `touch()` 变）/ `idleSec` / `online`。
+2. **IP → 地区**：免费 `ip-api.com`（无需 key，45 次/分钟，这接口手动点不高频），结果缓存 1 小时。内网/回环 IP 直接短路成"内网/本地"，不打网络（测试走 localhost，天然不触发外部请求）。查不到返回 `null`，原始 `ip` 照给。中间字段 `_ip` 在返回前删掉，不重复泄漏。
+3. **人机对战昵称从此有值**：客户端桌形按钮原来固定传空串（`onPve('', N)`），改成传本地已存的昵称（`onPve(name.trim(), N)`，`name` 来自 `localStorage.vr_playerName`）——不强制用户填，只是"存过就用"，`pve:start` 收到空串仍回退"玩家"。`PveSession` 把它存在 `players[0].name`，`/debug/players` 直接读。
+4. **敏感度**：这个接口有 IP，比 `/status` 敏感。但项目所有接口本来都不加鉴权（房间靠 6 位码、`/status` 已公开真实昵称、`/debug/voice-diag` 已公开 UA），单给这一个加一套鉴权不成比例。要收紧再单独做。
+
+**验证**：`integration.test.js` 新增 1 条（房间玩家的 `region` 在回环 IP 下是"内网/本地"、`_ip` 不泄漏、`connectedSec` 是数字、`pve` 是数组）。本地起真实 server + 假房间 + 假人机会话，`curl /debug/players` 确认 `pve[].name` 带上了 `pve:start` 传的昵称、`device` 从 UA header 正确解析、`ageSec`/`hand` 有值。服务端全量 408/408。客户端构建通过、`eslint client/src` 持平基线（27/9）。

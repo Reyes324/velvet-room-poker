@@ -104,6 +104,54 @@ function createServer({
   const VOICE_DIAG_LOG_MAX = 200;
   const voiceDiagLog = [];
 
+  // IP → 归属地区（/debug/players 用）。免费 ip-api.com，无需 key，45 次/分钟
+  // 够用（这个接口是手动点、不是高频）。缓存 1 小时，内网/回环直接短路（测试
+  // 走 localhost，不会打网络）。查不到就返回 null，原始 IP 照样给。
+  const geoCache = new Map();
+  async function ipRegion(ip) {
+    if (!ip) return null;
+    if (ip === '::1' || ip.startsWith('127.') || ip.startsWith('10.') ||
+        ip.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(ip) || ip.startsWith('::ffff:127.')) {
+      return '内网/本地';
+    }
+    const cached = geoCache.get(ip);
+    if (cached && Date.now() - cached.at < 3_600_000) return cached.region;
+    let region = null;
+    try {
+      const r = await fetch(
+        `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,regionName,city,isp&lang=zh-CN`,
+        { signal: AbortSignal.timeout(3000) },
+      );
+      const j = await r.json();
+      if (j.status === 'success') {
+        region = [j.country, j.regionName, j.city].filter(Boolean).join(' ');
+        if (j.isp) region += ` · ${j.isp}`;
+      }
+    } catch { /* 查不到就算了 */ }
+    geoCache.set(ip, { region, at: Date.now() });
+    return region;
+  }
+  // 粗略设备标签，从 UA 里挑最有辨识度的几个信号
+  function deviceLabel(ua) {
+    if (!ua) return null;
+    const bits = [];
+    if (/MicroMessenger/i.test(ua)) bits.push('微信');
+    if (/iPhone|iPad|iPod/i.test(ua)) bits.push('iOS');
+    else if (/Android/i.test(ua)) bits.push('Android');
+    else if (/Macintosh/i.test(ua)) bits.push('Mac');
+    else if (/Windows/i.test(ua)) bits.push('Windows');
+    if (!/MicroMessenger/i.test(ua)) {
+      if (/CriOS|Chrome/i.test(ua)) bits.push('Chrome');
+      else if (/Firefox/i.test(ua)) bits.push('Firefox');
+      else if (/Safari/i.test(ua)) bits.push('Safari');
+    }
+    return bits.join(' · ') || '未知';
+  }
+  function clientIp(sock) {
+    const xff = sock?.handshake?.headers?.['x-forwarded-for'];
+    return (xff ? String(xff).split(',')[0].trim() : null) || sock?.handshake?.address || null;
+  }
+
   // PVE (人机对战): deliberately NOT stored in `rooms` — see design.md
   // 「新增：单人人机对战（PVE）模式」. Reconnect support added 2026-07-28
   // (user feedback: closing the browser and coming back showed "对局不存
@@ -347,6 +395,54 @@ function createServer({
     const limit = Math.min(VOICE_DIAG_LOG_MAX, Math.max(1, parseInt(req.query.limit, 10) || VOICE_DIAG_LOG_MAX));
     const entries = voiceDiagLog.slice(-limit);
     res.json({ ok: true, count: voiceDiagLog.length, returned: entries.length, entries });
+  });
+  // 谁在线（详版，2026-09-08）——push 前想知道"这个正在打的人是谁、要不要
+  // 等"。/status 只给昵称，这里多给 连接时长 / 设备 / IP / IP 归属地区。
+  // 内容比 /status 敏感（有 IP），但项目所有接口本来都不加鉴权（房间靠 6 位
+  // 码），单给这个加一套不成比例；真要收紧再说。人机对战玩家昵称：客户端
+  // 现在会把本地存的昵称带进 pve:start（见 HomePage 的桌形按钮），没存过才
+  // 显示"玩家"。
+  app.get('/debug/players', async (_req, res) => {
+    const now = Date.now();
+    const roomsOut = [];
+    for (const room of rooms.rooms.values()) {
+      const players = room.players.filter(p => p.connected && !p.left).map(p => {
+        const sock = p.socketId ? io.sockets.sockets.get(p.socketId) : null;
+        const ip = clientIp(sock);
+        return {
+          name: p.name,
+          ip,
+          device: deviceLabel(sock?.handshake?.headers?.['user-agent']),
+          connectedSec: sock ? Math.round((now - sock.handshake.issued) / 1000) : null,
+          _ip: ip,
+        };
+      });
+      if (players.length > 0) roomsOut.push({ code: room.code, status: room.status, players });
+    }
+    const pve = [];
+    for (const [pveId, session] of pveSessions) {
+      const sock = io.sockets.sockets.get(pveActiveSocket.get(pveId));
+      const ip = clientIp(sock);
+      pve.push({
+        name: session.players?.[0]?.name ?? '玩家',
+        seatCount: session.seatCount,
+        hand: session.handNumber,
+        online: !!sock,
+        startedAt: session.createdAt ?? null,
+        ageSec: session.createdAt ? Math.round((now - session.createdAt) / 1000) : null,
+        idleSec: session.lastActivityAt ? Math.round((now - session.lastActivityAt) / 1000) : null,
+        ip,
+        device: deviceLabel(sock?.handshake?.headers?.['user-agent']),
+        connectedSec: sock ? Math.round((now - sock.handshake.issued) / 1000) : null,
+        _ip: ip,
+      });
+    }
+    // 地区查询：把用到的 IP 去重后并发查一遍，填回去
+    const ips = [...new Set([...roomsOut.flatMap(r => r.players.map(p => p._ip)), ...pve.map(p => p._ip)].filter(Boolean))];
+    const regions = Object.fromEntries(await Promise.all(ips.map(async ip => [ip, await ipRegion(ip)])));
+    for (const r of roomsOut) for (const p of r.players) { p.region = regions[p._ip] ?? null; delete p._ip; }
+    for (const p of pve) { p.region = regions[p._ip] ?? null; delete p._ip; }
+    res.json({ ok: true, rooms: roomsOut, pve });
   });
   // Pass root+relative (not a raw absolute path) so express/send's dotfile
   // check only inspects "index.html", not every ancestor directory in the

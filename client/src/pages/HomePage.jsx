@@ -320,13 +320,14 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
             <>
               <div className="home-pve-picker-title">选择桌形</div>
               <div className="home-pve-picker-grid">
-                {/* 不再用 `name` 输入框的值——那个字段在 PVE 模式下已经不
-                    显示了，即使之前在其他 mode 下打过字也不该带进来（服务
-                    端 pve:start 收到空名字会自动回退到"玩家"）。 */}
-                <button className="home-pve-seat-btn" onClick={() => onPve('', 2)}>单挑</button>
-                <button className="home-pve-seat-btn" onClick={() => onPve('', 4)}>4 人</button>
-                <button className="home-pve-seat-btn" onClick={() => onPve('', 6)}>6 人</button>
-                <button className="home-pve-seat-btn" onClick={() => onPve('', 8)}>8 人</button>
+                {/* PVE 不显示昵称输入框，但如果本地已经存过昵称（`name` 来自
+                    localStorage vr_playerName），就带上——不强制用户填，只是
+                    "知道就用"，方便识别在线的人机对战玩家（用户需求 2026-09-08）。
+                    没有就传空串，服务端 pve:start 收到空名字回退到"玩家"。 */}
+                <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 2)}>单挑</button>
+                <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 4)}>4 人</button>
+                <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 6)}>6 人</button>
+                <button className="home-pve-seat-btn" onClick={() => onPve(name.trim(), 8)}>8 人</button>
               </div>
               <button className="btn-ghost" onClick={() => setMode(null)}>返回</button>
             </>

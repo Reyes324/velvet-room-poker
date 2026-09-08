@@ -63,6 +63,24 @@ describe('集成测试 — 房间管理', () => {
     expect(typeof body.rooms[0].idleSec).toBe('number');
   });
 
+  it('/debug/players 给房间玩家带上 IP 归属地区（本地回环→内网/本地，不打网络）', async () => {
+    const c1 = await connect();
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'p1', playerName: 'Alice' });
+    const { code } = await joined1;
+
+    const body = await (await fetch(`${url}/debug/players`)).json();
+    expect(body.ok).toBe(true);
+    expect(body.rooms).toHaveLength(1);
+    expect(body.rooms[0].code).toBe(code);
+    const alice = body.rooms[0].players.find(p => p.name === 'Alice');
+    expect(alice).toBeTruthy();
+    expect(alice.region).toBe('内网/本地'); // 回环 IP 直接短路，没有 _ip 泄漏
+    expect(alice).not.toHaveProperty('_ip');
+    expect(typeof alice.connectedSec).toBe('number');
+    expect(Array.isArray(body.pve)).toBe(true);
+  });
+
   it('room:get-chat-history 拿到这个房间的完整聊天记录（issue #52）', async () => {
     const [c1, c2] = await Promise.all([connect(), connect()]);
     const joined1 = waitFor(c1, 'room:joined');
