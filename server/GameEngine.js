@@ -171,6 +171,9 @@ class GameEngine {
     this.lastActionBy = null;
     this.lastActionLabel = null;
     this.lastActionPhase = null;
+    // 一手内的逐动作日志——打法点评（本场之最）的累加器要用。只在一手内存在，
+    // 每手结束喂给累加器后随 game 对象一起被丢弃，不长期保留。
+    this.actionLog = [];
     // Set in _endHand — getStateForPlayer needs this to tell a genuine
     // multi-way showdown apart from a fold-out, see that method's comment.
     this.lastHandFoldWin = false;
@@ -199,6 +202,12 @@ class GameEngine {
     this.lastActionBy = playerId;
     this.lastActionLabel = label;
     this.lastActionPhase = this.phase;
+    this.actionLog.push({
+      playerId,
+      phase: this.phase,
+      type: label.type,
+      amount: label.amount ?? 0,
+    });
   }
 
   _seat(i) {
