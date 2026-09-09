@@ -12,6 +12,15 @@
         ],
         "createdAt": "2026-09-08T09:10:32.830Z",
         "reason": "existing brand wordmark (.home-logo 翡翠厅 gradient), pre-existing and outside the room-list task scope"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "client/src/pages/RoomPage.css"
+        ],
+        "createdAt": "2026-09-09T01:37:49.059Z",
+        "reason": "pre-existing brand heading gradient in RoomPage.css, not touched by feat/playstyle-recap"
       }
     ]
   }
