@@ -21,6 +21,15 @@
         ],
         "createdAt": "2026-09-09T01:37:49.059Z",
         "reason": "pre-existing brand heading gradient in RoomPage.css, not touched by feat/playstyle-recap"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "*",
+        "files": [
+          "client/src/pages/RoomPage.css"
+        ],
+        "createdAt": "2026-09-09T01:41:31.856Z",
+        "reason": "pre-existing easing in RoomPage.css, not touched by feat/playstyle-recap"
       }
     ]
   }
