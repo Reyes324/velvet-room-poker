@@ -4,9 +4,15 @@ const { Hand } = require('pokersolver');
 
 const RANK_ORDER = '23456789TJQKA';
 
+// 牌可能是原始字符串（如 'Th'），也可能是 GameEngine.parseCard 产出的对象
+// { rank, suit, color, raw }——生产链路传的是后者。统一归一化到原始字符串，
+// 让下面的分类逻辑无论上游传什么都自洽。
+const rawOf = (c) => (typeof c === 'string' ? c : (c && c.raw) || null);
+
 // 'made'：成对及以上 | 'draw'：同花听牌或两头顺听牌 | 'air'：其余
 function classifyHoldingStrength(holeCards, board) {
-  const cards = [...holeCards, ...board];
+  const cards = [...holeCards, ...board].map(rawOf).filter(Boolean);
+  if (cards.length < 5) return 'air';
   const solved = Hand.solve(cards);
   if (solved.name !== 'High Card') return 'made';
 
@@ -45,16 +51,25 @@ function emptyPlayerStats() {
 }
 
 const STREET_BOARD_LEN = { flop: 3, turn: 4, river: 5 };
-// 引擎里一条街的「首个下注」也是 type: 'raise'（没有单独的 'bet'）；'allin' 里含加注型。
-const AGGRO_TYPES = new Set(['raise', 'allin']);
+
+// 进攻意图由引擎在 actionLog 里显式带出（label.aggressive）：真正的下注/加注
+// （含加注型全下）才是 true。纯全下跟注、封顶降级成的 call 虽然 type 仍是
+// 'allin'，但 aggressive 为 false，这里完全按 call 处理。
+const isAggro = (a) => a.aggressive === true;
+// 非进攻的放钱动作：跟注，或 type 标成 'allin' 但其实是全下跟注。
+const isCallLike = (a) => !isAggro(a) && (a.type === 'call' || a.type === 'allin');
 
 // 原地累加：把一手的 actionLog + 底牌 + 公共牌，摊进每个玩家的 per-hand 计数器。
 // hand: { actionLog:[{playerId,phase,type,amount}], allHoleCards:[{id,holeCards}], communityCards:[], dealtInIds:[] }
 function accumulateHand(statsMap, hand) {
   const { actionLog, allHoleCards, communityCards, dealtInIds } = hand;
   const get = (id) => (statsMap[id] || (statsMap[id] = emptyPlayerStats()));
-  const holeOf = (id) => allHoleCards.find((c) => c.id === id)?.holeCards || null;
-  const boardFor = (phase) => communityCards.slice(0, STREET_BOARD_LEN[phase] ?? 0);
+  const holeOf = (id) => {
+    const h = allHoleCards.find((c) => c.id === id)?.holeCards;
+    return h ? h.map(rawOf).filter(Boolean) : null;
+  };
+  const boardFor = (phase) =>
+    communityCards.slice(0, STREET_BOARD_LEN[phase] ?? 0).map(rawOf).filter(Boolean);
 
   for (const id of dealtInIds) get(id).handsDealt += 1;
 
@@ -63,16 +78,18 @@ function accumulateHand(statsMap, hand) {
 
   // VPIP / PFR：每手每人最多 +1（主动放钱 / 主动加注，都是布尔）
   for (const id of new Set(preflop.map((a) => a.playerId))) {
-    const acts = preflop.filter((a) => a.playerId === id).map((a) => a.type);
-    if (acts.some((t) => t === 'call' || AGGRO_TYPES.has(t))) get(id).handsVPIP += 1;
-    if (acts.some((t) => AGGRO_TYPES.has(t))) get(id).handsPFR += 1;
+    const acts = preflop.filter((a) => a.playerId === id);
+    // 主动放钱：跟注 / 加注 / 全下（全下跟注也算自愿入池）。
+    if (acts.some((a) => a.type === 'call' || a.type === 'allin' || isAggro(a))) get(id).handsVPIP += 1;
+    // 主动加注：只认带进攻意图的动作。
+    if (acts.some(isAggro)) get(id).handsPFR += 1;
   }
 
   // light3bet：某人加注之前，盘面已经有过别人的加注（即不是本手第一次加注）。每手每人最多 +1。
   let seenPreflopRaise = false;
   const countedLight3bet = new Set();
   for (const a of preflop) {
-    if (!AGGRO_TYPES.has(a.type)) continue;
+    if (!isAggro(a)) continue;
     if (seenPreflopRaise && !countedLight3bet.has(a.playerId)) {
       get(a.playerId).light3bet += 1;
       countedLight3bet.add(a.playerId);
@@ -82,7 +99,7 @@ function accumulateHand(statsMap, hand) {
 
   // 翻前最后加注方（cbet 判定用）
   let preflopAggressor = null;
-  for (const a of preflop) if (AGGRO_TYPES.has(a.type)) preflopAggressor = a.playerId;
+  for (const a of preflop) if (isAggro(a)) preflopAggressor = a.playerId;
 
   // 翻前就弃牌的人
   const foldedPreflop = new Set();
@@ -103,34 +120,27 @@ function accumulateHand(statsMap, hand) {
     if (street.length === 0) continue;
     const board = boardFor(phase);
     let betOpened = false;   // 这条街是否已有人下注
-    let firstBettor = null;
-    let reRaised = false;    // 首注之后是否有人再加注
 
     for (const a of street) {
       const s = get(a.playerId);
       s.postflopDecisions += 1;
 
       // 面对下注 → facedRaise / foldedToRaise。
-      // 例外：面对翻牌 c-bet（翻前加注方开的首注）本身不计——那属于「防 c-bet」的范畴，
-      // 不进 facedRaise；但 c-bet 被反加注后，后续动作照常计。
+      // 按 spec（秒怂 = 面对加注弃牌率最高）：翻后轮到自己时面前有需要跟的注，
+      // 每一次都计（含未被反加的翻牌 c-bet），弃牌就计 foldedToRaise。
       if (betOpened) {
-        const cbetStreet = phase === 'flop' && firstBettor === preflopAggressor && preflopAggressor != null;
-        const facing = !(cbetStreet && !reRaised);
-        if (facing) {
-          if (a.type === 'fold') { s.facedRaise += 1; s.foldedToRaise += 1; }
-          else if (a.type === 'call' || AGGRO_TYPES.has(a.type)) { s.facedRaise += 1; }
-        }
+        if (a.type === 'fold') { s.facedRaise += 1; s.foldedToRaise += 1; }
+        else if (isCallLike(a) || isAggro(a)) { s.facedRaise += 1; }
       }
 
-      if (a.type === 'call') {
+      if (isCallLike(a)) {
         s.postflopCalls += 1;
-      } else if (AGGRO_TYPES.has(a.type)) {
+      } else if (isAggro(a)) {
         const hole = holeOf(a.playerId);
         const cls = hole ? classifyHoldingStrength(hole, board) : 'made';
         if (!betOpened) {
           // 这条街的首个下注 = bet
           betOpened = true;
-          firstBettor = a.playerId;
           if (phase === 'flop' && a.playerId === preflopAggressor) {
             // 标准持续下注：单独计入 cbets / cbetAir，也算一次 postflopBets，不进 airFires
             s.postflopBets += 1;
@@ -146,7 +156,6 @@ function accumulateHand(statsMap, hand) {
         } else {
           // 首注之后的加注
           s.postflopRaises += 1;
-          reRaised = true;
           if (cls === 'air') s.airFires += 1; // 空气加注 / 空气 check-raise
         }
       }

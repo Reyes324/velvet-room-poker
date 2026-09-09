@@ -741,12 +741,18 @@ function createServer({
 
       // 打法点评（本场之最）——每手结束把逐动作日志喂给计数器，随后 game
       // 对象连同其 actionLog 一起在下一手/结束时被替换掉，不长期保留。
-      room.recordHandForPlaystyle({
-        actionLog: room.game.actionLog,
-        allHoleCards: result.allHoleCards,
-        communityCards: result.state.communityCards,
-        dealtInIds: result.allHoleCards.map(c => c.id),
-      });
+      // 这是纯装饰性功能，累加器抛错（坏牌 / pokersolver 边界）不能冒进
+      // socket handler 打断摊牌广播。
+      try {
+        room.recordHandForPlaystyle({
+          actionLog: room.game.actionLog,
+          allHoleCards: result.allHoleCards,
+          communityCards: result.state.communityCards,
+          dealtInIds: result.allHoleCards.map(c => c.id),
+        });
+      } catch (e) {
+        console.error('[playstyle] accumulate failed', e);
+      }
     }
   }
 

@@ -1083,8 +1083,8 @@ describe('Room — 打法点评计数器', () => {
       communityCards: [],
       allHoleCards: [{ id: 'p1', holeCards: ['Ah', 'Kh'] }, { id: 'p2', holeCards: ['7c', '2d'] }],
       actionLog: [
-        { playerId: 'p1', phase: 'preflop', type: 'raise', amount: 600 },
-        { playerId: 'p2', phase: 'preflop', type: 'fold', amount: 0 },
+        { playerId: 'p1', phase: 'preflop', type: 'raise', amount: 600, aggressive: true },
+        { playerId: 'p2', phase: 'preflop', type: 'fold', amount: 0, aggressive: false },
       ],
     });
     expect(room.playstyleStats.p1.handsPFR).toBe(1);
@@ -1097,7 +1097,7 @@ describe('Room — 打法点评计数器', () => {
     room.recordHandForPlaystyle({
       dealtInIds: ['p1'], communityCards: [],
       allHoleCards: [{ id: 'p1', holeCards: ['Ah', 'Kh'] }],
-      actionLog: [{ playerId: 'p1', phase: 'preflop', type: 'raise', amount: 600 }],
+      actionLog: [{ playerId: 'p1', phase: 'preflop', type: 'raise', amount: 600, aggressive: true }],
     });
     room.restart();
     expect(room.playstyleStats).toEqual({});

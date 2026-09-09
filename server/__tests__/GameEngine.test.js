@@ -319,10 +319,22 @@ describe('GameEngine — actionLog（打法点评用）', () => {
     game.fold(third);
 
     expect(game.actionLog).toEqual([
-      { playerId: first, phase: 'preflop', type: 'call', amount: 200 },
-      { playerId: second, phase: 'preflop', type: 'raise', amount: 600 },
-      { playerId: third, phase: 'preflop', type: 'fold', amount: 0 },
+      { playerId: first, phase: 'preflop', type: 'call', amount: 200, aggressive: false },
+      { playerId: second, phase: 'preflop', type: 'raise', amount: 600, aggressive: true },
+      { playerId: third, phase: 'preflop', type: 'fold', amount: 0, aggressive: false },
     ]);
+  });
+
+  it('纯全下跟注记 type:allin 但 aggressive:false；真正加注 aggressive:true', () => {
+    // 单挑：p1 是庄/小盲，只有 150 筹码，贴 100 小盲后剩 50，跟大盲即全下。
+    const game = new GameEngine([
+      { id: 'p1', name: 'P1', chips: 150 },
+      { id: 'p2', name: 'P2', chips: 1000 },
+    ], 0, 200);
+    game.call('p1'); // 全下跟注（凑不齐 200）
+    const callEntry = game.actionLog[0];
+    expect(callEntry.type).toBe('allin');
+    expect(callEntry.aggressive).toBe(false);
   });
 
   it('被拒绝的非法动作不进 actionLog', () => {

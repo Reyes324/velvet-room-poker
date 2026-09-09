@@ -114,7 +114,7 @@
 - `postflopDecisions`：翻后总决策次数（门槛用）
 - `sawFlop`：看到翻牌的手数
 - `wentToShowdown`：看到翻牌后打到摊牌的手数 → 摊牌率 = `wentToShowdown / sawFlop`
-- `facedRaise` / `foldedToRaise`：面对加注的次数 / 其中弃牌的次数 → 面对加注弃牌率
+- `facedRaise` / `foldedToRaise`：翻后轮到自己时、面前有需要跟的注的次数 / 其中弃牌的次数 → 面对下注弃牌率。**每一次面对下注都计，包括未被反加的翻牌持续下注**（不做"防 c-bet 不算"的语义收窄——那会让门槛在短局里几乎无法达到，也和"一遇进攻就弃"的标签定义冲突）
 - `airFires`：转牌/河牌所有主动下注加注中、手牌比"底对/没对没听牌"还差的次数；**加上**翻牌圈**非持续下注**的空气进攻
 - `cbetOpportunities` / `cbets` / `cbetAir`：当翻前加注方进到翻牌的次数 / 其中翻牌下注的次数 / 其中是空气的次数 → 持续下注频率
 - `light3bets`：翻前面对别人加注、自己拿弱牌再加注的次数
