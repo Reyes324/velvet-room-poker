@@ -76,6 +76,42 @@ describe('computeAwards', () => {
     expect(new Set(ids).size).toBe(ids.length); // 每人最多一个
   });
 
+  it('全员被动（aggression 全 0）→ 不发梭哈人格，也不发牌桌 NPC', () => {
+    const map = {
+      A: stats({ handsDealt: 30, handsVPIP: 20, postflopBets: 0, postflopRaises: 0, postflopCalls: 12, postflopDecisions: 15 }),
+      B: stats({ handsDealt: 30, handsVPIP: 12, postflopBets: 0, postflopRaises: 0, postflopCalls: 10, postflopDecisions: 14 }),
+      C: stats({ handsDealt: 30, handsVPIP: 6, postflopBets: 0, postflopRaises: 0, postflopCalls: 11, postflopDecisions: 13 }),
+    };
+    const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }]);
+    expect(out.some(a => a.award === '梭哈人格')).toBe(false);
+    expect(out.some(a => a.award === '牌桌 NPC')).toBe(false);
+  });
+
+  it('一个明显凶的 + 两个被动 → 梭哈人格发给凶的那个；牌桌 NPC 允许发给被动方', () => {
+    const map = {
+      A: stats({ handsDealt: 30, handsVPIP: 18, postflopBets: 30, postflopRaises: 10, postflopCalls: 2, postflopDecisions: 45 }),
+      B: stats({ handsDealt: 30, handsVPIP: 12, postflopBets: 0, postflopRaises: 0, postflopCalls: 15, postflopDecisions: 16 }),
+      C: stats({ handsDealt: 30, handsVPIP: 8, postflopBets: 0, postflopRaises: 0, postflopCalls: 12, postflopDecisions: 13 }),
+    };
+    const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }]);
+    const solo = out.find(a => a.award === '梭哈人格');
+    expect(solo).toBeDefined();
+    expect(solo.playerId).toBe('A');
+    const npc = out.find(a => a.award === '牌桌 NPC');
+    if (npc) expect(['B', 'C']).toContain(npc.playerId);
+  });
+
+  it('入池率一马平川（全员 ~50% ±3%）→ 不发手痒星人，也不发养生局', () => {
+    const map = {
+      A: stats({ handsDealt: 40, handsVPIP: 21, postflopBets: 4, postflopRaises: 1, postflopCalls: 8, postflopDecisions: 14 }),
+      B: stats({ handsDealt: 40, handsVPIP: 20, postflopBets: 3, postflopRaises: 1, postflopCalls: 9, postflopDecisions: 14 }),
+      C: stats({ handsDealt: 40, handsVPIP: 19, postflopBets: 3, postflopRaises: 1, postflopCalls: 8, postflopDecisions: 13 }),
+    };
+    const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }]);
+    expect(out.some(a => a.award === '手痒星人')).toBe(false);
+    expect(out.some(a => a.award === '养生局')).toBe(false);
+  });
+
   it('reason 是一句中文大白话', () => {
     const map = {
       A: stats({ handsDealt: 40, handsVPIP: 36 }),

@@ -10,25 +10,29 @@ const AWARDS = [
   {
     key: '手痒星人', dir: 'max',
     metric: s => s.handsDealt ? s.handsVPIP / s.handsDealt : 0,
-    gate: (s, ctx) => ctx.everyoneHas15,
+    // 全桌入池率挤在一起时（极差 < 0.20）没人算"标新立异"，不发。
+    gate: (s, ctx) => ctx.everyoneHas15 && ctx.vpipSpread >= 0.20,
     reason: (s, v) => `入池率 ${pct(v)}，什么牌都想下场`,
   },
   {
     key: '养生局', dir: 'min',
     metric: s => s.handsDealt ? s.handsVPIP / s.handsDealt : 1,
-    gate: (s, ctx) => ctx.everyoneHas15,
+    gate: (s, ctx) => ctx.everyoneHas15 && ctx.vpipSpread >= 0.20,
     reason: (s, v) => `入池率 ${pct(v)}，非大牌不玩`,
   },
   {
     key: '梭哈人格', dir: 'max',
     metric: s => aggression(s),
-    gate: s => s.postflopDecisions >= 10,
+    // 得主自己真的够凶：下注加注至少和跟注一样多（aggression >= 1）。
+    gate: s => s.postflopDecisions >= 10 && aggression(s) >= 1,
     reason: (s, v) => `翻后进攻性拉满（下注加注是跟注的 ${v.toFixed(1)} 倍）`,
   },
   {
     key: '牌桌 NPC', dir: 'min',
     metric: s => aggression(s),
-    gate: s => s.postflopDecisions >= 10,
+    // 得主自己够被动（aggression < 0.5），且桌上真有个凶人（别人 aggression >= 1）作对照；
+    // 全桌都被动时"最被动"不算突出，不发。
+    gate: (s, ctx) => s.postflopDecisions >= 10 && aggression(s) < 0.5 && ctx.anyOtherAggressive(s),
     reason: () => `翻后几乎从不主动，全程跟着走`,
   },
   {
@@ -92,7 +96,19 @@ function computeAwards(statsMap, players, opts = {}) {
     }
     return 0;
   }
-  const ctx = { everyoneHas15, margin };
+  // 全桌入池率的极差——给"手痒星人/养生局"判断"这桌到底有没有明显的松/紧分化"。
+  const vpipRates = present.map(p => {
+    const x = statsMap[p.id];
+    return x.handsDealt ? x.handsVPIP / x.handsDealt : 0;
+  });
+  const vpipSpread = (Math.max(...vpipRates) - Math.min(...vpipRates)) || 0;
+
+  // 桌上除了 s 以外，有没有别的在场玩家是真凶（aggression >= 1）——给"牌桌 NPC"做对照。
+  function anyOtherAggressive(s) {
+    return present.some(p => statsMap[p.id] !== s && aggression(statsMap[p.id]) >= 1);
+  }
+
+  const ctx = { everyoneHas15, margin, vpipSpread, anyOtherAggressive };
 
   // 每个奖先算候选：按 dir 排序，取满足 gate 的第一名；记 (winner, value, gap)
   // gap = |first - second| / (max - min + eps)，代表这个人在这个维度多离谱
@@ -108,6 +124,8 @@ function computeAwards(statsMap, players, opts = {}) {
     const idxInRanked = ranked.findIndex(r => r.id === winner.id);
     const next = ranked[idxInRanked + 1];
     const gap = next ? Math.abs(winner.v - next.v) / spread : 1;
+    // 奖项可声明 minGap：得主在这个维度没拉开足够差距（gap 不达标）就静默跳过。
+    if (typeof def.minGap === 'number' && gap < def.minGap) continue;
     candidates.push({
       award: def.key, playerId: winner.id, playerName: winner.name,
       value: winner.v, gap,
