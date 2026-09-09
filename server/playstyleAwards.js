@@ -10,14 +10,18 @@ const AWARDS = [
   {
     key: '手痒星人', dir: 'max',
     metric: s => s.handsDealt ? s.handsVPIP / s.handsDealt : 0,
-    // 全桌入池率挤在一起时（极差 < 0.20）没人算"标新立异"，不发。
-    gate: (s, ctx) => ctx.everyoneHas15 && ctx.vpipSpread >= 0.20,
+    // 桌面级：全桌入池率挤在一起时（极差 < 0.20）没人算"标新立异"，不发。
+    // 得主级：本人入池率确实高（>= 45%），否则次紧的人也会被贴上"什么牌都想下场"。
+    gate: (s, ctx) => ctx.everyoneHas15 && ctx.vpipSpread >= 0.20
+      && (s.handsDealt ? s.handsVPIP / s.handsDealt : 0) >= 0.45,
     reason: (s, v) => `入池率 ${pct(v)}，什么牌都想下场`,
   },
   {
     key: '养生局', dir: 'min',
     metric: s => s.handsDealt ? s.handsVPIP / s.handsDealt : 1,
-    gate: (s, ctx) => ctx.everyoneHas15 && ctx.vpipSpread >= 0.20,
+    // 得主级：本人入池率确实低（<= 30%）。
+    gate: (s, ctx) => ctx.everyoneHas15 && ctx.vpipSpread >= 0.20
+      && (s.handsDealt ? s.handsVPIP / s.handsDealt : 1) <= 0.30,
     reason: (s, v) => `入池率 ${pct(v)}，非大牌不玩`,
   },
   {
@@ -32,7 +36,7 @@ const AWARDS = [
     metric: s => aggression(s),
     // 得主自己够被动（aggression < 0.5），且桌上真有个凶人（别人 aggression >= 1）作对照；
     // 全桌都被动时"最被动"不算突出，不发。
-    gate: (s, ctx) => s.postflopDecisions >= 10 && aggression(s) < 0.5 && ctx.anyOtherAggressive(s),
+    gate: (s, ctx, id) => s.postflopDecisions >= 10 && aggression(s) < 0.5 && ctx.anyOtherAggressive(id),
     reason: () => `翻后几乎从不主动，全程跟着走`,
   },
   {
@@ -78,8 +82,8 @@ function computeAwards(statsMap, players, opts = {}) {
   const present = players.filter(p => statsMap[p.id]);
   if (present.length < 2) return [];
 
-  const totalHands = Math.max(0, ...present.map(p => statsMap[p.id].handsDealt));
-  if (totalHands < MIN_HANDS_FOR_SECTION) return [];
+  const maxHandsDealt = Math.max(0, ...present.map(p => statsMap[p.id].handsDealt));
+  if (maxHandsDealt < MIN_HANDS_FOR_SECTION) return [];
 
   const everyoneHas15 = present.every(p => statsMap[p.id].handsDealt >= 15);
 
@@ -90,7 +94,9 @@ function computeAwards(statsMap, players, opts = {}) {
         const x = statsMap[p.id];
         return x.sawFlop ? x.wentToShowdown / x.sawFlop : 0;
       }).sort((a, b) => a - b);
-      const med = vals[Math.floor(vals.length / 2)];
+      // 中位数：偶数人数取中间两个的平均（取偏高那个会让单挑领先者 margin 恒为 0）。
+      const mid = vals.length / 2;
+      const med = vals.length % 2 ? vals[Math.floor(mid)] : (vals[mid - 1] + vals[mid]) / 2;
       const mine = s.sawFlop ? s.wentToShowdown / s.sawFlop : 0;
       return mine - med;
     }
@@ -104,8 +110,8 @@ function computeAwards(statsMap, players, opts = {}) {
   const vpipSpread = (Math.max(...vpipRates) - Math.min(...vpipRates)) || 0;
 
   // 桌上除了 s 以外，有没有别的在场玩家是真凶（aggression >= 1）——给"牌桌 NPC"做对照。
-  function anyOtherAggressive(s) {
-    return present.some(p => statsMap[p.id] !== s && aggression(statsMap[p.id]) >= 1);
+  function anyOtherAggressive(playerId) {
+    return present.some(p => p.id !== playerId && aggression(statsMap[p.id]) >= 1);
   }
 
   const ctx = { everyoneHas15, margin, vpipSpread, anyOtherAggressive };
@@ -119,13 +125,11 @@ function computeAwards(statsMap, players, opts = {}) {
       .sort((a, b) => def.dir === 'max' ? b.v - a.v : a.v - b.v);
     const vals = ranked.map(r => r.v);
     const spread = (Math.max(...vals) - Math.min(...vals)) || 1e-9;
-    const winner = ranked.find(r => def.gate(statsMap[r.id], ctx));
+    const winner = ranked.find(r => def.gate(statsMap[r.id], ctx, r.id));
     if (!winner) continue;
     const idxInRanked = ranked.findIndex(r => r.id === winner.id);
     const next = ranked[idxInRanked + 1];
     const gap = next ? Math.abs(winner.v - next.v) / spread : 1;
-    // 奖项可声明 minGap：得主在这个维度没拉开足够差距（gap 不达标）就静默跳过。
-    if (typeof def.minGap === 'number' && gap < def.minGap) continue;
     candidates.push({
       award: def.key, playerId: winner.id, playerName: winner.name,
       value: winner.v, gap,
@@ -146,7 +150,7 @@ function computeAwards(statsMap, players, opts = {}) {
       continue;
     }
     // 顺延
-    const alt = c._ranked.find(r => !takenBy.has(r.id) && c._def.gate(statsMap[r.id], ctx));
+    const alt = c._ranked.find(r => !takenBy.has(r.id) && c._def.gate(statsMap[r.id], ctx, r.id));
     if (alt) {
       takenBy.add(alt.id);
       result.push({ award: c.award, playerId: alt.id, playerName: alt.name, reason: c._def.reason(statsMap[alt.id], alt.v) });

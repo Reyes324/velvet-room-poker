@@ -28,17 +28,50 @@ describe('computeAwards', () => {
     expect(out.find(a => a.playerId === 'B').award).toBe('养生局');
   });
 
-  it('每人最多一个奖：同时是两个奖得主时留最突出的，另一个顺延', () => {
+  it('每人最多一个奖：同时是两个奖得主时留最突出的，另一个顺延，且顺延到的人确实符合那个奖', () => {
     const map = {
+      // A：入池率 95% 且翻后极凶 → 同时够 手痒星人 + 梭哈人格
       A: stats({ handsDealt: 40, handsVPIP: 38, postflopBets: 50, postflopRaises: 20, postflopCalls: 2, postflopDecisions: 90 }),
+      // B：又紧又被动 → 两个奖都不够
       B: stats({ handsDealt: 40, handsVPIP: 5, postflopBets: 1, postflopRaises: 0, postflopCalls: 30, postflopDecisions: 40 }),
+      // C：入池率 50%（>=45）且 aggression 2.5（>=1）→ 两个奖的合格顺延人选
       C: stats({ handsDealt: 40, handsVPIP: 20, postflopBets: 10, postflopRaises: 5, postflopCalls: 6, postflopDecisions: 40 }),
     };
     const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }]);
     const perPlayer = {};
     for (const a of out) { expect(perPlayer[a.playerId]).toBeUndefined(); perPlayer[a.playerId] = a.award; }
-    // A 既是最松也是最凶 → 只拿一个；最凶顺延给 C（若 C 达门槛）
-    expect(Object.keys(perPlayer).filter(id => id === 'A').length).toBeLessThanOrEqual(1);
+    // A 只拿一个
+    expect(out.filter(a => a.playerId === 'A').length).toBe(1);
+
+    const aggression = s => (s.postflopBets + s.postflopRaises) / Math.max(1, s.postflopCalls);
+    // 顺延后落到的人必须真的符合那个奖的描述（不再只断言 <= 1）
+    for (const a of out) {
+      if (a.playerId === 'A') continue;
+      if (a.award === '手痒星人') {
+        expect(map[a.playerId].handsVPIP / map[a.playerId].handsDealt).toBeGreaterThanOrEqual(0.45);
+      }
+      if (a.award === '梭哈人格') {
+        expect(aggression(map[a.playerId])).toBeGreaterThanOrEqual(1);
+        expect(map[a.playerId].postflopDecisions).toBeGreaterThanOrEqual(10);
+      }
+      if (a.award === '养生局') {
+        expect(map[a.playerId].handsVPIP / map[a.playerId].handsDealt).toBeLessThanOrEqual(0.30);
+      }
+    }
+  });
+
+  it('I1：次紧的人不会被顺延贴上"手痒星人"', () => {
+    // A 90% 且激进、B 23%、C 15% —— B 是次紧的人，不该被贴"什么牌都想下场"
+    const map = {
+      A: stats({ handsDealt: 40, handsVPIP: 36, postflopBets: 30, postflopRaises: 10, postflopCalls: 2, postflopDecisions: 60, airFires: 5 }),
+      B: stats({ handsDealt: 40, handsVPIP: 9, postflopBets: 1, postflopRaises: 0, postflopCalls: 8, postflopDecisions: 12 }),
+      C: stats({ handsDealt: 40, handsVPIP: 6, postflopBets: 1, postflopRaises: 0, postflopCalls: 8, postflopDecisions: 12 }),
+    };
+    const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }]);
+    const shou = out.find(a => a.award === '手痒星人');
+    // A 若拿了别的奖，手痒星人顺延时 B/C 都不到 45% → 该奖直接不出现
+    if (shou) expect(shou.playerId).toBe('A');
+    expect(out.some(a => a.award === '手痒星人' && (a.playerId === 'B' || a.playerId === 'C'))).toBe(false);
   });
 
   it('影帝：空气开火 >=3 才发；不够则该奖不出现', () => {
