@@ -1478,3 +1478,14 @@
   - `server/PveSession.js`：新增 `createdAt`（不随 `touch()` 变，`/debug/players` 的 `ageSec` 用）
   - `client/src/pages/HomePage.jsx`：PVE 桌形按钮 `onPve('', N)` → `onPve(name.trim(), N)`，把本地已存昵称带进 `pve:start`（不强制、没存过仍回退"玩家"）
   - **验收**：`integration.test.js` 新增 1 条（回环 IP→"内网/本地"、`_ip` 不泄漏、`connectedSec` 数字、`pve` 数组）；本地 curl 实测 `pve[].name` 带上昵称、`device` 从 UA header 解析、`ageSec`/`hand` 有值；服务端 408/408；客户端构建通过、lint 持平基线（27/9）
+
+- [x] **打法点评（本场之最）—— 账本里的颁奖式打法画像（2026-09-08，用户需求；设计 docs/superpowers/specs/2026-09-08-playstyle-recap-design.md，实施计划 docs/superpowers/plans/2026-09-08-playstyle-recap.md）**
+  - 一局结束账本弹出时，账本里加一段"本场之最"：根据这个房间打过的所有牌，给打法最突出的人各贴一个奖（手痒星人/养生局/梭哈人格/牌桌NPC/我倒要看看/秒怂/影帝/惯性开火/加你一脸），每人最多一个。数据后台增量累加、不持久化、随房间生命周期、restart 清空。v1 全员公开不做剔除自己。人机对战不涉及。
+  - `server/GameEngine.js`：每手记 `actionLog`（`{playerId,phase,type,amount}`）
+  - `server/playstyleStats.js`（新）：`classifyHoldingStrength`（made/draw/air）+ `emptyPlayerStats` + `accumulateHand`（纯函数，每手把动作序列摊进 per-player 计数器）
+  - `server/playstyleAwards.js`（新）：`computeAwards`（纯函数，门槛过滤 + 每人一个奖冲突顺延 + 上限 5，≥15 手才出段，撑不起返回 []）
+  - `server/RoomManager.js`：`Room.playstyleStats` + `recordHandForPlaystyle()`，`restart()` 清空
+  - `server/index.js`：`handleActionResult` showdown 分支每手调累加器；新增 `room:get-style-recap` → `room:style-recap` socket 事件
+  - `client/src/pages/RoomPage.jsx`：`styleRecap` state + 打开账本/`game:ended` 时请求 + 传 prop（两处 LedgerModal）
+  - `client/src/components/LedgerModal.jsx` + `velvet.css`：渲染"本场之最"段
+  - **验收**：分支 `feat/playstyle-recap` 8 个 commit（3253b8b→f0f0db5），子代理逐任务 TDD。服务端全量 430/430（含新增 playstyleStats 9 条、playstyleAwards 6 条、RoomManager 3 条、integration e2e 1 条）；客户端构建通过、lint 持平基线（27/9）
