@@ -64,7 +64,7 @@ export default function LedgerModal({ players, startingChips, myId, onClose, egg
         {topEggTargets.length > 0 && (
           <div className="ledger-egg-note">🥚 被扔鸡蛋最多：{topEggTargets.join('、')}（{maxEggCount}次）</div>
         )}
-        {styleRecap !== null && (
+        {Array.isArray(styleRecap) && (
           <div className="ledger-recap">
             <div className="ledger-recap__title">本场之最</div>
             {styleRecap.length === 0 ? (
