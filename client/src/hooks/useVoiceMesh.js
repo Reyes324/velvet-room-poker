@@ -303,6 +303,12 @@ export function useVoiceMesh({ socket, emit, playerId }) {
       micRequestInFlightRef.current = true;
       let stream;
       try {
+        // sfx.js 在模块加载时把页面级 navigator.audioSession.type 锁成
+        // 'ambient'（见 design.md「#51 修复的副作用」）——那是个纯播放类
+        // 别，浏览器会直接拒绝在这个类别下打开麦克风采集，抛
+        // InvalidStateError，不分静音开关状态，每次按都会报错。真正申请
+        // 麦克风前先切到支持采集的类别；不支持这个 API 的浏览器 no-op。
+        try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch { /* 不支持 */ }
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       } catch (e) {
         setMicError(micErrorText(e));

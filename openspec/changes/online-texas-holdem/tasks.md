@@ -1489,3 +1489,8 @@
   - `client/src/pages/RoomPage.jsx`：`styleRecap` state + 打开账本/`game:ended` 时请求 + 传 prop（两处 LedgerModal）
   - `client/src/components/LedgerModal.jsx` + `velvet.css`：渲染"本场之最"段
   - **验收**：分支 `feat/playstyle-recap` 8 个 commit（3253b8b→f0f0db5），子代理逐任务 TDD。服务端全量 430/430（含新增 playstyleStats 9 条、playstyleAwards 6 条、RoomManager 3 条、integration e2e 1 条）；客户端构建通过、lint 持平基线（27/9）
+
+- [x] **修复：#51 音效静音修复导致语音麦克风在真实牌桌里完全打不开（2026-09-10，用户反馈"一按语音就报错"，方案见 design.md 同名章节）**
+  - 根因：`sfx.js` 模块加载时把页面级 `navigator.audioSession.type` 锁成 `'ambient'`（纯播放类别，不支持音频采集），`RoomPage`/`PvePage` 一进牌桌就触发，早于任何人点"说话"；此后 `getUserMedia({ audio: true })` 在这个类别下必定抛 `InvalidStateError: AudioSession category is not compatible with audio capture`，跟物理静音开关状态无关。`/voice-check`、`/voice-pair` 两个自检页不 `import` `sfx.js`，测不出这个问题（已知限制，记在 design.md，不在本次改动范围）
+  - `client/src/hooks/useVoiceMesh.js`：`startTalking` 在调用 `getUserMedia` 前，把 `navigator.audioSession.type` 显式切到 `'play-and-record'`（try/catch 包住，不支持的浏览器 no-op）。只在首次成功申请麦克风时切一次，此后不再切回，是对 2533 那条"物理静音开关一起管音效+语音"决策的收窄（用过语音的人此后该局音效也不再受物理静音开关限制），细节见 design.md
+  - **验收**：`cd client && npm run build` 通过；`npx eslint src` 与基线持平。真机 iOS 验证待用户确认（沙箱没有真实 iOS Safari + AudioSession API 环境，无法本地复现/回归这条）
