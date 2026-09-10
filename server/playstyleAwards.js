@@ -77,13 +77,26 @@ function aggression(s) {
   return aggro / Math.max(1, s.postflopCalls);
 }
 
+// present 玩家里手数打得最多的那个到了多少手——独立抽出来，因为
+// computeAwards 的空数组门槛判断（够不够格发段）和外面调用方要知道"够不够
+// 格"是同一个数，之前后者压根拿不到，导致"手数够但没人达标"跟"手数根本
+// 不够"在客户端共用同一句文案，见 design.md「本场之最」章节。
+function maxHandsDealtAmong(statsMap, players) {
+  const present = players.filter(p => statsMap[p.id]);
+  if (present.length < 2) return 0;
+  return Math.max(0, ...present.map(p => statsMap[p.id].handsDealt));
+}
+
+function hasEnoughHands(statsMap, players) {
+  return maxHandsDealtAmong(statsMap, players) >= MIN_HANDS_FOR_SECTION;
+}
+
 function computeAwards(statsMap, players, opts = {}) {
   const maxAwards = opts.maxAwards ?? 5;
   const present = players.filter(p => statsMap[p.id]);
   if (present.length < 2) return [];
 
-  const maxHandsDealt = Math.max(0, ...present.map(p => statsMap[p.id].handsDealt));
-  if (maxHandsDealt < MIN_HANDS_FOR_SECTION) return [];
+  if (maxHandsDealtAmong(statsMap, players) < MIN_HANDS_FOR_SECTION) return [];
 
   const everyoneHas15 = present.every(p => statsMap[p.id].handsDealt >= 15);
 
@@ -161,4 +174,4 @@ function computeAwards(statsMap, players, opts = {}) {
   return result.slice(0, maxAwards);
 }
 
-module.exports = { computeAwards };
+module.exports = { computeAwards, hasEnoughHands };

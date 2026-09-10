@@ -6,7 +6,7 @@ const { RoomManager } = require('./RoomManager');
 const { parseCard } = require('./GameEngine');
 const { PveSession } = require('./PveSession');
 const { getServerIdentity } = require('./serverIdentity');
-const { computeAwards } = require('./playstyleAwards');
+const { computeAwards, hasEnoughHands } = require('./playstyleAwards');
 
 // 固定四档，非法/缺省一律回退单挑——不接受任意人数。Module scope (not
 // re-allocated per pve:start call) and coerced with Number() before the
@@ -1132,7 +1132,10 @@ function createServer({
       if (!room) return socket.emit('game:error', '未找到房间');
       const present = room.players.filter(p => !p.left).map(p => ({ id: p.id, name: p.name }));
       const awards = computeAwards(room.playstyleStats, present);
-      socket.emit('room:style-recap', { awards });
+      // 空数组有两种截然不同的成因——手数不够 vs 手数够但没人打法突出——
+      // 客户端要能分清楚，不能都显示成"手数还少"（见 design.md「本场之最」）。
+      const enoughHands = hasEnoughHands(room.playstyleStats, present);
+      socket.emit('room:style-recap', { awards, enoughHands });
     });
 
     socket.on('room:sync', ({ playerId }) => {

@@ -829,6 +829,10 @@ describe('集成测试 — 游戏流程', () => {
     c1.emit('room:get-style-recap', { playerId: 'p1' });
     const body = await recap;
     expect(Array.isArray(body.awards)).toBe(true);
+    // 20 手 >= 15 手门槛，即使两人一路 fold、打法完全没有区分度导致 awards
+    // 为空，enoughHands 也必须是 true——客户端要靠它区分"手数不够"和"手数
+    // 够但没人突出"两种情况，不能都显示成同一句"手数还少"。
+    expect(body.enoughHands).toBe(true);
     for (const a of body.awards) {
       expect(typeof a.award).toBe('string');
       expect(typeof a.playerId).toBe('string');

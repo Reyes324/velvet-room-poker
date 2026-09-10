@@ -115,7 +115,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
       setTimeout(onLeave, 2500);
     },
     'game:error': (msg) => { showToast(msg, 'danger'); unlockAction(); },
-    'room:style-recap': ({ awards }) => setStyleRecap(awards ?? []),
+    'room:style-recap': ({ awards, enoughHands }) => setStyleRecap({ awards: awards ?? [], enoughHands: !!enoughHands }),
     'room:hand-history': (hands) => setHandHistory(hands),
     'room:chat-history': (messages) => setChatHistory(messages),
     // No separate transient toast for game:timer-expired — it's redundant

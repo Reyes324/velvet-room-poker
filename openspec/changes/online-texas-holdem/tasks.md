@@ -1494,3 +1494,11 @@
   - 根因：`sfx.js` 模块加载时把页面级 `navigator.audioSession.type` 锁成 `'ambient'`（纯播放类别，不支持音频采集），`RoomPage`/`PvePage` 一进牌桌就触发，早于任何人点"说话"；此后 `getUserMedia({ audio: true })` 在这个类别下必定抛 `InvalidStateError: AudioSession category is not compatible with audio capture`，跟物理静音开关状态无关。`/voice-check`、`/voice-pair` 两个自检页不 `import` `sfx.js`，测不出这个问题（已知限制，记在 design.md，不在本次改动范围）
   - `client/src/hooks/useVoiceMesh.js`：`startTalking` 在调用 `getUserMedia` 前，把 `navigator.audioSession.type` 显式切到 `'play-and-record'`（try/catch 包住，不支持的浏览器 no-op）。只在首次成功申请麦克风时切一次，此后不再切回，是对 2533 那条"物理静音开关一起管音效+语音"决策的收窄（用过语音的人此后该局音效也不再受物理静音开关限制），细节见 design.md
   - **验收**：`cd client && npm run build` 通过；`npx eslint src` 与基线持平。真机 iOS 验证待用户确认（沙箱没有真实 iOS Safari + AudioSession API 环境，无法本地复现/回归这条）
+
+- [x] **修复：本场之最"手数还少"文案掩盖了"手数够但没人突出"的真实情况（2026-09-10，用户反馈，方案见 `docs/superpowers/specs/2026-09-08-playstyle-recap-design.md` 同名章节更新）**
+  - 用户反馈"账本里一直显示手数还少，不会有数据"，追查发现 `computeAwards` 在"手数不够 15 手"和"手数够了但没人打法突出"两种情况下都返回 `[]`，客户端对两者显示同一句"这场手数还少"——用户这桌是后一种情况（真实打了 16 手，双方风格接近），被误导以为要继续打
+  - `server/playstyleAwards.js`：抽出 `maxHandsDealtAmong` 复用于 `computeAwards` 内部判断和新导出的 `hasEnoughHands`，避免两处各存一份门槛逻辑
+  - `server/index.js`：`room:get-style-recap` handler 的响应体从 `{ awards }` 变成 `{ awards, enoughHands }`
+  - `client/src/pages/RoomPage.jsx` / `LedgerModal.jsx`：`styleRecap` state 从裸数组改成 `{ awards, enoughHands }`；空数组时按 `enoughHands` 选文案（不够 15 手 → 原文案"这场手数还少，没看出谁特别怎样"；够了但没人达标 → 新文案"这场大家打得都挺接近，没人特别突出"）
+  - 15 手门槛本身不动——之前 `b9bbed0` 已经证明过小样本会把打法正常的人错误贴上标签，这次只是让"为什么是空的"这件事说人话
+  - **验收**：`playstyleAwards.test.js` 新增 1 条（手数不够 vs 手数够但一马平川，`hasEnoughHands` 能分清楚这两种都返回 `[]` 的情况）；`integration.test.js` 现有的"打 20 手拿 style-recap"用例补 `enoughHands === true` 断言；服务端全量 443/443。真实两人房间打 16 手全程 fold（刻意制造"一马平川"）+ Playwright 实测账本文案，确认显示新文案而不是"手数还少"，不是读代码猜的。客户端构建通过、lint 与基线持平（27/9）

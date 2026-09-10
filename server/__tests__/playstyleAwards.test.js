@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { computeAwards } = require('../playstyleAwards');
+const { computeAwards, hasEnoughHands } = require('../playstyleAwards');
 const { emptyPlayerStats } = require('../playstyleStats');
 
 function stats(overrides) {
@@ -143,6 +143,21 @@ describe('computeAwards', () => {
     const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }]);
     expect(out.some(a => a.award === '手痒星人')).toBe(false);
     expect(out.some(a => a.award === '养生局')).toBe(false);
+  });
+
+  it('hasEnoughHands：手数不够 → false；手数够但没人达标 → true（跟 computeAwards 返回空数组要能分清楚成因）', () => {
+    const notEnough = { A: stats({ handsDealt: 8, handsVPIP: 6 }), B: stats({ handsDealt: 8, handsVPIP: 1 }) };
+    const players = [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }];
+    expect(hasEnoughHands(notEnough, players)).toBe(false);
+    expect(computeAwards(notEnough, players)).toEqual([]);
+
+    // 一马平川：手数够但没人达标——跟上面同样返回 []，hasEnoughHands 必须能分开
+    const evenlyMatched = {
+      A: stats({ handsDealt: 40, handsVPIP: 21, postflopBets: 4, postflopRaises: 1, postflopCalls: 8, postflopDecisions: 14 }),
+      B: stats({ handsDealt: 40, handsVPIP: 20, postflopBets: 3, postflopRaises: 1, postflopCalls: 9, postflopDecisions: 14 }),
+    };
+    expect(hasEnoughHands(evenlyMatched, players)).toBe(true);
+    expect(computeAwards(evenlyMatched, players)).toEqual([]);
   });
 
   it('reason 是一句中文大白话', () => {
