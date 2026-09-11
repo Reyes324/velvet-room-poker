@@ -264,6 +264,18 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     : { hero: null, opponents: spectatorSeatPositions(opponents.length) };
   const winnerNames = new Set((showdown || []).map(w => w.name));
   const isShowdown = gameState.phase === 'showdown';
+  // GameEngine leaves actionIndex/actionPlayerId pointing at whoever last
+  // acted when a hand ends without a new "who's next" to set it to (fold-
+  // to-one-left, or an all-in call that auto-runs the board straight to
+  // showdown — see GameEngine.js's _nextStreet). myTurn already guarded
+  // against this for the hero's own ActionBar (2026-07-30 fix), but the
+  // seat-level "acting now" ring (isAction below, used for every seat, not
+  // just the hero's) never got the same guard — so a hand-ending all-in call
+  // would flash the *other* player's seat as "still deciding" for one frame
+  // right when the board should be revealing instead (user feedback,
+  // 2026-09-11: "A 跟注 all-in 之后应该直接开牌，怎么又回到 B 做决策"). Same
+  // root cause as the ActionBar fix, just a second call site it missed.
+  const isActingNow = (id) => !isShowdown && gameState.actionPlayerId === id;
 
   // 2026-08-13：拍一拍带蛋（🥚）的抛出起点从"桌子中心固定原点"改成"发起
   // 人自己的头像"（用户反馈：想要"从发起人扔到接收人"的抛物线，而不是
@@ -376,19 +388,12 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
   // the settlement modal shows a beat later, so the two don't disagree on
   // how specific the hand description is (user feedback, 2026-07-29).
   const handNameLabels = [...new Set((showdown || []).map(w => w.handName).filter(Boolean))];
-  // !isShowdown matters specifically for the action that ENDS a hand
-  // (fold-to-one-left, or river call straight into showdown): GameEngine
-  // deliberately leaves actionIndex/actionPlayerId untouched in that case
-  // (see its own comment on lastActionSeq — "那一刻已经没有下一个该谁"), so
-  // actionPlayerId still equals the very player who just folded/called.
-  // Combined with the 'game:state' handler resetting actionDisabled back to
-  // false on every broadcast (including this terminal one, which arrives
-  // together with game:showdown before the delayed settlement sheet shows),
-  // myTurn would otherwise flip true again for a beat — resurrecting the
-  // ActionBar for a hand that's already over (user feedback, 2026-07-30:
-  // clicking fold briefly showed the action bar again before the settlement
-  // modal appeared).
-  const myTurn = amPlaying && gameState.actionPlayerId === myId && !actionDisabled && !isShowdown;
+  // isActingNow's !isShowdown guard (see above) is what stops this from
+  // flipping true again for a beat on the action that ENDS a hand —
+  // resurrecting the ActionBar for a hand that's already over (user
+  // feedback, 2026-07-30: clicking fold briefly showed the action bar again
+  // before the settlement sheet appeared).
+  const myTurn = amPlaying && isActingNow(myId) && !actionDisabled;
   const dense = amPlaying ? opponents.length + 1 >= 7 : opponents.length >= 7;
 
 
@@ -875,7 +880,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           <PlayerSeat
             player={me}
             isMe={true}
-            isAction={gameState.actionPlayerId === myId}
+            isAction={isActingNow(myId)}
             isWinner={winnerNames.has(me.name)}
             gamePhase={revealPhase}
             color={colorForId(me.id)}
@@ -921,7 +926,7 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
             <PlayerSeat
               player={p}
               isMe={false}
-              isAction={gameState.actionPlayerId === p.id}
+              isAction={isActingNow(p.id)}
               isWinner={winnerNames.has(p.name)}
               gamePhase={revealPhase}
               color={colorForId(p.id)}

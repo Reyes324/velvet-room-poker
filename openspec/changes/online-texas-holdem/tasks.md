@@ -1507,3 +1507,9 @@
   - 用户反馈语音又不行了但没带截图，追问有没有记录日志——查代码发现 `useVoiceMesh.js` 的 `startTalking` 里 `getUserMedia` 失败只 `setMicError`，从未调用过 `voice:diagnostic`，跟 #48 复查那次"自动播放被拦"是同一类盲区：诊断上报只覆盖了"听不到别人"这条线，完全没覆盖"自己申请麦克风直接失败"这条线
   - `client/src/hooks/useVoiceMesh.js`：`startTalking` 的 `getUserMedia` catch 分支新增一条 `voice:diagnostic`（`kind: 'mic-request-failed'`，带 `errorName`/`errorMessage`/UA/是否微信）。服务端 handler 本身是通用透传，不需要改
   - **验收**：`cd client && npm run build`、`npx eslint src/hooks/useVoiceMesh.js` 通过；不新增 e2e（沙盒假麦克风不会真的失败，模拟不出触发条件）
+
+- [x] **修复：all-in 跟到摊牌后，座位还短暂显示"行动中"环（2026-09-11，用户反馈，方案见 design.md 同名章节）**
+  - 用户描述的场景：A 下注、B all-in 盖过、轮回 A、A 也 all-in 跟上——应该直接摊牌，不该"又回到 B 做决策"。真机测试（`e2e/allinShowdown.spec.js`）证实：`GameEngine.js` 的下注轮结束/摊牌判断本身没问题（服务端逻辑正确，真实对局能一路打到摊牌），bug 在客户端渲染——`GameTable.jsx` 的座位"行动中"环（`isAction`，hero 和对手座位都用这个 prop）直接拿 `actionPlayerId` 判断，没有像 2026-07-30 已经修过的 hero 专属 ActionBar（`myTurn`）那样加 `!isShowdown` 守卫。GameEngine 在下注轮靠自动跑完全部街道直接收尾的场景里（fold-to-one-left / all-in 跟到摊牌），`actionIndex` 会停在最后一个还是 `active` 状态的玩家身上、不会被清空——这本身不是服务端 bug（它没打算在终局场景里维护这个字段），但任何直接读它渲染"轮到谁"的地方都得自己补上这层判断，2026-07-30 那次只补了 hero 自己的 ActionBar 这一处，漏了座位环这第二处
+  - `client/src/components/GameTable.jsx`：新增 `isActingNow(id)` = `!isShowdown && actionPlayerId === id`，取代原来 hero/对手座位各自裸写的 `gameState.actionPlayerId === id`；`myTurn` 也改用它（行为不变，去掉重复判断逻辑）
+  - **复现方式**：先在没有这处修复的代码上跑通 `e2e/allinShowdown.spec.js`（两个真实浏览器 context 建房间、真实打到翻牌、A 加注→B all-in→A all-in），连续跑数次真实抓到座位 class 里带 `is-active`（B 或 A 的座位，取决于谁的筹码更深、谁在这一步全押后仍剩余额）；修复后同样跑数次，`is-active`/`is-timed`/`is-timed-urgent` 再未出现过
+  - **验收**：`cd client && npm run build`、`npx eslint src` 通过（36/27/9，与基线持平）；新增 `e2e/allinShowdown.spec.js` 稳定通过；`e2e/game.spec.js` 全量回归（27/28 通过，唯一失败是"账本弹窗：四列数字与 fixture 数据一致"——这条在完全不含本次改动的 `main` 上同样失败，是 2026-08-13 账本"几底"显示格式改动后没跟着更新的旧断言，跟本次改动无关，不在本次修复范围）

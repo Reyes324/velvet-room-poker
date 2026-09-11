@@ -2957,3 +2957,17 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 4. **敏感度**：这个接口有 IP，比 `/status` 敏感。但项目所有接口本来都不加鉴权（房间靠 6 位码、`/status` 已公开真实昵称、`/debug/voice-diag` 已公开 UA），单给这一个加一套鉴权不成比例。要收紧再单独做。
 
 **验证**：`integration.test.js` 新增 1 条（房间玩家的 `region` 在回环 IP 下是"内网/本地"、`_ip` 不泄漏、`connectedSec` 是数字、`pve` 是数组）。本地起真实 server + 假房间 + 假人机会话，`curl /debug/players` 确认 `pve[].name` 带上了 `pve:start` 传的昵称、`device` 从 UA header 正确解析、`ageSec`/`hand` 有值。服务端全量 408/408。客户端构建通过、`eslint client/src` 持平基线（27/9）。
+
+## Bug 修复：all-in 跟到摊牌后，座位还短暂显示"行动中"环（用户反馈，2026-09-11）
+
+**用户描述的场景**：A 下注 500，B all-in 盖过（B 已经全下），轮回到 A，A 这时也选择 all-in 跟上——应该直接摊牌，不该"又回到 B 去做决策"。
+
+**先排查服务端**：`GameEngine.js` 的下注轮结束判断（`_streetDone`/`_advance`/`_nextStreet`）本身没问题——`_activePlayers()` 只统计 `status === 'active'` 的玩家，all-in/弃牌的人天然被排除在"还要不要等他行动"的判断之外；`_nextStreet` 在活跃玩家 `<= 1` 时会自动跑完剩下的街直接进摊牌，不会真的把行动权交还给已经 all-in 的人。真实两人对局按这个场景走一遍，逻辑上不会回到 B。
+
+**真正的根因在客户端渲染**：GameEngine 在"下注轮靠自动跑完全部街道直接收尾"这类终局场景里（fold-to-one-left，或者这次的 all-in 跟到摊牌），`actionIndex`/`actionPlayerId` 会停留在最后一个还是 `active` 状态的玩家身上，不会被清空——这本身不算服务端 bug（它从设计上就没打算在这类终局场景里维护这个字段，摊牌该看的是 `phase`/`game:showdown`，不是 `actionPlayerId`），但每一处直接拿 `actionPlayerId` 渲染"轮到谁了"的地方，都得自己补上"是不是已经摊牌"这层判断。2026-07-30 已经修过一次同类问题（hero 自己的 `ActionBar` 在弃牌/摊牌那一刻短暂复活），当时的修法是给 `myTurn` 加 `!isShowdown` 守卫——但 `GameTable.jsx` 里座位本身的"行动中"发光环（`isAction` prop，hero 和对手座位都用它，驱动 `is-active`/`is-timed`/`is-timed-urgent` 这几个 CSS class）是另一处独立拿 `actionPlayerId` 直接比较的地方，当时漏改了。这次 all-in 场景命中的正是这第二处：`actionIndex` 摊牌后停在某一方身上，那个人的座位就会在结算弹窗出现的同时继续亮着"轮到你了"的环，看起来像"游戏又回去问他"。
+
+**修复**：`GameTable.jsx` 新增 `isActingNow(id) = !isShowdown && gameState.actionPlayerId === id`，把 hero 座位、对手座位、`myTurn` 三处原来各自裸写的 `actionPlayerId === X` 全部收口到这一个函数，不再有第二份"要不要判断摊牌"的逻辑各存一份。
+
+**复现与验证（不是读代码下结论）**：先在这处修复之前的代码上跑通新增的 `e2e/allinShowdown.spec.js`——两个真实浏览器 context 建房间、真实打到翻牌，A 加注→B 全下→A 也全下——连续跑几次，真实抓到过座位 class 里带 `is-active`（谁的座位取决于这一步谁的筹码更深、谁全下后自己状态仍是 `active` 而不是 `allin`，两种角色都实测命中过）；修复后同样连续跑几次，`is-active`/`is-timed`/`is-timed-urgent` 再没出现过。
+
+**顺带确认，不在本次修复范围**：跑整个 `game.spec.js` 回归时，发现"账本弹窗：四列数字与 fixture 数据一致"这条在完全不含本次改动的 `main` 上就已经失败——是 2026-08-13 账本"已借"列从具体金额改成"几底"显示（见上面「几底」那条决策）之后，这条 e2e 断言没跟着更新，还在断言旧的 `¥2,000` 格式。跟这次的改动无关，是另一条独立的技术债，记在这里以免以后重复排查到同一处。
