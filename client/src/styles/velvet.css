@@ -1145,6 +1145,10 @@
 /* 延时按钮。刻意比三个动作按钮窄（flex:0 0 auto）也更低调——它不是一个牌桌
    动作，只是给自己多要一点时间，不该跟弃牌/跟注/加注抢视觉权重。 */
 .b-extend { flex:0 0 auto; padding:0 12px; background:rgba(120,140,190,.12); color:#8FA5CC; border:1px solid rgba(120,140,190,.26); font-size:13px; font-family:var(--font-mono); }
+/* 额度用完：置灰 + 不可点，但保留跟正常态相同的尺寸/占位——不从 flex 行
+   里摘掉，摘掉会让左边 flex:1/2 的按钮跟着撑开变宽（用户反馈，2026-09-11：
+   "加到最后一次时按钮消失，左边的按钮移过去了"）。 */
+.b-extend--depleted { opacity:.35; cursor:not-allowed; }
 /* flex:2 vs. b-cancel/b-allin's flex:1 each — widest of the three raise-bottom
    buttons, on request (2026-07-31): 返回/全下/确认加注 left-to-right,
    确认加注 gets the most visual weight since it's the commit action. */

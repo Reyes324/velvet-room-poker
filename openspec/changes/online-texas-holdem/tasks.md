@@ -1519,3 +1519,11 @@
   - `client/src/components/GameTable.jsx`：新增 `isActingNow(id)` = `!isShowdown && actionPlayerId === id`，取代原来 hero/对手座位各自裸写的 `gameState.actionPlayerId === id`；`myTurn` 也改用它（行为不变，去掉重复判断逻辑）
   - **复现方式**：先在没有这处修复的代码上跑通 `e2e/allinShowdown.spec.js`（两个真实浏览器 context 建房间、真实打到翻牌、A 加注→B all-in→A all-in），连续跑数次真实抓到座位 class 里带 `is-active`（B 或 A 的座位，取决于谁的筹码更深、谁在这一步全押后仍剩余额）；修复后同样跑数次，`is-active`/`is-timed`/`is-timed-urgent` 再未出现过
   - **验收**：`cd client && npm run build`、`npx eslint src` 通过（36/27/9，与基线持平）；新增 `e2e/allinShowdown.spec.js` 稳定通过；`e2e/game.spec.js` 全量回归（27/28 通过，唯一失败是"账本弹窗：四列数字与 fixture 数据一致"——这条在完全不含本次改动的 `main` 上同样失败，是 2026-08-13 账本"几底"显示格式改动后没跟着更新的旧断言，跟本次改动无关，不在本次修复范围）
+
+- [x] **「+15 秒」加时按钮：额度用完后置灰而不是消失，避免布局跳动 + 次数放宽（2026-09-11，用户反馈，方案见 design.md 同名章节）**
+  - 用户反馈"加到最后一次时，你是直接让按钮消失，导致整个布局发生了变化，左边的按钮移过去了"，并要求"次数有点太严苛，可以放宽一点"
+  - 根因：`ActionBar.jsx` 原来是 `{timeBankMs > 0 && <button className="b-extend">}`——额度耗尽就把按钮整个摘出 DOM；`.ab-main` 是 flex 布局，`.b-fold`/`.b-call`/`.b-check`/`.b-raise-trigger` 都会伸展吃掉腾出来的空间，摘掉 `.b-extend` 就带着左边几颗按钮一起变宽挪位
+  - `client/src/components/ActionBar.jsx`：按钮永远渲染、占住同一个位置，额度耗尽时切换 `disabled` + 新增的 `.b-extend--depleted`（`velvet.css`，`opacity:.35; cursor:not-allowed`）置灰态，不再条件渲染
+  - `server/index.js`：`timeBankPerHandMs` 默认从 30 秒（2 次）放宽到 **45 秒（3 次）**；上限本身不去掉（原始设计就是为了防"一个人拖住全桌"），只是把门槛松一档
+  - **验证**：先在这处修复之前的代码上跑新增的 `e2e/extendTurnLayout.spec.js`——真实连点「+15s」到额度耗尽，旧代码下 `.b-extend` 被摘出 DOM，测试因轮询一个已消失的元素而超时（等价复现了"按钮消失"）；修复后同一份测试量出弃牌按钮在额度耗尽前后的真实 bounding box，x 坐标和宽度分毫不差
+  - **验收**：服务端全量 446/446；客户端构建通过、`eslint src` 与基线持平（36/27/9）；新增 `e2e/extendTurnLayout.spec.js` 通过。顺带确认 `e2e/turnTimeout.spec.js` 里"倒计时视觉：环形描边渲染且在走"这条在不含本次改动的 `main` 上同样失败（`drainedAtSecs` 读到 `null`）——是这个沙箱环境跑真实 20 秒实时窗口的计时类用例本身偏紧，跟本次改动无关，不在本次修复范围
