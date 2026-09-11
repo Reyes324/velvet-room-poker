@@ -1502,3 +1502,8 @@
   - `client/src/pages/RoomPage.jsx` / `LedgerModal.jsx`：`styleRecap` state 从裸数组改成 `{ awards, enoughHands }`；空数组时按 `enoughHands` 选文案（不够 15 手 → 原文案"这场手数还少，没看出谁特别怎样"；够了但没人达标 → 新文案"这场大家打得都挺接近，没人特别突出"）
   - 15 手门槛本身不动——之前 `b9bbed0` 已经证明过小样本会把打法正常的人错误贴上标签，这次只是让"为什么是空的"这件事说人话
   - **验收**：`playstyleAwards.test.js` 新增 1 条（手数不够 vs 手数够但一马平川，`hasEnoughHands` 能分清楚这两种都返回 `[]` 的情况）；`integration.test.js` 现有的"打 20 手拿 style-recap"用例补 `enoughHands === true` 断言；服务端全量 443/443。真实两人房间打 16 手全程 fold（刻意制造"一马平川"）+ Playwright 实测账本文案，确认显示新文案而不是"手数还少"，不是读代码猜的。客户端构建通过、lint 与基线持平（27/9）
+
+- [x] **修复：`getUserMedia` 失败没有被语音诊断上报覆盖（2026-09-11，用户追问"不是有记录脚本吗"才发现，方案见 design.md 同名章节）**
+  - 用户反馈语音又不行了但没带截图，追问有没有记录日志——查代码发现 `useVoiceMesh.js` 的 `startTalking` 里 `getUserMedia` 失败只 `setMicError`，从未调用过 `voice:diagnostic`，跟 #48 复查那次"自动播放被拦"是同一类盲区：诊断上报只覆盖了"听不到别人"这条线，完全没覆盖"自己申请麦克风直接失败"这条线
+  - `client/src/hooks/useVoiceMesh.js`：`startTalking` 的 `getUserMedia` catch 分支新增一条 `voice:diagnostic`（`kind: 'mic-request-failed'`，带 `errorName`/`errorMessage`/UA/是否微信）。服务端 handler 本身是通用透传，不需要改
+  - **验收**：`cd client && npm run build`、`npx eslint src/hooks/useVoiceMesh.js` 通过；不新增 e2e（沙盒假麦克风不会真的失败，模拟不出触发条件）

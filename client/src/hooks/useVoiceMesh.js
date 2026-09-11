@@ -312,6 +312,17 @@ export function useVoiceMesh({ socket, emit, playerId }) {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       } catch (e) {
         setMicError(micErrorText(e));
+        // 之前这里只在本地报错，线上出问题只能靠用户口述/截图反推，跟
+        // #48 那次"自动播放被拦"发现的诊断盲区是同一类缺口——补一条上报，
+        // 下次再出现就能直接从 /debug/voice-diag 里看到，不用等用户描述。
+        emit('voice:diagnostic', {
+          kind: 'mic-request-failed',
+          errorName: e?.name ?? null,
+          errorMessage: e?.message ?? null,
+          ua: navigator.userAgent,
+          isWechat: detectEnv().isWechat,
+          at: Date.now(),
+        });
         return;
       } finally {
         micRequestInFlightRef.current = false;

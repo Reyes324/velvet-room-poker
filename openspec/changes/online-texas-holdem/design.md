@@ -1956,6 +1956,14 @@ if (active.length < 2) {
 
 **验证**：`server/__tests__/voiceMesh.test.js` 新增 2 条（上报的诊断能从 `/debug/voice-diag` 拿到且字段完整、被忽略的诊断不进缓冲），该文件 14/14。服务端全量测试通过。
 
+### 又一个诊断盲区：`getUserMedia` 本身失败（按住说话直接报错）完全没被上报（2026-09-11，用户追问"不是有记录脚本吗"才发现）
+
+**背景**：#51 那次 `sfx.js` 副作用导致 iOS 上 `getUserMedia` 直接抛 `InvalidStateError` 的问题修完后，用户后来又反馈"语音又不行了"，但这次没带截图。用户追问"不是有记录语音出错的脚本吗"，回去翻 `useVoiceMesh.js` 的 `startTalking`，发现 `getUserMedia` 失败时只 `setMicError` 更新本地 UI，从来没有调用过 `voice:diagnostic`——跟 #48 复查那次"自动播放被拦"是同一类缺口：诊断上报只覆盖了"听不到别人说话"这条线（bytesReceived 不涨、autoplay 被拦），完全没覆盖"自己申请麦克风这步直接失败"这条线，所以 `/debug/voice-diag` 里天然不会有这类记录，不是这次没触发，是压根没上报过。
+
+**改动**（`client/src/hooks/useVoiceMesh.js`，纯增量，不改现有失败处理行为）：`startTalking` 的 `getUserMedia` catch 分支里，在 `setMicError` 之外新增一条 `voice:diagnostic`（`kind: 'mic-request-failed'`），带 `errorName`/`errorMessage`/UA/是否微信。服务端 `voice:diagnostic` handler 本来就是把 payload 原样展开存进环形缓冲，不需要改服务端代码。
+
+**验证**：`cd client && npm run build`、`npx eslint src/hooks/useVoiceMesh.js` 通过。这条本质是把"客户端已经拿到的错误对象"多发一份到服务端，不引入新的失败路径，没有新增 e2e（触发依赖真实浏览器的 getUserMedia 失败，沙盒里的假麦克风不会失败，模拟不出）。
+
 ### 波纹样式修正 + 说话按钮重新设计（真机看完效果后反馈，2026-08-11）
 
 **背景**：上面那版波纹推上线后，用户反馈两点：波纹长得像"方框在放大"而不是水波纹，而且有点卡；另外按住说话的悬浮按钮是牌桌上唯一一个纯圆形元素，跟其余全部圆角矩形风格的 UI（`menu-btn`/`avatar-card`/座位卡）不搭，显得突兀。
