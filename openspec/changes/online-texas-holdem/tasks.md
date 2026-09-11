@@ -1508,6 +1508,12 @@
   - `client/src/hooks/useVoiceMesh.js`：`startTalking` 的 `getUserMedia` catch 分支新增一条 `voice:diagnostic`（`kind: 'mic-request-failed'`，带 `errorName`/`errorMessage`/UA/是否微信）。服务端 handler 本身是通用透传，不需要改
   - **验收**：`cd client && npm run build`、`npx eslint src/hooks/useVoiceMesh.js` 通过；不新增 e2e（沙盒假麦克风不会真的失败，模拟不出触发条件）
 
+- [x] **"本场之最"丰富奖项种类：新增老好人/纸老虎/死磕到底 3 个奖（2026-09-11，用户反馈，方案见 design.md 同名章节）**
+  - 用户追问"同一人有时候拿不同奖项是不是算错了"——排查确认不是 bug（`computeAwards` 是纯函数，同数据结果恒定；差异来自账本每次打开都按当前累计手数现算，属预期行为），顺带处理用户"丰富奖项"的请求
+  - `server/playstyleAwards.js`：新增 3 个奖，全部复用 `playstyleStats.js` 里本来就在累加、但一直没有奖项用过的字段（`handsPFR`/`cbetAir`），不新增数据采集：**老好人**（进池后很少主动加注，`handsPFR/handsVPIP` 低，门槛 `handsVPIP>=10` 且比例 `<=0.15`）、**纸老虎**（持续下注里空气占比高，`cbetAir/cbetOpp`，门槛 `cbetOpp>=8` 且比例 `>=0.5`）、**死磕到底**（"秒怂"的镜像方向，面对下注弃牌率最低，复用同一个 `facedRaise>=8` 门槛）
+  - 客户端不需要改——`LedgerModal.jsx` 渲染奖项列表是通用的 `styleRecap.awards.map(...)`，新奖项类型自动兼容
+  - **验收**：`playstyleAwards.test.js` 新增 3 条（每个新奖：达标发放 / 未达门槛不发，各带对照组）；顺带发现并修复了一处因此暴露的既有测试脏数据——`hasEnoughHands` 测试里的"一马平川"fixture 没有显式给 `handsPFR`（默认 0），两人 `0/21`、`0/20` 都是 0，会被"老好人"的 `dir:'min'` 误判成"最不爱加注"而误发，不是新奖本身算错，是那份 fixture 没跟着补齐新维度的均等值——已修（两人给相同的 `handsPFR:6`，跟其余维度一样保持均等）。服务端全量 446/446（含 `integration.test.js` 里那条真实打 20 手拿 style-recap 的用例，不受影响）
+
 - [x] **修复：all-in 跟到摊牌后，座位还短暂显示"行动中"环（2026-09-11，用户反馈，方案见 design.md 同名章节）**
   - 用户描述的场景：A 下注、B all-in 盖过、轮回 A、A 也 all-in 跟上——应该直接摊牌，不该"又回到 B 做决策"。真机测试（`e2e/allinShowdown.spec.js`）证实：`GameEngine.js` 的下注轮结束/摊牌判断本身没问题（服务端逻辑正确，真实对局能一路打到摊牌），bug 在客户端渲染——`GameTable.jsx` 的座位"行动中"环（`isAction`，hero 和对手座位都用这个 prop）直接拿 `actionPlayerId` 判断，没有像 2026-07-30 已经修过的 hero 专属 ActionBar（`myTurn`）那样加 `!isShowdown` 守卫。GameEngine 在下注轮靠自动跑完全部街道直接收尾的场景里（fold-to-one-left / all-in 跟到摊牌），`actionIndex` 会停在最后一个还是 `active` 状态的玩家身上、不会被清空——这本身不是服务端 bug（它没打算在终局场景里维护这个字段），但任何直接读它渲染"轮到谁"的地方都得自己补上这层判断，2026-07-30 那次只补了 hero 自己的 ActionBar 这一处，漏了座位环这第二处
   - `client/src/components/GameTable.jsx`：新增 `isActingNow(id)` = `!isShowdown && actionPlayerId === id`，取代原来 hero/对手座位各自裸写的 `gameState.actionPlayerId === id`；`myTurn` 也改用它（行为不变，去掉重复判断逻辑）

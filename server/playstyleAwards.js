@@ -69,6 +69,34 @@ const AWARDS = [
     gate: s => s.light3bet >= 2,
     reason: s => `别人加注后又反手再加 ${s.light3bet} 次`,
   },
+  // 下面 3 个是 2026-09-11 补的——用户反馈想再丰富点奖项种类。全部复用
+  // playstyleStats.js 里本来就在累加、但一直没有奖项用过的字段（handsPFR/
+  // cbetAir），或是跟已有奖同一个分母的镜像方向（死磕到底 vs 秒怂），不新
+  // 增数据采集，见 design.md「丰富奖项种类」。
+  {
+    key: '老好人', dir: 'min',
+    // 进池之后主动加注的比例——跟"手痒星人/养生局"（进不进池）是不同维
+    // 度：入池率不低但很少主动加注，是被动型玩家的典型画像，两个标签不冲突。
+    metric: s => s.handsVPIP ? s.handsPFR / s.handsVPIP : 1,
+    gate: s => s.handsVPIP >= 10 && (s.handsVPIP ? s.handsPFR / s.handsVPIP : 1) <= 0.15,
+    reason: (s, v) => `进池后只有 ${pct(v)} 会主动加注，能跟就跟`,
+  },
+  {
+    key: '纸老虎', dir: 'max',
+    // 持续下注里有多少次其实是空气——专测"c-bet 的诈唬成分"，跟"影帝"
+    // （所有翻后空气开火，含非 c-bet）、"惯性开火"（c-bet 频率本身，不分
+    // 手牌强弱）是三个不同切面，可以同时分别发给不同人。
+    metric: s => s.cbetOpp ? s.cbetAir / s.cbetOpp : 0,
+    gate: s => s.cbetOpp >= 8 && (s.cbetOpp ? s.cbetAir / s.cbetOpp : 0) >= 0.5,
+    reason: (s, v) => `持续下注里 ${pct(v)} 手里其实是空气`,
+  },
+  {
+    key: '死磕到底', dir: 'min',
+    // "秒怂"的镜像方向，同一个分母（facedRaise）、同一道门槛。
+    metric: s => s.facedRaise ? s.foldedToRaise / s.facedRaise : 0,
+    gate: s => s.facedRaise >= 8,
+    reason: (s, v) => `面对下注只弃了 ${pct(v)}，打死不走`,
+  },
 ];
 
 function pct(v) { return `${Math.round(v * 100)}%`; }

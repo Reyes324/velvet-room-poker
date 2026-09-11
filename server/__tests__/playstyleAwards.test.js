@@ -151,13 +151,61 @@ describe('computeAwards', () => {
     expect(hasEnoughHands(notEnough, players)).toBe(false);
     expect(computeAwards(notEnough, players)).toEqual([]);
 
-    // 一马平川：手数够但没人达标——跟上面同样返回 []，hasEnoughHands 必须能分开
+    // 一马平川：手数够但没人达标——跟上面同样返回 []，hasEnoughHands 必须能分开。
+    // handsPFR 也要给到均等的值（2026-09-11 加了"老好人"奖之后）：不给的话
+    // 两人都默认 0，0/21 和 0/20 都是 0，会被"老好人"的 dir:'min' 判定误
+    // 当成"进池后最不爱加注"而误发——这不是"老好人"本身算错，是这份"一
+    // 马平川"fixture 没跟着补上新维度的均等值，其余维度也一样均等。
     const evenlyMatched = {
-      A: stats({ handsDealt: 40, handsVPIP: 21, postflopBets: 4, postflopRaises: 1, postflopCalls: 8, postflopDecisions: 14 }),
-      B: stats({ handsDealt: 40, handsVPIP: 20, postflopBets: 3, postflopRaises: 1, postflopCalls: 9, postflopDecisions: 14 }),
+      A: stats({ handsDealt: 40, handsVPIP: 21, handsPFR: 6, postflopBets: 4, postflopRaises: 1, postflopCalls: 8, postflopDecisions: 14 }),
+      B: stats({ handsDealt: 40, handsVPIP: 20, handsPFR: 6, postflopBets: 3, postflopRaises: 1, postflopCalls: 9, postflopDecisions: 14 }),
     };
     expect(hasEnoughHands(evenlyMatched, players)).toBe(true);
     expect(computeAwards(evenlyMatched, players)).toEqual([]);
+  });
+
+  it('老好人：进池后很少主动加注（handsPFR/handsVPIP 低）才发；样本不够（handsVPIP < 10）不发', () => {
+    const map = {
+      A: stats({ handsDealt: 40, handsVPIP: 20, handsPFR: 2 }),  // 进池后只 10% 会加注
+      B: stats({ handsDealt: 40, handsVPIP: 20, handsPFR: 10 }), // 进池后 50% 会加注，对照组
+    };
+    const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }]);
+    expect(out.some(a => a.award === '老好人' && a.playerId === 'A')).toBe(true);
+    expect(out.some(a => a.award === '老好人' && a.playerId === 'B')).toBe(false);
+
+    const tooFewPots = {
+      A: stats({ handsDealt: 40, handsVPIP: 8, handsPFR: 0 }), // 比例是 0，但入池样本不到 10 次
+      B: stats({ handsDealt: 40, handsVPIP: 20, handsPFR: 10 }),
+    };
+    const out2 = computeAwards(tooFewPots, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }]);
+    expect(out2.some(a => a.award === '老好人')).toBe(false);
+  });
+
+  it('纸老虎：持续下注里空气占比 >= 50% 才发；占比不够不发', () => {
+    const map = {
+      A: stats({ handsDealt: 40, handsVPIP: 15, cbetOpp: 10, cbets: 10, cbetAir: 6 }), // 60% 是空气
+      B: stats({ handsDealt: 40, handsVPIP: 15, cbetOpp: 10, cbets: 10, cbetAir: 3 }), // 30%，对照组
+    };
+    const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }]);
+    expect(out.some(a => a.award === '纸老虎' && a.playerId === 'A')).toBe(true);
+    expect(out.some(a => a.award === '纸老虎' && a.playerId === 'B')).toBe(false);
+
+    const map2 = {
+      A: stats({ handsDealt: 40, handsVPIP: 15, cbetOpp: 10, cbets: 10, cbetAir: 3 }), // 30%，不够门槛
+      B: stats({ handsDealt: 40, handsVPIP: 15, cbetOpp: 10, cbets: 10, cbetAir: 1 }),
+    };
+    const out2 = computeAwards(map2, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }]);
+    expect(out2.some(a => a.award === '纸老虎')).toBe(false);
+  });
+
+  it('死磕到底：面对下注弃牌率最低的人拿（"秒怂"的镜像方向，同一个分母/门槛）', () => {
+    const map = {
+      A: stats({ handsDealt: 40, handsVPIP: 15, facedRaise: 10, foldedToRaise: 1 }), // 只弃了 10%
+      B: stats({ handsDealt: 40, handsVPIP: 15, facedRaise: 10, foldedToRaise: 8 }), // 弃了 80%
+    };
+    const out = computeAwards(map, [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }]);
+    expect(out.some(a => a.award === '死磕到底' && a.playerId === 'A')).toBe(true);
+    expect(out.some(a => a.award === '秒怂' && a.playerId === 'B')).toBe(true);
   });
 
   it('reason 是一句中文大白话', () => {
