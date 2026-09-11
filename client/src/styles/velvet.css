@@ -1330,7 +1330,7 @@
 
 /* ── ≡ TOP-BAR MENU POPOVER (账本 / 退出) ─────────────────── */
 .menu-popover { width:220px; padding:10px; gap:2px; }
-.menu-row { width:100%; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:13px; color:var(--text-primary); cursor:pointer; }
+.menu-row { width:100%; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:15px; color:var(--text-primary); cursor:pointer; }
 .menu-row:active { background:rgba(212,175,55,.1); }
 .menu-row--danger { color:#E08080; }
 
