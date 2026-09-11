@@ -234,6 +234,13 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     emit('player:poke', { fromId: playerId, targetId, emoji });
   }
 
+  // 帮断线玩家弃牌（用户反馈，2026-09-11）：只在对方真的断线中、且正好轮
+  // 到他行动时才会出现这个入口（见 PlayerSeat.jsx 的 canFoldFor），服务端
+  // 会再校验一遍这两个条件，不能只信客户端。
+  function foldFor(targetId) {
+    emit('game:fold-for', { fromId: playerId, targetId });
+  }
+
   function sendChat(text) {
     emit('chat:message', { playerId, text });
   }
@@ -369,6 +376,7 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
         onOpenChatHistory={() => { emit('room:get-chat-history', { playerId }); setShowChatHistory(true); }}
         onOpenFeedback={() => setShowFeedback(true)}
         onPoke={poke}
+        onFoldFor={foldFor}
         pokedSeat={pokedSeat}
         settlementOpen={!!settlement}
         revealedPlayers={revealedPlayers}

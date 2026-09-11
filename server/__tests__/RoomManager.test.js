@@ -1103,3 +1103,56 @@ describe('Room — 打法点评计数器', () => {
     expect(room.playstyleStats).toEqual({});
   });
 });
+
+describe('Room — foldFor（帮断线玩家弃牌，2026-09-11）', () => {
+  function makeThreePlayerGame() {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame();
+    return room;
+  }
+
+  it('目标没有断线 → 拒绝，不改变游戏状态', () => {
+    const room = makeThreePlayerGame();
+    const actorId = room.game.getPublicState().actionPlayerId;
+    const result = room.foldFor('p1' === actorId ? 'p2' : 'p1', actorId);
+    expect(result.error).toBe('这个人没有断线');
+  });
+
+  it('目标断线了，但还没轮到他 → 拒绝', () => {
+    const room = makeThreePlayerGame();
+    const actorId = room.game.getPublicState().actionPlayerId;
+    const notActor = room.players.find(p => p.id !== actorId).id;
+    room.setConnected(notActor, false);
+    const result = room.foldFor(actorId, notActor);
+    expect(result.error).toBe('还没轮到他');
+  });
+
+  it('不能帮自己弃牌', () => {
+    const room = makeThreePlayerGame();
+    const actorId = room.game.getPublicState().actionPlayerId;
+    room.setConnected(actorId, false);
+    const result = room.foldFor(actorId, actorId);
+    expect(result.error).toBe('不能帮自己弃牌');
+  });
+
+  it('目标断线中且正好轮到他 → 真的帮他弃牌，回合推进给下一位', () => {
+    const room = makeThreePlayerGame();
+    const actorId = room.game.getPublicState().actionPlayerId;
+    const helper = room.players.find(p => p.id !== actorId).id;
+    room.setConnected(actorId, false);
+    const result = room.foldFor(helper, actorId);
+    expect(result.error).toBeUndefined();
+    expect(room.game.players.find(p => p.id === actorId).status).toBe('folded');
+    expect(room.game.getPublicState().actionPlayerId).not.toBe(actorId);
+  });
+
+  it('游戏还没开始时 → 拒绝（没有"轮到谁"这回事）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.setConnected('p2', false);
+    const result = room.foldFor('p1', 'p2');
+    expect(result.error).toBeDefined();
+  });
+});

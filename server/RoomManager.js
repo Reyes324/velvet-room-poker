@@ -630,6 +630,21 @@ class Room {
     }
   }
 
+  // 帮断线玩家弃牌（用户反馈，2026-09-11："有时候等不及了"）——任何还连着
+  // 的在场玩家都能触发，不是房主专属，跟 poke() 同一个开放程度。这里做
+  // 真正的权限判定：客户端只按"断线+轮到他"两个条件决定按钮出不出现，
+  // 那是 UX 层的提示，不能当成权限来源，服务端必须自己重新核实一遍，否
+  // 则任何人拿到 targetId 就能在不该弃牌的时候帮别人弃牌。
+  foldFor(fromId, targetId) {
+    if (fromId === targetId) return { error: '不能帮自己弃牌' };
+    const target = this.players.find(p => p.id === targetId);
+    if (!target || target.connected !== false) return { error: '这个人没有断线' };
+    if (!this.game || this.game.getPublicState().actionPlayerId !== targetId) {
+      return { error: '还没轮到他' };
+    }
+    return this.playerAction(targetId, 'fold');
+  }
+
   getStateForPlayer(playerId) {
     if (!this.game) return null;
     return this.game.getStateForPlayer(playerId);

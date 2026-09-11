@@ -64,7 +64,7 @@ function bubbleStyle(bubbleSide, anchorTop) {
   return bubbleSide ? sideStyle(bubbleSide, anchorTop) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeKey = null, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, chatText = null, chatKey = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeKey = null, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, chatText = null, chatKey = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false, onFoldFor = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -133,6 +133,12 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   // 点的样子——诚实地表达"这里没有这个功能"，而不是给一个会静默失败的
   // 死交互。
   const canPoke = !isMe && !!onPoke;
+  // "帮他弃牌"：只在这个人真的断线中、且现在正轮到他行动时才出现——不是
+  // 任何时候都能帮别人弃牌，只是给"断线卡住轮到他的这一刻"一个不想等满
+  // 20 秒读秒/45 秒储备池才自动处理的手动出口（用户反馈，2026-09-11："有
+  // 时候等不及了"）。跟表情面板共用同一个入口（点头像弹出的面板），不单
+  // 独占一个新按钮位置。
+  const canFoldFor = !isMe && !!onFoldFor && disconnected && isAction;
   const avatarClickTimerRef = useRef(null);
   function handleAvatarClick() {
     if (!canPoke) return;
@@ -354,6 +360,15 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           {POKE_PICKER_EMOJI.map(e => (
             <button key={e} type="button" className="poke-picker-emoji" onClick={() => sendPoke(e)}>{e}</button>
           ))}
+          {canFoldFor && (
+            <button
+              type="button"
+              className="poke-picker-foldfor"
+              onClick={() => { setPokePickerOpen(false); onFoldFor?.(player.id); }}
+            >
+              帮他弃牌
+            </button>
+          )}
         </div>
       )}
 

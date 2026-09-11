@@ -1527,3 +1527,10 @@
   - `server/index.js`：`timeBankPerHandMs` 默认从 30 秒（2 次）放宽到 **45 秒（3 次）**；上限本身不去掉（原始设计就是为了防"一个人拖住全桌"），只是把门槛松一档
   - **验证**：先在这处修复之前的代码上跑新增的 `e2e/extendTurnLayout.spec.js`——真实连点「+15s」到额度耗尽，旧代码下 `.b-extend` 被摘出 DOM，测试因轮询一个已消失的元素而超时（等价复现了"按钮消失"）；修复后同一份测试量出弃牌按钮在额度耗尽前后的真实 bounding box，x 坐标和宽度分毫不差
   - **验收**：服务端全量 446/446；客户端构建通过、`eslint src` 与基线持平（36/27/9）；新增 `e2e/extendTurnLayout.spec.js` 通过。顺带确认 `e2e/turnTimeout.spec.js` 里"倒计时视觉：环形描边渲染且在走"这条在不含本次改动的 `main` 上同样失败（`drainedAtSecs` 读到 `null`）——是这个沙箱环境跑真实 20 秒实时窗口的计时类用例本身偏紧，跟本次改动无关，不在本次修复范围
+
+- [x] **帮断线玩家弃牌（2026-09-11，用户反馈，方案见 design.md 同名章节）**
+  - 需求：断线玩家轮到自己行动时，其他人点他头像弹出的表情面板里，能看到一个"帮他弃牌"按钮，不想干等读秒/储备池耗尽才自动处理
+  - 入口复用已有的表情面板（`PlayerSeat.jsx` 的 `pokePickerOpen`），只在 `!isMe && disconnected && isAction` 三个条件同时满足时才渲染（`canFoldFor`）
+  - `server/RoomManager.js`：新增 `foldFor(fromId, targetId)`——服务端重新核实"目标真断线"+"真轮到他"两个条件（客户端那三个条件只决定按钮出不出现，不是权限来源），通过后直接调用已有的 `playerAction(targetId, 'fold')`，不另起一套弃牌逻辑；`server/index.js` 新增 `game:fold-for` socket 事件；任何在场玩家都能触发，不是房主专属，跟已有的 `poke()` 同一个开放程度
+  - `client/src/components/PlayerSeat.jsx` / `GameTable.jsx` / `RoomPage.jsx`：新增 `onFoldFor` prop 一路串到 `game:fold-for` emit
+  - **验收**：`RoomManager.test.js` 新增 5 条（未断线拒绝、断线但不轮到他拒绝、不能帮自己、真断线+真轮到他能成功且回合推进、游戏未开始拒绝）；新增真实两浏览器 e2e `e2e/foldForDisconnected.spec.js`（真实断开 socket，确认双方都看不到行动栏，对方点头像→"帮他弃牌"→结算弹窗真的出现），稳定跑 3 遍全过。`e2e/game.spec.js` 全量回归 27/28（唯一失败是已记录过的、与本次改动无关的账本 fixture 旧断言）。服务端全量 451/451；客户端构建通过、`eslint src` 与基线持平（36/27/9）

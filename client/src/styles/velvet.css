@@ -802,6 +802,12 @@
 .poke-picker { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); display:grid; grid-template-columns:repeat(4, 32px); gap:6px; padding:5px 6px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:26; animation:actionBubbleIn .25s cubic-bezier(.34,1.56,.64,1) both; }
 .poke-picker-emoji { display:flex; align-items:center; justify-content:center; width:32px; height:32px; background:none; border:none; padding:0; font-size:18px; line-height:1; cursor:pointer; border-radius:8px; transition:background .12s ease, transform .12s ease; }
 .poke-picker-emoji:hover, .poke-picker-emoji:active { background:rgba(212,175,55,.18); transform:scale(1.15); }
+/* "帮他弃牌"——只在对方断线中又正好轮到他时才会渲染出来（见
+   PlayerSeat.jsx 的 canFoldFor），独占一整行、跟表情格子的"危险程度"区分
+   开：复用 .modal-btn-danger 同一套红色渐变（这个 app 里"危险/重大"动作
+   的通用配色），不是随手挑的颜色。 */
+.poke-picker-foldfor { grid-column:1 / -1; height:30px; margin-top:2px; border:none; border-radius:10px; background:linear-gradient(135deg,#7A1E1E,#C0392B); color:#fff; font-family:var(--font-display); font-weight:700; font-size:12px; letter-spacing:.5px; cursor:pointer; }
+.poke-picker-foldfor:hover, .poke-picker-foldfor:active { filter:brightness(1.12); }
 
 @keyframes revealGlow {
   0%, 100% { box-shadow: 0 0 6px rgba(212, 175, 55, 0.25); }

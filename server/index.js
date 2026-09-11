@@ -891,6 +891,16 @@ function createServer({
       handleActionResult(room, result);
     });
 
+    // 帮断线玩家弃牌（用户反馈，2026-09-11）——见 RoomManager.foldFor 的权
+    // 限判定注释。
+    socket.on('game:fold-for', ({ fromId, targetId } = {}) => {
+      const room = rooms.getRoomByPlayer(fromId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.foldFor(fromId, targetId);
+      if (result.error) return socket.emit('game:error', result.error);
+      handleActionResult(room, result);
+    });
+
     // 「+15 秒」延时。从玩家自己每手 30 秒的储备池里扣，扣完为止——用户原
     // 方案是无上限续杯，那会把"一个人拖住全桌"原样带回来。
     socket.on('game:extend-turn', ({ playerId }) => {
