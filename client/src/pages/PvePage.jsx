@@ -137,9 +137,9 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
     'action:happened': ({ actorId, label, phase }) => {
       if (actorId !== getPveId()) playActionFeedbackSfx(label);
       if (actorId && label) {
-        const { text, folded, allIn, raise } = describeActionLabel(label);
+        const { text, amountPrefix, amount, folded, allIn, raise } = describeActionLabel(label);
         const key = Date.now();
-        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, allIn, raise, phase } }));
+        setActionBubbles(b => ({ ...b, [actorId]: { text, amountPrefix, amount, key, folded, allIn, raise, phase } }));
       }
     },
   });
