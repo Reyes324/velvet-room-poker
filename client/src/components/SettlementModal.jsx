@@ -1,4 +1,5 @@
 import { useSecondsLeft } from '../hooks/useSecondsLeft';
+import ChipIcon from './ChipIcon';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
 
@@ -43,7 +44,7 @@ export default function SettlementModal({
                   {w.name}
                   {isMe ? '（我）' : ''} 赢得本局
                 </div>
-                <div className="modal-win-amt">+ 🪙{Number(w.won).toLocaleString()}</div>
+                <div className="modal-win-amt">+ <ChipIcon />{Number(w.won).toLocaleString()}</div>
               </div>
               {w.handName && <div className={`modal-hand${isFoldWin ? ' modal-hand--foldwin' : ''}`}>{w.handName}</div>}
             </div>

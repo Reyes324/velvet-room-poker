@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useThinkSeconds, useTurnClock } from '../hooks/useThinkSeconds';
 import Card from './Card';
+import ChipIcon from './ChipIcon';
 import eggSplatImg from '../assets/egg-splat.png';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
@@ -298,7 +299,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
               : <div className="think-overlay">{thinkSeconds}s</div>
           )}
         </div>
-        <div className="stack-chip-footer">🪙{player.chips.toLocaleString()}</div>
+        <div className="stack-chip-footer"><ChipIcon />{player.chips.toLocaleString()}</div>
         {/* 表情特效（GitHub #26）——叠在目标座位头像上播一次的定点动画，
             跟 .poke-bubble 复用同一条 poked/pokeEmoji 触发信号。
             两版纯 CSS 手画的蛋壳裂开（径向碎片版、两半壳分开版）用户都
@@ -378,7 +379,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           className={`action-bubble${bubble.folded ? ' action-bubble--folded' : ''}${bubble.allIn ? ' action-bubble--allin' : ''}${bubble.raise ? ' action-bubble--raise' : ''}`}
           style={bubbleStyle(bubbleSide, bubbleAnchorTop)}
         >
-          {bubble.text}
+          {bubble.text ?? (<>{bubble.amountPrefix}<ChipIcon />{bubble.amount.toLocaleString()}</>)}
         </div>
       )}
       {/* 谁拍的要写出来——之前只显示"拍了拍"，同桌好几个人都在拍，看不出
