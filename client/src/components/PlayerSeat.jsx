@@ -298,7 +298,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
               : <div className="think-overlay">{thinkSeconds}s</div>
           )}
         </div>
-        <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
+        <div className="stack-chip-footer">🪙{player.chips.toLocaleString()}</div>
         {/* 表情特效（GitHub #26）——叠在目标座位头像上播一次的定点动画，
             跟 .poke-bubble 复用同一条 poked/pokeEmoji 触发信号。
             两版纯 CSS 手画的蛋壳裂开（径向碎片版、两半壳分开版）用户都

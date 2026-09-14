@@ -149,7 +149,7 @@ export default function ActionBar({ gameState, myId, onAction, disabled, timeBan
           <button className="btn b-fold b-h52" onClick={() => act('fold')}>弃牌</button>
           {canCheck
             ? <button className="btn b-check b-h52" onClick={() => act('check')}>过牌</button>
-            : <button className="btn b-call b-h52" onClick={() => act('call')}>跟注 ¥{toCall.toLocaleString()}</button>}
+            : <button className="btn b-call b-h52" onClick={() => act('call')}>跟注 🪙{toCall.toLocaleString()}</button>}
           <button className="btn b-raise-trigger b-h52" onClick={openRaise}>加注 ▸</button>
           {/* 「+15 秒」延时。储备池每手 45 秒（3 次）、扣完为止——用户最初
               的方案是无上限续杯，那会把"一个人拖住全桌"原样带回来（见
@@ -184,7 +184,7 @@ export default function ActionBar({ gameState, myId, onAction, disabled, timeBan
               </div>
               <div className="raise-amount">
                 <div className="raise-amount-btn" onClick={() => setAmount(Math.max(minRaise, amt - step))}>−</div>
-                <div className="raise-amount-val">¥{amt.toLocaleString()}</div>
+                <div className="raise-amount-val">🪙{amt.toLocaleString()}</div>
                 <div className="raise-amount-btn" onClick={() => setAmount(Math.min(maxRaise, amt + step))}>+</div>
               </div>
             </div>
@@ -193,7 +193,7 @@ export default function ActionBar({ gameState, myId, onAction, disabled, timeBan
           <div className="raise-bottom">
             <button className="btn b-cancel b-h46" onClick={() => setOpen(false)}>← 返回</button>
             <button className="btn b-allin b-h46" onClick={() => act('raise', maxRaise)}>全下 ALL IN</button>
-            <button className="btn b-confirm-raise b-h46" onClick={() => act('raise', amt)}>确认加注 ¥{amt.toLocaleString()}</button>
+            <button className="btn b-confirm-raise b-h46" onClick={() => act('raise', amt)}>确认加注 🪙{amt.toLocaleString()}</button>
           </div>
         </div>
       )}

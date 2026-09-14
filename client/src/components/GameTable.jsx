@@ -589,8 +589,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     const key = Date.now();
     for (const p of gameState.players) {
       if (p.bet <= 0) continue;
-      if (p.isSB) seeded[p.id] = { text: `小盲 ¥${p.bet.toLocaleString()}`, key, phase: 'preflop' };
-      else if (p.isBB) seeded[p.id] = { text: `大盲 ¥${p.bet.toLocaleString()}`, key, phase: 'preflop' };
+      if (p.isSB) seeded[p.id] = { text: `小盲 🪙${p.bet.toLocaleString()}`, key, phase: 'preflop' };
+      else if (p.isBB) seeded[p.id] = { text: `大盲 🪙${p.bet.toLocaleString()}`, key, phase: 'preflop' };
     }
     setActionBubbles(seeded);
   }, [gameState.phase]);

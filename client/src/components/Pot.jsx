@@ -12,7 +12,7 @@ export default function Pot({ amount, burst = false, handNameLabel = null }) {
   return (
     <div className={`pot${burst ? ' pot-burst' : ''}`}>
       <div className={`pot-label${handNameLabel ? ' pot-label--hand' : ''}`}>{handNameLabel || '底池'}</div>
-      <div className="pot-amt">¥{Number(amount).toLocaleString()}</div>
+      <div className="pot-amt">🪙{Number(amount).toLocaleString()}</div>
     </div>
   );
 }

@@ -150,7 +150,7 @@ export default function HandHistoryModal({ hands, myId, onClose }) {
                         </div>
                         <div className="hh-hand-summary">
                           {h.winners.map(w => w.name).join('、')}
-                          <span className="hh-hand-amt"> +¥{h.winners.reduce((s, w) => s + w.won, 0).toLocaleString()}</span>
+                          <span className="hh-hand-amt"> +🪙{h.winners.reduce((s, w) => s + w.won, 0).toLocaleString()}</span>
                         </div>
                         <div className={`hh-hand-tag${h.foldWin ? ' hh-hand-tag--foldwin' : ''}`}>
                           {h.foldWin ? '弃牌获胜' : '摊牌'}
@@ -181,7 +181,7 @@ export default function HandHistoryModal({ hands, myId, onClose }) {
                                     </div>
                                   )}
                                   <div className={`hh-player-net ${s.net > 0 ? 'net-win' : s.net < 0 ? 'net-lose' : 'net-neutral'}`}>
-                                    {s.net === 0 ? '¥0' : (s.net > 0 ? '+¥' : '−¥') + Math.abs(s.net).toLocaleString()}
+                                    {s.net === 0 ? '🪙0' : (s.net > 0 ? '+🪙' : '−🪙') + Math.abs(s.net).toLocaleString()}
                                   </div>
                                 </div>
                               );

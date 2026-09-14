@@ -38,7 +38,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
     <div className="game-stage">
       <div className="top-bar">
         <div className="menu-btn" onClick={() => setShowMenu(true)}>≡</div>
-        <div className="bankroll">¥{(me?.chips ?? 0).toLocaleString()}</div>
+        <div className="bankroll">🪙{(me?.chips ?? 0).toLocaleString()}</div>
       </div>
       {showMenu && (
         <div className="modal-overlay" onClick={() => setShowMenu(false)}>
@@ -118,7 +118,7 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
         <div className="lobby-head">
           <div>
             <div className="lobby-room-name">翡翠桌</div>
-            <div className="lobby-blind">BLIND ¥10 / ¥20</div>
+            <div className="lobby-blind">BLIND 🪙10 / 🪙20</div>
           </div>
           <div className="room-code" onClick={onCopy} title="点击复制邀请链接">{roomState?.code ?? ''}</div>
         </div>
@@ -140,11 +140,11 @@ export default function Lobby({ roomState, playerId, onCopy, onKick, onStart, on
                 {p.connected === false && <span style={{ color: '#B08A3A' }}>（断线中）</span>}
               </div>
                 <div className="pr-chips">
-                  {p.chips === 0 ? <span style={{ color: '#E08A4A' }}>¥0 · 筹码不足</span> : `¥${p.chips.toLocaleString()}`}
+                  {p.chips === 0 ? <span style={{ color: '#E08A4A' }}>🪙0 · 筹码不足</span> : `🪙${p.chips.toLocaleString()}`}
                 </div>
               </div>
               {roomState.hostId === p.id && <span className="pr-badge">房主</span>}
-              {p.debt > 0 && <span className="pr-badge debt-badge">借¥{p.debt.toLocaleString()}</span>}
+              {p.debt > 0 && <span className="pr-badge debt-badge">借🪙{p.debt.toLocaleString()}</span>}
               {p.id === playerId && p.chips === 0 && onRebuy && (
                 <span
                   className="pr-badge pr-badge--action"
