@@ -322,7 +322,11 @@ function createServer({
   // immediately on disconnect turned "share the link" into a room-deleting
   // action a large fraction of the time on mobile. See GRACE_PERIOD_MS.
   const pendingRemovals = new Map();
-  const GRACE_PERIOD_MS = 120000;
+  // 用户反馈（2026-09-14）：2 分钟太短——房主切到微信粘贴链接、朋友看到消息
+  // 再点开，这一套动作经常超过 2 分钟，房主自己的宽限期一到就被判定"没回
+  // 来"，而此时他是房间里唯一玩家，直接连累整个房间被删，朋友点链接看到
+  // "房间已失效"。调到 30 分钟，覆盖真实的"分享 - 对方点开"耗时。
+  const GRACE_PERIOD_MS = 30 * 60 * 1000;
   // 当前回合的倒计时定时器，按房间号存——一个房间同一时刻只可能有一个人在
   // 行动。见 maybeArmTurnClock。取代了原来的 pauseTimers/PAUSE_TIMEOUT_MS
   // （5 分钟，且只对断线玩家生效）。
