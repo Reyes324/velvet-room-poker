@@ -129,6 +129,19 @@
 .pot-label { font-family:var(--font-mono); font-size:7px; color:#AE986C; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
 .pot-amt { font-family:var(--font-amount); font-size:24px; font-weight:700; color:#E8C24A; letter-spacing:.2px; text-shadow:0 0 20px rgba(212,175,55,.45), 0 2px 8px rgba(0,0,0,.6); line-height:1.05; }
 
+/* ── CHIP ICON（ChipIcon.jsx，¥ 的替代物） ───────────────────────── */
+/* 见 ChipIcon.jsx 顶部注释：-0.02em 是拿 24px/700（.pot-amt）和 11px/400
+   （.stack-chip-footer）两个真实场景实测校准出来的，同一个值在 13px/700
+   的 .action-bubble 里量出来图标偏高了约 0.75px（用户反馈，2026-09-15，
+   真机截图看出来的，不是瞎猜）——粗体+小字号这个组合下数字墨迹的比例跟
+   大字号不成正比，不是这一个 em 数能同时精确覆盖所有场景，所以挪成 class
+   让个别场景能单独覆盖，不用给 ChipIcon 组件本身加 variant prop。
+   margin-right 是图标跟后面数字之间的间距，同一次反馈里一起提的。 */
+.chip-icon { display:inline-block; vertical-align:-0.02em; flex-shrink:0; margin-right:2px; }
+/* 实测 -0.08em 在这个场景下把偏差收到 +0.07px（真机 Playwright 量出来的，
+   不是套公式算的）。 */
+.action-bubble .chip-icon { vertical-align:-0.08em; }
+
 /* Winning hand-name (user feedback, 2026-07-24): reuses the "底池" label's
    own slot instead of a separate floating element above it — a standalone
    banner needed its own vertical clearance from GameTable's TOP_ZONE, which

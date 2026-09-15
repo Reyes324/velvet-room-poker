@@ -21,15 +21,17 @@ import { useId } from 'react';
 // many chips render on one page (poker felt, ledger rows) sharing one <svg>
 // document.
 //
-// verticalAlign calibrated against real rendered baselines, not eyeballed:
-// measured the true digit-glyph optical center (canvas measureText's
-// actualBoundingBoxAscent/Descent, not the inline box's line-height-padded
-// bounding rect, which reads as if digits reached lower than their real
-// ink) against the icon's own rendered center, at both 24px (.pot-amt) and
-// 11px (.stack-chip-footer). -0.05em placed the icon 0.3-0.8px below the
-// digits' optical center at both sizes — small, but consistent, so -0.02em
-// (which the same two measurements agree on almost exactly) centers it
-// rather than leaving a director's-eye-only offset in place uncorrected.
+// verticalAlign lives in the .chip-icon CSS class (velvet.css), not inline
+// here, on purpose — calibrated against real rendered baselines (canvas
+// measureText's actualBoundingBoxAscent/Descent, not the inline box's
+// line-height-padded bounding rect) at several sizes/weights, -0.02em centers
+// it almost exactly at 24px/700 (.pot-amt) and 11px/400 (.stack-chip-footer),
+// but the SAME em value left it ~0.75px too high at 13px/700 (.action-bubble)
+// — the ratio isn't perfectly linear across weight+size combinations, so one
+// number can't be exactly right everywhere. Being a class (not this
+// component's inline style) lets a specific noisy context override it via
+// normal CSS specificity (see velvet.css's `.action-bubble .chip-icon`)
+// instead of ChipIcon needing a variant prop.
 export default function ChipIcon() {
   const gradId = useId();
   return (
@@ -38,7 +40,7 @@ export default function ChipIcon() {
       width="0.85em"
       height="0.85em"
       aria-hidden="true"
-      style={{ display: 'inline-block', verticalAlign: '-0.02em', flexShrink: 0 }}
+      className="chip-icon"
     >
       <defs>
         <radialGradient id={gradId} cx="32%" cy="28%" r="70%">
