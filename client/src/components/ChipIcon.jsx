@@ -20,6 +20,16 @@ import { useId } from 'react';
 // a flat color swatch. useId keeps the gradient's id collision-safe since
 // many chips render on one page (poker felt, ledger rows) sharing one <svg>
 // document.
+//
+// verticalAlign calibrated against real rendered baselines, not eyeballed:
+// measured the true digit-glyph optical center (canvas measureText's
+// actualBoundingBoxAscent/Descent, not the inline box's line-height-padded
+// bounding rect, which reads as if digits reached lower than their real
+// ink) against the icon's own rendered center, at both 24px (.pot-amt) and
+// 11px (.stack-chip-footer). -0.05em placed the icon 0.3-0.8px below the
+// digits' optical center at both sizes — small, but consistent, so -0.02em
+// (which the same two measurements agree on almost exactly) centers it
+// rather than leaving a director's-eye-only offset in place uncorrected.
 export default function ChipIcon() {
   const gradId = useId();
   return (
@@ -28,7 +38,7 @@ export default function ChipIcon() {
       width="0.85em"
       height="0.85em"
       aria-hidden="true"
-      style={{ display: 'inline-block', verticalAlign: '-0.05em', flexShrink: 0 }}
+      style={{ display: 'inline-block', verticalAlign: '-0.02em', flexShrink: 0 }}
     >
       <defs>
         <radialGradient id={gradId} cx="32%" cy="28%" r="70%">
