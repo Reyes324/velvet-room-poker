@@ -30,6 +30,24 @@
         ],
         "createdAt": "2026-09-09T01:41:31.856Z",
         "reason": "pre-existing easing in RoomPage.css, not touched by feat/playstyle-recap"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "*",
+        "files": [
+          "client/src/styles/velvet.css"
+        ],
+        "createdAt": "2026-09-15T01:27:53.763Z",
+        "reason": "既有代码沿用的游戏反馈动效语言，非本次改动引入；同一曲线已在 RoomPage.css 被豁免过"
+      },
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "client/src/styles/velvet.css"
+        ],
+        "createdAt": "2026-09-15T01:27:53.939Z",
+        "reason": "可拖拽吸附组件的形变+贴边归位动画，需要真实变形 width/height/border-radius/left/right/top，transform 做不到同等效果；非本次改动引入"
       }
     ]
   }
