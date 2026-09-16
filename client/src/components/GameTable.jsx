@@ -227,7 +227,20 @@ function spectatorSeatPositions(n) {
 export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenChatHistory, onOpenFeedback, onPoke, onFoldFor, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, onSendChat, chatBubble = null, disconnectedIds = null, actionBubbles = {}, setActionBubbles = () => {} }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
+  // 三个点菜单 2026-09-15 从居中 modal-overlay 换成贴着按钮弹出的气泡——
+  // 跟 PlayerSeat.jsx 的拍一拍表情选择器（pokePickerOpen）同一套"点外面
+  // 关闭"实现（menuRef 包住按钮+气泡整体，pointerdown 在它之外就收起），
+  // 不再用全屏遮罩挡住牌桌。
   const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!showMenu) return;
+    function onOutside(e) {
+      if (!menuRef.current?.contains(e.target)) setShowMenu(false);
+    }
+    document.addEventListener('pointerdown', onOutside, true);
+    return () => document.removeEventListener('pointerdown', onOutside, true);
+  }, [showMenu]);
   // Game sfx mute toggle (top-bar button, 用户反馈 2026-08-14) — mirrors
   // sfx.js's own persisted flag into local state so the button icon
   // re-renders; the actual mute/unmute effect lives in sfx.js's single
@@ -589,8 +602,8 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
     const key = Date.now();
     for (const p of gameState.players) {
       if (p.bet <= 0) continue;
-      if (p.isSB) seeded[p.id] = { text: `小盲 ¥${p.bet.toLocaleString()}`, key, phase: 'preflop' };
-      else if (p.isBB) seeded[p.id] = { text: `大盲 ¥${p.bet.toLocaleString()}`, key, phase: 'preflop' };
+      if (p.isSB) seeded[p.id] = { text: null, amountPrefix: '小盲 ', amount: p.bet, key, phase: 'preflop' };
+      else if (p.isBB) seeded[p.id] = { text: null, amountPrefix: '大盲 ', amount: p.bet, key, phase: 'preflop' };
     }
     setActionBubbles(seeded);
   }, [gameState.phase]);
@@ -628,22 +641,37 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               在国内用户群体里不是个熟悉的符号，用户反馈"不习惯"（2026-08-11）。
               用真的 SVG 画三个圆点，不用 unicode 字符（⋮ 在不同字体下粗
               细/间距不受控，跟牌桌其余全 SVG 画的图形不一致，这条跟麦克风
-              图标改 SVG 是同一个理由）。 */}
-          <div className="menu-btn" onClick={() => setShowMenu(true)} aria-label="菜单" role="button">
-            <svg viewBox="0 0 20 6" width="18" height="5" aria-hidden="true">
-              <circle cx="3" cy="3" r="2.4" fill="currentColor" />
-              <circle cx="10" cy="3" r="2.4" fill="currentColor" />
-              <circle cx="17" cy="3" r="2.4" fill="currentColor" />
-            </svg>
+              图标改 SVG 是同一个理由）。
+              2026-09-15：点开的呈现方式从居中 modal-overlay 换成贴着按钮
+              弹出的气泡（menu-anchor 提供 position:relative 锚点，气泡从
+              按钮左边缘对齐向右展开——按钮本身就在屏幕最左侧，向右展开才
+              不会被裁到屏幕外）。同时把"账本"从菜单里搬到了外面（见下方
+              .top-bar-text-link），菜单里补进原来放在外面的"反馈"。 */}
+          <div className="menu-anchor" ref={menuRef}>
+            <div className="menu-btn" onClick={() => setShowMenu(v => !v)} aria-label="菜单" role="button">
+              <svg viewBox="0 0 20 6" width="18" height="5" aria-hidden="true">
+                <circle cx="3" cy="3" r="2.4" fill="currentColor" />
+                <circle cx="10" cy="3" r="2.4" fill="currentColor" />
+                <circle cx="17" cy="3" r="2.4" fill="currentColor" />
+              </svg>
+            </div>
+            {showMenu && (
+              <div className="menu-bubble">
+                <div className="menu-row" onClick={() => { setShowMenu(false); onOpenFeedback?.(); }}>反馈</div>
+                <div className="menu-row" onClick={() => { setShowMenu(false); onOpenHandHistory?.(); }}>牌局记录</div>
+                {isHost && (
+                  <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
+                )}
+                <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowExitModal(true); }}>退出游戏</div>
+              </div>
+            )}
           </div>
-          {/* "问题反馈"以前只是菜单里一行不起眼的文字，用户要求拎出来放到
-              顶部（2026-08-12），复用首页 .home-feedback-link 同一套边框
-              样式，后来简化成纯文字"反馈"、去掉图标（2026-08-14，给静音
-              按钮腾地方）。三易其位——最早在右边跟暂停按钮并排、之后单独
-              留在右边组最左侧，用户最终要求挪到左边跟三个点菜单按钮放在
-              一起，右边只留静音+暂停两个图标（2026-08-14 三次调整）。 */}
-          <div className="top-feedback-link" onClick={() => onOpenFeedback?.()} role="button" aria-label="反馈">
-            <span>反馈</span>
+          {/* "账本"原来在三个点菜单里，2026-09-15 用户要求拎出来放在这个
+              位置常驻可见——沿用原来"反馈"在这个位置时的纯文字链接样式
+              （.top-feedback-link 改名成通用的 .top-bar-text-link，见
+              velvet.css：无边框无底色，touch target 靠 padding 撑住）。 */}
+          <div className="top-bar-text-link" onClick={() => onOpenLedger?.()} role="button" aria-label="账本">
+            <span>账本</span>
           </div>
           {/* 补偿间隔条（用户反馈 2026-08-29"感觉没有居中"）——房间号本身
               的像素中心一直是真正的屏幕正中央，"看着不居中"是因为左右两
@@ -757,18 +785,6 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
           onStopTalking={onStopTalking}
           onSendChat={onSendChat}
         />
-      )}
-      {showMenu && (
-        <div className="modal-overlay" onClick={() => setShowMenu(false)}>
-          <div className="modal menu-popover" onClick={e => e.stopPropagation()}>
-            <div className="menu-row" onClick={() => { setShowMenu(false); onOpenLedger?.(); }}>账本</div>
-            <div className="menu-row" onClick={() => { setShowMenu(false); onOpenHandHistory?.(); }}>牌局记录</div>
-            {isHost && (
-              <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
-            )}
-            <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowExitModal(true); }}>退出游戏</div>
-          </div>
-        </div>
       )}
       {showExitModal && (
         <div className="modal-overlay" onClick={() => setShowExitModal(false)}>

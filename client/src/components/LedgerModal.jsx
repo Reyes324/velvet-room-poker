@@ -12,6 +12,8 @@
 // `left`, specifically so this final number doesn't disappear the moment
 // someone steps away — that used to happen when leaving deleted the row
 // outright).
+import ChipIcon from './ChipIcon';
+
 export default function LedgerModal({ players, startingChips, myId, onClose, eggCounts, styleRecap }) {
   // 盈亏从高到低排序（用户反馈，2026-08-14）——原来是座位顺序，跟"账本"
   // 这个场景想第一眼看出"谁赢得最多/谁输得最多"的诉求不匹配。net 的计
@@ -52,9 +54,11 @@ export default function LedgerModal({ players, startingChips, myId, onClose, egg
                 </div>
                 <div className="ledger-cell">1底</div>
                 <div className="ledger-cell ledger-cell--debt">{p.debt > 0 ? `${p.debt / startingChips}底` : '—'}</div>
-                <div className="ledger-cell">¥{p.chips.toLocaleString()}</div>
+                <div className="ledger-cell"><ChipIcon />{p.chips.toLocaleString()}</div>
                 <div className={`ledger-cell ledger-cell--net ${net === 0 ? 'net-neutral' : net > 0 ? 'net-win' : 'net-lose'}`}>
-                  {net === 0 ? '¥0' : (net > 0 ? '+¥' : '−¥') + Math.abs(net).toLocaleString()}
+                  {net === 0
+                    ? (<><ChipIcon />0</>)
+                    : (<>{net > 0 ? '+' : '−'}<ChipIcon />{Math.abs(net).toLocaleString()}</>)}
                 </div>
               </div>
             );

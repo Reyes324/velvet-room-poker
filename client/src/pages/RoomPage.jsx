@@ -170,9 +170,9 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
     'action:happened': ({ actorId, label, phase }) => {
       if (actorId !== playerId) playActionFeedbackSfx(label);
       if (actorId && label) {
-        const { text, folded, allIn, raise } = describeActionLabel(label);
+        const { text, amountPrefix, amount, folded, allIn, raise } = describeActionLabel(label);
         const key = Date.now();
-        setActionBubbles(b => ({ ...b, [actorId]: { text, key, folded, allIn, raise, phase } }));
+        setActionBubbles(b => ({ ...b, [actorId]: { text, amountPrefix, amount, key, folded, allIn, raise, phase } }));
       }
     },
   });
