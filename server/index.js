@@ -998,12 +998,21 @@ function createServer({
     // than waiting out a grace period, and (via RoomManager.leave) marks
     // the player left instead of deleting their row, so their final
     // numbers stay on the ledger.
-    socket.on('player:leave-room', ({ playerId }) => {
+    socket.on('player:leave-room', ({ playerId } = {}, callback) => {
       const room = rooms.leave(playerId);
-      if (!room) return;
+      // 2026-09-16 补 ack：这里原来完全不回任何东西，客户端也从不等这条消
+      // 息的结果就直接带用户离开这个页面——`rooms.leave` 靠 playerId 在
+      // RoomManager 内部一张 Map 里查所在房间，这张 Map 万一因为别的路径
+      // （断线宽限期/连接对账等）先一步变得跟真实房间状态不一致，这里会
+      // 静默查不到房间、什么都不做，但玩家已经"看起来"离开了——服务端那
+      // 一行还留着、还标着在场，回来重新加入会被判"已在房间内"（用户反
+      // 馈：点了退出，其实没退出）。现在如实回一个结果，客户端能分辨"真
+      // 退出了"还是"其实没有"，不再假装成功。
+      if (!room) return callback?.({ error: '未找到房间' });
       room.touch();
       if (room.awaitingBustResolution) tryAdvanceIfClear(room);
       else io.to(room.code).emit('room:state', room.getLobbyState());
+      callback?.({ ok: true });
     });
 
     // Host-only equivalent of "player:leave-room", for a busted player who

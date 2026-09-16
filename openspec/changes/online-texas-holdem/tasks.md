@@ -1534,3 +1534,13 @@
   - `server/RoomManager.js`：新增 `foldFor(fromId, targetId)`——服务端重新核实"目标真断线"+"真轮到他"两个条件（客户端那三个条件只决定按钮出不出现，不是权限来源），通过后直接调用已有的 `playerAction(targetId, 'fold')`，不另起一套弃牌逻辑；`server/index.js` 新增 `game:fold-for` socket 事件；任何在场玩家都能触发，不是房主专属，跟已有的 `poke()` 同一个开放程度
   - `client/src/components/PlayerSeat.jsx` / `GameTable.jsx` / `RoomPage.jsx`：新增 `onFoldFor` prop 一路串到 `game:fold-for` emit
   - **验收**：`RoomManager.test.js` 新增 5 条（未断线拒绝、断线但不轮到他拒绝、不能帮自己、真断线+真轮到他能成功且回合推进、游戏未开始拒绝）；新增真实两浏览器 e2e `e2e/foldForDisconnected.spec.js`（真实断开 socket，确认双方都看不到行动栏，对方点头像→"帮他弃牌"→结算弹窗真的出现），稳定跑 3 遍全过。`e2e/game.spec.js` 全量回归 27/28（唯一失败是已记录过的、与本次改动无关的账本 fixture 旧断言）。服务端全量 451/451；客户端构建通过、`eslint src` 与基线持平（36/27/9）
+
+- [x] **根因修复：操作报"未找到房间"、退出后重新加入报"已在房间内"，人卡死出不去（2026-09-16，用户反馈，方案见 design.md 同名章节）**
+  - 用户在真实牌局中撞上：操作报"未找到房间" → 点"退出游戏"（看似正常）→ 从首页房间列表点"加入"又报"已在房间内"，进不去也退不回去。用户明确要求找根因，不接受只治标
+  - 排查链路（design.md 有完整记录，不是一次读代码下结论）：`getRoomByPlayer` 靠的 `playerRoom` Map 跟 `Room.players` 数组的 `left`/`connected` 状态是两套独立维护的数据；"未找到房间"说明前者丢了条目，但已知会删条目的路径（`leave()`/`sweepIdleRooms`）都会同步把 `left` 标 `true`，而紧接着的"已在房间内"恰恰要求 `left` 是 `false`——两者矛盾，说明走的不是任何已知路径。顺着"退出游戏其实没退出"这条线索查到 `leaveRoom()` 原来发完事件不等确认就导航离开；再顺着"已在房间内"查到 2026-08-12 已经为这个报错做过自愈（`room:sync` 自动重连），但那次自愈只挂在 `mode==='join'`（手输房间码/邀请链接表单）这一个条件上，首页房间列表的"加入"按钮（已填昵称时直接 emit，不碰 `mode`/`code`）撞上同一报错时条件对不上，没人接住
+  - 结论：`playerRoom` Map 最初为什么脱节没能在现有代码里坐实第三条删除路径（最可能是断线重连的真实时序竞态），但更有把握的收获是——不管最初怎么丢的，两条 join 入口撞上"已在房间内"都必须能自愈，不能只有一条
+  - `client/src/pages/HomePage.jsx`：自愈判断条件从 `mode==='join'` 改成 `lastJoinAttemptRef`（两条 join 路径都写），不再要求走哪个具体入口
+  - `server/index.js`：`player:leave-room` 加 ack，真退出回 `{ok:true}`，查不到房间回 `{error}`，不再静默不回
+  - `client/src/pages/RoomPage.jsx`：`leaveRoom()` 改成等 ack 回来再导航；失败用 `showToast` 提示重试，不假装已经走了
+  - **验证**：新增 `e2e/roomListRejoin.spec.js`——两个真实 page 共享同一浏览器 context（同一份 localStorage/`vr_playerId`），page1 建房保持真实连接（服务端真实 `connected:true`，非伪造），page2 清本地 `vr_roomCode` 后从首页房间列表点"加入"同一间房：修复前稳定复现"已在房间内"卡死，修复后稳定自愈进房。`integration.test.js` 新增 2 条断言 `player:leave-room` 的 ack 行为
+  - **验收**：服务端全量 452/452；客户端构建通过、`eslint src` 与基线持平（36/27/9）；`e2e/lobby.spec.js`（11 条）、`e2e/game.spec.js`（27/28，唯一失败是已记录过的无关旧断言）全量回归干净

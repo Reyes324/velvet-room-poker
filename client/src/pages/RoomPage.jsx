@@ -220,10 +220,24 @@ export default function RoomPage({ roomCode, playerId, playerName, justCreated, 
   // impatient other player's "退出" while waiting on someone else's bust
   // decision, and the lobby's own "退出房间". Resolves immediately server-
   // side (marks left, keeps the ledger row) rather than relying on the
-  // disconnect grace period, then navigates away right away.
+  // disconnect grace period.
+  //
+  // 2026-09-16 修复：原来发完就立刻 onLeave() 导航离开，完全不等服务端
+  // 处理结果——`rooms.leave(playerId)` 内部靠 playerId 查一张 Map 才能
+  // 找到所在房间，这张 Map 万一（因为别的路径）已经跟真实房间状态不一
+  // 致，服务端会静默什么都不做，但玩家这边已经"看起来"离开了：服务端
+  // 那一行还留着、还标着在场，回来重新加入会被判"已在房间内"，人卡在原
+  // 地进不去（用户反馈："点了退出游戏，其实并没有退出房间"）。现在等服
+  // 务端真的确认了再导航离开；万一失败，留在原地提示重试，而不是假装
+  // 已经走了。
   function leaveRoom() {
-    emit('player:leave-room', { playerId });
-    onLeave();
+    socket.emit('player:leave-room', { playerId }, (res) => {
+      if (res?.error) {
+        showToast(`退出失败（${res.error}），请重试`, 'danger');
+        return;
+      }
+      onLeave();
+    });
   }
 
   function bustLeaveFor(targetId) {

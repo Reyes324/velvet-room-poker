@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import FeedbackModal from '../components/FeedbackModal';
 import './HomePage.css';
@@ -21,6 +21,15 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   const [resumeCard, setResumeCard] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [toast, setToast] = useState(null); // { msg, type } | null
+  // "已在房间内"自愈重试要知道刚才到底想加入哪个房间码——之前直接读
+  // mode/code 这两个 state，但那两个只有走手输房间码/邀请链接那条 join
+  // 表单路径时才会被设置。首页房间列表那行"加入"（handleRoomRowClick，
+  // 已经填过昵称时直接 emit，压根不碰 mode/code）走的是另一条路，同样会
+  // 撞上"已在房间内"这个报错，却因为 mode !== 'join' 而拿不到自愈重试，
+  // 只剩一句报错、人卡在原地出不去（用户反馈 2026-09-16）。用一个两条路
+  // 径都会写的 ref 记"最近一次真正尝试加入的房间码"，把自愈逻辑从"只认
+  // 表单这一条路"改成"不管从哪条路点进来的都认"。
+  const lastJoinAttemptRef = useRef(null);
 
   function showToast(msg, type = 'info') {
     setToast({ msg, type });
@@ -123,10 +132,16 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
     // 值。这明明就是本人（playerId 是这台设备本地存的身份），只是想拿新
     // 连接接上去——`room:sync` 走的正是"直接按 playerId 重新关联 socket"
     // 这条路，不做这个重复检查，天生就适合兜住这种情况。
+    //
+    // 2026-09-16 扩到第二条 join 路径：这段自愈原来只在 mode==='join'（手
+    // 输房间码/邀请链接）时触发，首页房间列表那行"加入"
+    // （handleRoomRowClick，已经填过昵称时直接 emit，不碰 mode/code）撞
+    // 上同一个"已在房间内"却没人接住，卡住出不去。判断条件改成认
+    // lastJoinAttemptRef（两条路径都会写），不再要求走的是哪个 UI 入口。
     'game:error': (msg) => {
-      if (msg === '已在房间内' && mode === 'join' && code.trim()) {
+      if (msg === '已在房间内' && lastJoinAttemptRef.current) {
         const retryId = getPlayerId();
-        const retryCode = code.trim().toUpperCase();
+        const retryCode = lastJoinAttemptRef.current;
         socket.emit('room:sync', { playerId: retryId });
         socket.once('room:state', () => {
           localStorage.setItem('vr_playerId', retryId);
@@ -220,13 +235,16 @@ export default function HomePage({ onJoined, onPve, initialCode }) {
   function handleJoin() {
     if (!name.trim()) return setError('请输入昵称');
     if (!code.trim()) return setError('请输入房间码');
-    emit('room:join', { code: code.trim().toUpperCase(), playerId: getPlayerId(), playerName: name.trim() });
+    const upperCode = code.trim().toUpperCase();
+    lastJoinAttemptRef.current = upperCode;
+    emit('room:join', { code: upperCode, playerId: getPlayerId(), playerName: name.trim() });
   }
 
   // 点首页房间列表里的一行。已经存过昵称的直接加入（最高准则：能少一步是
   // 一步）；没存过的落到"加入"表单、房间码预填好，跟点邀请链接同一条路。
   function handleRoomRowClick(roomCode) {
     if (name.trim()) {
+      lastJoinAttemptRef.current = roomCode;
       emit('room:join', { code: roomCode, playerId: getPlayerId(), playerName: name.trim() });
     } else {
       setCode(roomCode);

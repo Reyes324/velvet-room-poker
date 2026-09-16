@@ -177,6 +177,31 @@ describe('集成测试 — 房间管理', () => {
     expect(state.players.find(p => p.id === 'p2').left).toBe(false);
   });
 
+  it('player:leave-room 带 ack：真退出了回 {ok:true}，查不到房间回 {error}（2026-09-16，用户反馈"点了退出其实没退出"）', async () => {
+    // 客户端原来发完这条事件就直接导航离开，完全不管服务端有没有处理成
+    // 功——服务端也确实什么都不回。真正在生产环境发生过：`rooms.leave`
+    // 内部按 playerId 查房间，这张关联万一先一步跟真实房间状态不一致，
+    // 会静默什么都不做，但客户端已经"看起来"退出了。现在两边都要能分清
+    // 楚"真退出了"还是"其实没有"。
+    const [c1, c2] = await Promise.all([connect(), connect()]);
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'p1', playerName: 'Alice' });
+    const { code } = await joined1;
+
+    const state1FromJoin = waitFor(c1, 'room:state');
+    const state2 = waitFor(c2, 'room:state');
+    c2.emit('room:join', { code, playerId: 'p2', playerName: 'Bob' });
+    await Promise.all([state1FromJoin, state2]);
+
+    const ack = await new Promise((resolve) => c2.emit('player:leave-room', { playerId: 'p2' }, resolve));
+    expect(ack).toEqual({ ok: true });
+
+    // 已经不在任何房间的 playerId 再退一次——`rooms.leave` 内部查不到，
+    // 要如实回一个 error，不能假装成功。
+    const ackAgain = await new Promise((resolve) => c2.emit('player:leave-room', { playerId: 'p2' }, resolve));
+    expect(ackAgain.error).toBeDefined();
+  });
+
   it('设备断线（未显式退出）后，另一个 playerId + 同昵称加入同房间号 → 按昵称继承原身份', async () => {
     // Simulates the WeChat-in-app-browser vs. phone's own browser case: two
     // completely separate localStorage stores (so two different generated
