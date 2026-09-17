@@ -1945,6 +1945,25 @@ if (active.length < 2) {
 
 **验证**：`cd client && npm run build`、`npx eslint src/hooks/useVoiceMesh.js` 通过；`e2e/voiceTable.spec.js` + `e2e/voicePair.spec.js` 全部 11 条通过（沙盒环境模拟不出微信内核，这轮测试只保证没引入回归，验证不了新加的两处改动本身）。
 
+### #48 三查：诊断日志加内存回捞接口（2026-09-08）
+
+**背景**：又一次想查"听不到别人说话"，卡在同一个地方——`voice:diagnostic` 事件只 `console.log('[voice-diag]', ...)` 进 Render 日志，免费档只留 7 天、且必须登进 Render 后台才看得到。想查的时候日志经常已经被冲掉；协作方（Claude）也没有 Render 登录态，够不到。
+
+**改动**（`server/index.js`，纯增量，不碰事件处理逻辑）：
+- `createServer()` 内加一个内存环形缓冲 `voiceDiagLog`（封顶 200 条）。`voice:diagnostic` handler 在原有 `console.log` 之外，把同一条结构化记录 `push` 进去（`at` 缺省补 `Date.now()`）。没走过 `mesh-join` 的 socket 发的诊断照旧被忽略、也不进缓冲。
+- 新增 `GET /debug/voice-diag`（`?limit=N`，默认 200）：返回 `{ ok, count, returned, entries }`。进程重启即清空（免费档 dyno 重启就没了），可接受——要查的就是"最近有没有人遇到、当时什么网络/什么内核"。
+- **不加鉴权**，跟 `/status` 同一个判断：内容是 UA / ICE candidate 类型 / playerId / 房间号，比 `/status` 已经公开的真实昵称更不敏感；这个项目所有接口都没有鉴权（房间靠 6 位码），单给这个加一套不成比例。
+
+**验证**：`server/__tests__/voiceMesh.test.js` 新增 2 条（上报的诊断能从 `/debug/voice-diag` 拿到且字段完整、被忽略的诊断不进缓冲），该文件 14/14。服务端全量测试通过。
+
+### 又一个诊断盲区：`getUserMedia` 本身失败（按住说话直接报错）完全没被上报（2026-09-11，用户追问"不是有记录脚本吗"才发现）
+
+**背景**：#51 那次 `sfx.js` 副作用导致 iOS 上 `getUserMedia` 直接抛 `InvalidStateError` 的问题修完后，用户后来又反馈"语音又不行了"，但这次没带截图。用户追问"不是有记录语音出错的脚本吗"，回去翻 `useVoiceMesh.js` 的 `startTalking`，发现 `getUserMedia` 失败时只 `setMicError` 更新本地 UI，从来没有调用过 `voice:diagnostic`——跟 #48 复查那次"自动播放被拦"是同一类缺口：诊断上报只覆盖了"听不到别人说话"这条线（bytesReceived 不涨、autoplay 被拦），完全没覆盖"自己申请麦克风这步直接失败"这条线，所以 `/debug/voice-diag` 里天然不会有这类记录，不是这次没触发，是压根没上报过。
+
+**改动**（`client/src/hooks/useVoiceMesh.js`，纯增量，不改现有失败处理行为）：`startTalking` 的 `getUserMedia` catch 分支里，在 `setMicError` 之外新增一条 `voice:diagnostic`（`kind: 'mic-request-failed'`），带 `errorName`/`errorMessage`/UA/是否微信。服务端 `voice:diagnostic` handler 本来就是把 payload 原样展开存进环形缓冲，不需要改服务端代码。
+
+**验证**：`cd client && npm run build`、`npx eslint src/hooks/useVoiceMesh.js` 通过。这条本质是把"客户端已经拿到的错误对象"多发一份到服务端，不引入新的失败路径，没有新增 e2e（触发依赖真实浏览器的 getUserMedia 失败，沙盒里的假麦克风不会失败，模拟不出）。
+
 ### 波纹样式修正 + 说话按钮重新设计（真机看完效果后反馈，2026-08-11）
 
 **背景**：上面那版波纹推上线后，用户反馈两点：波纹长得像"方框在放大"而不是水波纹，而且有点卡；另外按住说话的悬浮按钮是牌桌上唯一一个纯圆形元素，跟其余全部圆角矩形风格的 UI（`menu-btn`/`avatar-card`/座位卡）不搭，显得突兀。
@@ -1975,6 +1994,29 @@ if (active.length < 2) {
 4. **"+15s"延时按钮反向挪到玩家自己头像卡片的右下角**，做成一个小角标（`extend-badge`），不再跟弃牌/跟注/加注抢视觉权重——用户原话"简单、轻量、不用太重的小按钮"。头像卡片其余三个角已经各有用途（左上 `speak-badge`、右上头像照片内 `turn-secs`、名字行右侧 `pos-badge`），右下角是唯一还空着的位置。显示条件不变（`isMe && isAction && timeBankMs > 0`），只是从 `ActionBar` 挪到了 `PlayerSeat`（新增 `timeBankMs`/`onExtendTurn` prop，只在 `isMe` 的座位渲染时传入）。
 
 **验收**：客户端构建通过；eslint 与基线持平（39/30，零新增）；e2e `turnTimeout.spec.js`（4 条，验证"+15s"挪位置后延时/倒计时流程不受影响）与 `voiceTable.spec.js`（4 条，验证说话按钮挪位置后按住说话/建连/清理流程不受影响）全过；额外写了一个抛弃式 e2e（两个真实浏览器 context 各自建房/加入同一房间，断言不管谁在行动、`.ptt-btn` 在 A、B 两边的屏幕上都始终可见可点）验证过这次改动要保住的关键点——说话按钮的可见性只取决于 `voiceEnabled`，不取决于 `myTurn`，跑完即删，不进正式测试套件；用 9 人满座的 dev fixture（`/?states=` 对应"9人满桌·密集"那条）截图确认新位置在满座时不再压住任何座位头像。
+
+### Bug 修复：反复按"说话"就弹麦克风报错（用户反馈，2026-09-08）
+
+**现象（用户原话转述）**：多次使用语音都报错，提示跟麦克风有关。
+
+**根因**（读 `useVoiceMesh.js` 的 `startTalking`/`stopTalking` 和 `VoiceChatDock.jsx` 说话区事件绑定，能对上 4 处真实缺陷，共同表现为"反复按、反复报错"）：
+
+1. **并发 `getUserMedia`**：`startTalking` 只用 `if (!localStreamRef.current)` 判断要不要申请麦克风。首次申请在手机/微信里要几百毫秒，这期间 `localStreamRef.current` 一直是 `null`，用户每按一次说话就多发一次 `getUserMedia`。浏览器（安卓 X5 / iOS WKWebView 尤甚）对并发的麦克风申请会拒绝，抛 `NotReadableError`（"被占用"）或 `AbortError`（"被中断"）——就是用户反复看到的提示。缺"申请中"的锁。
+2. **报错提示不会清**：`micError` 只在 `enable()` 开头和重连回调里被清空，`startTalking` 成功那次不清。哪怕后面某次申请成功了，红色报错条仍挂在屏幕上，观感就是"每次都报错"。
+3. **手指微动掐断说话**：`VoiceChatDock` 说话区在 `pointerdown` 里 `stopPropagation()`，外层的 `setPointerCapture` 因此不生效；同时它自己监听 `onPointerLeave → stopTalking`。按住说话时手指移动几像素就触发 `pointerleave`，说话被中断，用户以为没生效再按——叠加第 1 条形成连环报错。
+4. **"按下还没拿到麦克风就松手"会让麦克风偷偷常开**：`stopTalking` 跑的时候若 `getUserMedia` 还没 resolve，`localStreamRef.current` 是 `null`、什么都没做；等流回来后照常 `setTalking(true)` + 广播 speaking。麦克风开着还在广播，但按钮已回到"未说话"，UI 关不掉。
+
+**修法**（结构化，集中在一处状态机，不逐个症状打补丁）：
+
+- `startTalking` 进入即 `setMicError(null)`；新增 `micRequestInFlightRef`，申请中直接 return，杜绝并发 `getUserMedia`。
+- 新增 `heldRef` 记录用户当前是否仍按着说话键。`getUserMedia` 返回后如果 `heldRef` 已为 false（提前松手），把音轨 `enabled = false`、不升级 transceiver、不广播 speaking，只把流留着给下次用。
+- `getUserMedia` 成功后再清一次 `micError`。
+- `stopTalking` 同步置 `heldRef.current = false`。
+- `VoiceChatDock` 说话区改用 pointer capture：`pointerdown` 时 `setPointerCapture`，只保留 `pointerup`/`pointercancel` 收尾，去掉 `pointerleave` 触发的 `stopTalking`（有 capture 后 `pointerup` 一定能收到，不需要 leave 兜底）。
+
+**验证**：`cd client && npm run build` 通过；`npx eslint src` 与基线持平（27 errors / 9 warnings，零新增）。抛弃式 Playwright 脚本（`e2e` 目录外，未进套件）模拟"说话键 100ms 内连点 5 次 + 首次 `getUserMedia` reject `NotReadableError`"：实测连点期间只发起 **1 次** `getUserMedia`（并发锁生效），首次失败弹出报错条，之后单独按一次触发第 2 次申请并 resolve，报错条消失——两条都通过。`voiceTable.spec.js` 4 条在本沙盒全部失败，但 stash 掉本次改动后在干净 `main` 上同样 4 条全失败——是 headless chromium 建不起真实 WebRTC ICE 的既有限制（design.md 多处已记录），非本次回归。真机微信环境的并发/自动播放策略本地模拟不了，`pointerleave` 去掉后的按住手感也要真机确认。
+
+**顺带修的一处**：说话区 `onPointerDown` 里 `setPointerCapture(e.pointerId)` 对非法/合成 pointerId 会抛 `NotFoundError`，若不 try/catch 会挡住同一个 handler 里后面的 `onStartTalking`——已包 try/catch。
 
 ## 暂停/继续功能（用户反馈，2026-08-11，实现完成）
 
@@ -2508,6 +2550,20 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 
 **验证**：`cd client && npm run build`、`npx eslint src/utils/sfx.js` 均通过。
 
+### #51 修复的副作用：语音麦克风在真实牌桌里完全打不开（用户反馈，2026-09-10）
+
+**现象**：真机上进牌桌后点"说话"，立刻报 `InvalidStateError: AudioSession category is not compatible with audio capture`，麦克风申请从未成功过——跟手机侧边物理静音开关处于什么位置无关，是每次按都直接报错，不是"听不见"。
+
+**根因**：上面 #51 那条修复里，`sfx.js` 在模块加载时（`RoomPage`/`PvePage` 进牌桌就会触发，早于任何人真正点"说话"）就把 `navigator.audioSession.type` 锁死成 `'ambient'`。`ambient` 是 Safari AudioSession API 里纯"混音播放"的类别，语义上就不包含"能采集音频"——不是"设置了、但被静音开关这种软限制盖住声音"，而是浏览器直接拒绝在这个类别下打开 `getUserMedia({ audio: true })`，硬抛 `InvalidStateError`。2533 那条"顺带定下的产品决策"讨论的是"物理静音开关打开时语音会不会被一起静音"这个**软**问题（听不听得见），当时没有实测到、也没有意识到 `ambient` 类别本身会让 `getUserMedia` **硬**失败——这是两个严重程度完全不同的影响面：前者是经用户确认接受的产品取舍，后者是语音功能从未真正工作过的 bug。
+
+`/voice-check`、`/voice-pair` 两个自检页之前测都是通的、没测出这个问题：这两页不 `import` `sfx.js`，不会触发那行 `navigator.audioSession.type = 'ambient'`，页面会话类别停在浏览器默认值（支持采集），所以出现"自检页说能用、真实牌桌里打不开"——这跟这两页当初"必须跟真实功能给出同一个答案，结论要可信"的设计前提（见 `client/src/utils/voice.js` 文件头）出现了偏差。暂不改这两页去人为复现 sfx.js 的副作用，留作已知限制记在这里，不当成本次改动的一部分。
+
+**修复**：`useVoiceMesh.js` 的 `startTalking` 在真正调用 `getUserMedia` 之前，把 `navigator.audioSession.type` 显式切到 `'play-and-record'`（同时支持播放与采集的类别；不支持这个 API 的浏览器 try/catch 掉、无副作用）。这个切换只会发生一次——第一次成功申请到的麦克风流会一直留着复用（见「反复按说话反复弹报错」那条修复），不会重复调用 `getUserMedia`，此后页面会话类别就停在 `'play-and-record'`，不会自动切回 `'ambient'`。
+
+**这是对 2533 决策的一次收窄，不是推翻**：完全没用过语音的人，仍然享受"物理静音开关一起管音效+语音"的直觉行为；但凡真正按过一次"说话"，从那一刻起该玩家这一局音效就不再受物理静音开关限制（`'play-and-record'` 类别的固有行为，不是这里选择要不要遵守）。跟"语音从来没法用"这个硬 bug 比，这个代价明显更小，先不做"说话时临时切、松手切回 `'ambient'`"这种更复杂的双向切换方案——那套方案本身有没有副作用（比如切回时会不会打断正在进行的采集）没有实测过，不确定值不值得多这层复杂度。
+
+**验证**：见 tasks.md 对应任务条目的验收记录。
+
 ### 二次修订：中间栏"居中在剩余空间"不被接受，改成两边收窄（用户反馈，同一天）
 
 用户看完第一版效果后追问"中间的房间号和倒计时不居中？"——`grid-template-columns: auto 1fr auto` 那版确实不是绝对屏幕居中，是"居中在两边挤剩的空间里"：左边（menu-btn 44px）比右边（三个按钮155px）窄很多，中间栏的可视中心天然偏左，量出来在375px宽度下偏了约55px，肉眼能看出来。
@@ -2852,3 +2908,137 @@ issue 原文"增加表情包功能，比如扔鸡蛋等特效"——用新定的
 **第二轮反馈**："里面的内容你要用设计 skills 看一下"——原来是裸文字列表（名字+时间+一行字），跟牌桌本身的视觉语言脱节。改成气泡卡片：复用 `.poke-bubble--chat`（牌桌上即时冒出的那个聊天气泡）同一套配色——象牙白底 `#FBF6EC` + 金/绿描边（`var(--gold-400)`/`var(--state-safe)`，区分他人/自己）+ `var(--ink-black)` 文字，翻记录时读起来像"回看刚才那些气泡"，不是另开一套新样式。自己发的消息靠右、别人的靠左，不用逐条看名字就知道是谁说的——聊天界面最基本的可扫读性。正文字号 14px 提到 15px（用户明确要求"字体不要太小"）。
 
 **验收**：`npm run build`/`npx eslint .` 通过，lint 27/9 持平基线；真实 Playwright 双人房间截图确认气泡渲染、左右对齐、面板宽度符合预期（约半屏宽，桌面端不会跟着 vw 涨到离谱）。
+
+### Bug 修复：`/health` 在线人数虚高（幽灵连接，用户反馈 2026-09-08）
+
+**现象**：`/health` 返回 `roomPlayers: 8`，但实际并没有 8 个人在玩。`/status`（带名字的版本）里同一个名字（"老野"）同时出现在 3 个房间、另一个（"小野"）在 2 个房间，还有两个房间各只挂着 1 个"在线"玩家——德州不可能一个人打，是被遗弃、没清掉的房间。
+
+**根因**：`roomPlayers`（以及 `/status`、`getLobbyState`）一律用 `players.filter(p => p.connected && !p.left)` 统计，**只信内存里的 `connected` 标志，从不核对 `p.socketId` 是否还对应一个活着的 socket**（`io.sockets.sockets`）。而 `connected` 只有两条路径会被翻成 `false`：
+
+1. 收到 `disconnect` 事件时的 `Room.markDisconnectedIfCurrent`；
+2. 大厅宽限期（`GRACE_PERIOD_MS`）那个 `setTimeout` 里的 `rooms.leave()`。
+
+这两条都可能整个丢掉，且丢了之后**没有任何兜底会再翻它**：
+
+- **Render 免费档 dyno 重启**（每次部署、以及闲置休眠后被唤醒）会清掉所有 pending `setTimeout`。此刻正处在大厅宽限期的玩家：`disconnect` 已经触发过一次了、移除定时器随重启没了、以后也不会再有第二个 `disconnect` 事件——这行 `connected` 就永久卡在 `true`。（对局中断线按设计**根本没有** per-player 定时器，完全依赖 `disconnect` 事件本身送达。）
+- **手机/微信**：socket 没有干净的关闭帧就死了（切后台、锁屏、WiFi↔蜂窝切换）。免费档实例被限流/半休眠时，最后一个 socket 的 `disconnect` 有时根本不会送到服务端。
+- `markDisconnectedIfCurrent` 在 `p.socketId !== socketId` 时故意 no-op（对付"迟到的旧 socket"是对的）——但如果丢的正好是**当前** socket 的 `disconnect`，就再没有别的东西会翻这个标志。
+
+**放大效应**：`sweepIdleRooms` 要求 `players.every(p => p.connected === false || p.left)` 才回收房间。一个卡住的幽灵行就能让**整个房间**（连同里面真的已断线的人）永远被计数、永远不被 sweep，只要还有任何活动在 `touch()` 它。同一个 `connected` 判断还用在 `getLobbyState`，所以真人玩家大概率还在座位上看到这个幽灵。
+
+**修法（改数据源，不在统计处打补丁）**：拿 socket.io 自己的活连接表当唯一事实来源，加一个周期对账。
+
+- `RoomManager.js` 新增 `reconcileConnections(isSocketAlive)`：遍历所有房间的所有 `!left && connected` 玩家行，`!p.socketId || !isSocketAlive(p.socketId)` 的，翻成 `connected = false` 并补 `disconnectedAt`（`markDisconnectedIfCurrent` 那套"只在缺失/匹配时才动"的谨慎不需要——这里的判据本身就是"socket 确实不在活连接表里"，比 socketId 字符串比较更硬）。返回被改动的房间数组。
+- `server/index.js` `createServer()` 内新增一个 `setInterval`（周期 `reconcileIntervalMs`），用 `id => io.sockets.sockets.has(id)` 调 `reconcileConnections`，对每个被改动的房间**只 emit `room:state`**（不走 `broadcastRoom`——它会 `touch()` 刷新 `lastActivityAt`，把刚被认定全员离线的房间的 sweep 往后推）。`.unref()`。
+- 30 秒这个量级跟 socket.io 自己 `pingTimeout` 发现死连接的节奏一致，不额外制造"断线中"闪烁：正常断线由 `disconnect` 事件即时处理，对账只兜底"事件没送达 / 定时器随重启丢失"这些情况，正常重连流程里它扫过去无事可做。
+- `reconcileIntervalMs` 做成 `createServer` 可注入参数（跟 `settlementDisplayMs`/`turnBaseMs` 同一个"测试不吃真实计时"的模式），**默认在 Vitest 下为 0**（`process.env.VITEST`）——跑真实 server 的服务端测试有近十个，一个 30 秒后台定时器在某条慢集成测试跑到一半时触发、多推一条 `room:state`，会加剧本来就存在的 `integration.test.js` 计时 flake。生产默认 30s 不变。
+- 顺带把 socket.io 的 `pingInterval`/`pingTimeout` 显式配成 25s/20s（原来吃默认值，没写死），算小加固。
+- `/status` 每个房间多带 `status`（waiting/playing）和 `idleSec`（距上次 `touch()` 多少秒）。排查这次问题时全靠人肉看名单猜"活局还是弃局"——名单里可能全是还没被对账扫掉的幽灵，不可靠。`idleSec` 是硬信号：真在打的桌子个位/两位数，弃局一路涨到 1 小时 TTL。push 前的"有没有人在玩"判断以后看这个。
+
+**验证**：`server/__tests__/RoomManager.test.js` 新增 4 条 `reconcileConnections` 用例（socket 不在活连接表 → 翻 false 且补 disconnectedAt；已断线的行不重置 disconnectedAt；`left` 的行 + 仍在表里的行都不动、无改动返回空数组；翻 false 后配合 `sweepIdleRooms` 能把原本卡住的房间正常回收）。服务端全量 **405/405**（首跑偶有 1 条 `integration.test.js` 计时 flake，失败的每次是不同的、且包含跟本次改动无关的 game-flow 用例，重跑即 405 全过——是该文件既有的负载相关 flake，非本次引入）。`staleDisconnect`/`reconnect`/`pauseResume`/`turnClock` 单独跑 24/24。不新增 e2e（这个 bug 的触发依赖 Render 免费档 dyno 重启 / 真实移动网络丢事件，沙盒模拟不出，跟语音那几处同一个限制）。
+
+### 首页新增：房间列表，点一行直接加入（用户需求，2026-09-08）
+
+**背景**：现在进别人的房间只能靠对方分享 6 位房间码。用户要一个"打开首页就能看到当前有哪些多人房间、点一下就进"的列表。人机对战不算在内。
+
+**决策**：
+
+1. **数据源复用 `/status`**（今天刚为幽灵连接排查加的接口），只补一个 `hostName` 字段——每行拿房主名当标识。人机对战天生不在 `rooms` 里，本来就被排除，不用额外过滤。客户端每 30 秒轮询一次，跟已有的"X人在线"同一套（纯信息展示，不走 socket）。
+2. **位置**：**卡片下方、独立一块**（用户第一版看完反馈：不要放卡片里）。跟 `.home-card` 同宽（`max-width: 400`）同边距，读起来是一对、又清楚是"另一件事"。卡片 + 列表包在一个 `.home-stack` 里，`margin: auto` 居中——装得下居中、装不下从顶部可滚动（`justify-content: center` 溢出时会把顶部裁掉够不着，`.home` 原来的 `overflow: hidden` 在矮屏 + 列表下会裁内容，改成 `overflow-y: auto`）；`.home-bg` 和左上/右上/底部三个悬浮元素随之从 `absolute` 改 `fixed`（本来就是要钉在视口边）。没有房间时整块不渲染（跟"X人在线"0 人不渲染同一个哲学——冷清感反效果）。
+3. **每行两行信息 + 右侧独立"加入"按钮**（用户第一版反馈：加个加入按钮更清楚）。左侧：房主名（超长截断）/ 人数 · 状态 两行。状态用首页已有的"绿点=活的/在线"视觉语言：**打牌中 = 绿点 + 绿字**，**等人中 = 暗金点 + 金字**。不用彩色左边框。行的底/描边借 `.home-resume-card` 那套金色可点卡片，底色更淡（一次可能好几行）。"加入"按钮用金色芯片语言（`.16` 底 / `.45` 描边 / `--gold-100` 字），比行本身亮一档、读作"这一行的动作"。列表 `max-height: 220px`（~3 行），再多内部滚动。自己当前的房间不列进去（已有"继续上局"卡片管）。
+4. **点"加入"按钮 = 走现有加入流程**（行本身不再整体可点，避免"点行 vs 点按钮"歧义）：已存过昵称的直接 `room:join`（最高准则：能少一步是一步）；没存过的落到"加入"表单、房间码预填好，跟点邀请链接同一条路。
+5. **所有房间都可点，包括"打牌中"的**（用户明确选择）。点"打牌中"的房间下一手自动入座。配套服务端改动：`room:join` handler 原本只广播 lobby 状态，客户端要 `status==='playing'` 且拿到 `game:state` 才渲染牌桌，否则会先看到"等待房主开始"的大厅界面直到下次有人行动。给刚进来的人补发一次当前 `game:state`，直接落到牌桌（旁观态，`amPlaying=false`，GameTable 已能处理）。
+
+**明确的权衡（已跟用户确认）**："打牌中"的房间也对所有人可见可加入，等于陌生人能中途坐进一局正在打的牌局（带 1000 起始筹码入座下一手）。项目网址基本只在熟人圈流传，接受这个开放度，不做房主"公开/私密"开关。
+
+**验证**：真实 Playwright 四个视口（1280×900 / 390×844 / 375×667 / 320×640）+ 键盘弹起态截图——列表渲染、绿点/金点状态区分、超长昵称截断、"加入"按钮不挤、矮屏下整块可滚动不被裁、底部"人机对战"入口不被列表压住、键盘弹起时正确退成顶对齐（`.home--keyboard-open .home-stack` 分支）。功能实测：无昵称点"加入"→切到加入表单且房间码预填；有昵称点"打牌中"的行→直接进且落在牌桌（旁观中·下一手自动入座），不是大厅界面。`server/__tests__/integration.test.js` 的 `/status` 用例补 `hostName` 断言，服务端全量 407/407。客户端构建通过、`eslint client/src` 与基线持平（27 errors / 9 warnings，零新增）。impeccable 检测器（仓库根目录跑）对改动文件零命中——`.home-logo` 品牌渐变字是既有的、非本次引入，已在 `.impeccable/config.json` 加窄范围抑制。
+
+### `/debug/players`：谁在线（详版，含 IP 归属地区）（用户需求，2026-09-08）
+
+**背景**：push 前发现线上有人在打人机对战（`pvePlayersOnline: 1`），想知道是谁、要不要等他打完再推。`/status` 只列真人房间的昵称，人机对战只有个计数，认不出人。
+
+**决策**：
+
+1. **独立 `/debug/players` 接口**，不塞进 `/status`（那个首页房间列表在用，要精简）。返回 `rooms`（每个真人房间的在场玩家）+ `pve`（每个人机对战会话）。每条带：昵称、`connectedSec`（socket 连了多久，从 `handshake.issued` 算）、`device`（从 UA 粗分：微信 / iOS / Android / Mac·Chrome 之类）、`ip`、`region`（IP 归属地区）；`pve` 额外带 `seatCount` / `hand`（打到第几手）/ `ageSec`（`PveSession.createdAt` 起，新增字段，不随 `touch()` 变）/ `idleSec` / `online`。
+2. **IP → 地区**：免费 `ip-api.com`（无需 key，45 次/分钟，这接口手动点不高频），结果缓存 1 小时。内网/回环 IP 直接短路成"内网/本地"，不打网络（测试走 localhost，天然不触发外部请求）。查不到返回 `null`，原始 `ip` 照给。中间字段 `_ip` 在返回前删掉，不重复泄漏。
+3. **人机对战昵称从此有值**：客户端桌形按钮原来固定传空串（`onPve('', N)`），改成传本地已存的昵称（`onPve(name.trim(), N)`，`name` 来自 `localStorage.vr_playerName`）——不强制用户填，只是"存过就用"，`pve:start` 收到空串仍回退"玩家"。`PveSession` 把它存在 `players[0].name`，`/debug/players` 直接读。
+4. **敏感度**：这个接口有 IP，比 `/status` 敏感。但项目所有接口本来都不加鉴权（房间靠 6 位码、`/status` 已公开真实昵称、`/debug/voice-diag` 已公开 UA），单给这一个加一套鉴权不成比例。要收紧再单独做。
+
+**验证**：`integration.test.js` 新增 1 条（房间玩家的 `region` 在回环 IP 下是"内网/本地"、`_ip` 不泄漏、`connectedSec` 是数字、`pve` 是数组）。本地起真实 server + 假房间 + 假人机会话，`curl /debug/players` 确认 `pve[].name` 带上了 `pve:start` 传的昵称、`device` 从 UA header 正确解析、`ageSec`/`hand` 有值。服务端全量 408/408。客户端构建通过、`eslint client/src` 持平基线（27/9）。
+
+## Bug 修复：all-in 跟到摊牌后，座位还短暂显示"行动中"环（用户反馈，2026-09-11）
+
+**用户描述的场景**：A 下注 500，B all-in 盖过（B 已经全下），轮回到 A，A 这时也选择 all-in 跟上——应该直接摊牌，不该"又回到 B 去做决策"。
+
+**先排查服务端**：`GameEngine.js` 的下注轮结束判断（`_streetDone`/`_advance`/`_nextStreet`）本身没问题——`_activePlayers()` 只统计 `status === 'active'` 的玩家，all-in/弃牌的人天然被排除在"还要不要等他行动"的判断之外；`_nextStreet` 在活跃玩家 `<= 1` 时会自动跑完剩下的街直接进摊牌，不会真的把行动权交还给已经 all-in 的人。真实两人对局按这个场景走一遍，逻辑上不会回到 B。
+
+**真正的根因在客户端渲染**：GameEngine 在"下注轮靠自动跑完全部街道直接收尾"这类终局场景里（fold-to-one-left，或者这次的 all-in 跟到摊牌），`actionIndex`/`actionPlayerId` 会停留在最后一个还是 `active` 状态的玩家身上，不会被清空——这本身不算服务端 bug（它从设计上就没打算在这类终局场景里维护这个字段，摊牌该看的是 `phase`/`game:showdown`，不是 `actionPlayerId`），但每一处直接拿 `actionPlayerId` 渲染"轮到谁了"的地方，都得自己补上"是不是已经摊牌"这层判断。2026-07-30 已经修过一次同类问题（hero 自己的 `ActionBar` 在弃牌/摊牌那一刻短暂复活），当时的修法是给 `myTurn` 加 `!isShowdown` 守卫——但 `GameTable.jsx` 里座位本身的"行动中"发光环（`isAction` prop，hero 和对手座位都用它，驱动 `is-active`/`is-timed`/`is-timed-urgent` 这几个 CSS class）是另一处独立拿 `actionPlayerId` 直接比较的地方，当时漏改了。这次 all-in 场景命中的正是这第二处：`actionIndex` 摊牌后停在某一方身上，那个人的座位就会在结算弹窗出现的同时继续亮着"轮到你了"的环，看起来像"游戏又回去问他"。
+
+**修复**：`GameTable.jsx` 新增 `isActingNow(id) = !isShowdown && gameState.actionPlayerId === id`，把 hero 座位、对手座位、`myTurn` 三处原来各自裸写的 `actionPlayerId === X` 全部收口到这一个函数，不再有第二份"要不要判断摊牌"的逻辑各存一份。
+
+**复现与验证（不是读代码下结论）**：先在这处修复之前的代码上跑通新增的 `e2e/allinShowdown.spec.js`——两个真实浏览器 context 建房间、真实打到翻牌，A 加注→B 全下→A 也全下——连续跑几次，真实抓到过座位 class 里带 `is-active`（谁的座位取决于这一步谁的筹码更深、谁全下后自己状态仍是 `active` 而不是 `allin`，两种角色都实测命中过）；修复后同样连续跑几次，`is-active`/`is-timed`/`is-timed-urgent` 再没出现过。
+
+**顺带确认，不在本次修复范围**：跑整个 `game.spec.js` 回归时，发现"账本弹窗：四列数字与 fixture 数据一致"这条在完全不含本次改动的 `main` 上就已经失败——是 2026-08-13 账本"已借"列从具体金额改成"几底"显示（见上面「几底」那条决策）之后，这条 e2e 断言没跟着更新，还在断言旧的 `¥2,000` 格式。跟这次的改动无关，是另一条独立的技术债，记在这里以免以后重复排查到同一处。
+
+## "本场之最"丰富奖项种类（用户反馈，2026-09-11）
+
+**背景**：用户追问同一人偶尔拿不同奖项是不是算错了——查证不是 bug（见上面同日期的另一条记录：`computeAwards` 是纯函数，同数据结果恒定；差异来自"账本每次打开都按当前累计手数现算"这个设计本身）。借这次一起把用户提的"奖项内容再丰富一下"做了。
+
+**新增前先看现有数据**：`playstyleStats.js` 的 `emptyPlayerStats` 里有两个字段一直在累加、但现有 9 个奖项从没用过——`handsPFR`（翻前主动加注次数）、`cbetAir`（持续下注时手里其实是空气的次数）。优先用这两个"already there just wasted"的字段加新奖项，不引入新的数据采集/新的 `accumulateHand` 改动，风险最低。
+
+**新增 3 个奖**：
+- **老好人**（`dir:'min'`，`handsPFR/handsVPIP`——进池之后主动加注的比例）：进了池就跟、很少主动加注，被动型玩家的画像，跟"手痒星人/养生局"（进不进池）是不同的维度——一个人完全可能入池率不低但几乎不主动加注，两个标签不冲突。门槛：`handsVPIP >= 10`（要有够多的"进池"样本才谈得上"进了之后怎么打"）且比例 `<= 0.15`。
+- **纸老虎**（`dir:'max'`，`cbetAir/cbetOpp`——持续下注里有多少次其实是空气）：专门测"持续下注的诈唬成分"，跟"影帝"（衡量的是翻后所有空气开火，含非 c-bet 的转/河唬人）、"惯性开火"（衡量 c-bet 频率本身，不分手牌强弱）都不同维度，三者可以同时出现在不同人身上。门槛：`cbetOpp >= 8`（跟"惯性开火"用同一个门槛，两者本来就是同一个分母下的不同切面）且比例 `>= 0.5`（过半持续下注是空气才算"纸老虎"，不是随便诈唬几次就扣帽子）。
+- **死磕到底**（`dir:'min'`，`foldedToRaise/facedRaise`）：跟"秒怂"是同一个分母的镜像方向（最爱弃 vs 最不爱弃），复用同一个门槛 `facedRaise >= 8`，不新增字段、不新增采集逻辑。
+
+**不做的事**：没有引入"谁赢得多/摊牌赢率"这类新奖项——这需要在 `recordHandForPlaystyle` 调用点额外传入 `result.winners`（`server/index.js` 的 `handleActionResult`），属于新增数据管线而不是复用已有字段，成本和验证复杂度都明显更高；且账本本身已经有盈亏表格直接看得出"谁赢得多"，重复发奖意义不大（呼应 design.md 里"大赢家/大输家账本盈亏表本来就一眼看得出，不重复发奖"那条原则）。这次先只用现成数据把没用上的两个维度补齐，需要更多奖项类型再单独评估。
+
+**验证**：`playstyleAwards.test.js` 为每个新奖新增用例（达标发放 / 未达门槛不发 / 全桌该维度趋同时不发），复用现有的"顺延"测试模式确认新奖也遵守"每人最多一个、按 gap 顺延"的既有规则，不需要为它们单独写一套顺延逻辑。
+
+## 「+15 秒」加时按钮：额度用完后布局跳动 + 次数放宽（用户反馈，2026-09-11）
+
+**现象**：本手「+15 秒」额度点完后，按钮直接从操作栏消失，左边弃牌/跟注/加注几个按钮跟着变宽、挪了位置。
+
+**根因**：`ActionBar.jsx` 原来是 `{timeBankMs > 0 && <button className="b-extend">+15s</button>}`——额度耗尽就把这颗按钮整个从 DOM 里摘掉。`.ab-main` 是 flex 布局，`.b-fold`（`flex:1`）/`.b-call`/`.b-check`（均 `flex:2`）/`.b-raise-trigger`（`flex:1`）都会伸展吃掉行里腾出来的空间，`.b-extend`（`flex:0 0 auto`，固定宽度）一消失，其余几个按钮立刻跟着变宽、整体挪位——这正是当初那条注释自己写的取舍（"用完就不再显示，而不是留一个点了没反应的死按钮"），只是没考虑到它是 flex 行里的一员，摘掉会牵连布局。
+
+**修复**：按钮永远保留在 DOM 里、占住同一个位置，额度耗尽时只切换到 `disabled` + 新增的 `.b-extend--depleted`（`opacity:.35; cursor:not-allowed`）置灰态，不再有条件渲染。原生 `<button disabled>` 天然不响应点击，不需要额外挡一层逻辑。
+
+**顺带把额度也放宽了**：用户反馈"次数有点太严苛"。原来是每手 30 秒储备池、每次点掉 15 秒，最多点 2 次；改成每手 **45 秒**（3 次）。上限本身不去掉——最初就是为了防"一个人拖住全桌"（见「行动倒计时 + 时间银行」那条原始设计的取舍表），这次只是把门槛从 2 次松到 3 次，不是改成无上限。
+
+**验证**：先在这处修复之前的代码上跑新增的 `e2e/extendTurnLayout.spec.js`——真实点「+15s」点到额度耗尽，`.b-extend` 在旧代码下会被摘出 DOM，测试因为轮询一个已经不存在的元素而超时失败（等价于复现了"按钮消失"）；修复后同一份测试稳定通过，量出弃牌按钮在额度耗尽前后的真实 bounding box——x 坐标和宽度分毫不差。服务端全量 446/446；客户端构建通过、`eslint src` 与基线持平（36/27/9）。
+
+**顺带确认，不在本次修复范围**：跑 `e2e/turnTimeout.spec.js` 全量回归时，"倒计时视觉：环形描边渲染且在走"这条在完全不含本次改动的 `main` 上同样失败（`drainedAtSecs` 读到 `null`）——是这个沙箱环境跑一个真实 20 秒实时窗口 + 500ms 轮询粒度的计时类用例本身偏紧，环境性能一慢就可能错过判定窗口，不是这次改动引入的回归，记在这里以免以后重复排查。
+
+## 帮断线玩家弃牌（用户反馈，2026-09-11）
+
+**需求**：断线玩家轮到自己行动时，其他人点他头像弹出的表情面板里，加一个"帮他弃牌"按钮——"有时候等不及了"，不想干等读秒/储备池耗尽才自动处理。
+
+**入口位置**：复用已有的表情面板（`PlayerSeat.jsx` 的 `pokePickerOpen`），不单独占一个新的按钮位置——跟用户的描述完全对应（"在弹出的表情面板下面加多一个'帮他弃牌'的按钮"）。只在 `!isMe && disconnected && isAction` 时才渲染这颗按钮（`canFoldFor`），三个条件缺一不可：不是自己、对方真的断线中、现在真的轮到对方——不满足就不出现，不是出现了但点了没用。
+
+**权限判定在服务端，不只信客户端**：客户端那三个条件只决定按钮出不出现，是 UX 层的提示；`RoomManager.foldFor(fromId, targetId)` 重新核实一遍"目标真的断线（`connected===false`）"+"现在真的轮到他（`actionPlayerId===targetId`）"，任何一条不满足就拒绝，不能靠客户端传来的状态直接放行。谁都能触发（不是房主专属），跟已有的 `poke()` 开放程度一致——这是"有人注意到卡住了随手帮一下"的场景，不需要额外的权限分层。
+
+**没有新增数据管线**：`foldFor` 内部直接调用已有的 `playerAction(targetId, 'fold')`（跟真人点弃牌走同一条路径），不另起一套"代人弃牌"的下注逻辑分支。
+
+**验证**：`RoomManager.test.js` 新增 5 条（未断线拒绝、断线但不轮到他拒绝、不能帮自己弃牌、真断线+真轮到他能成功弃牌且回合推进、游戏未开始时拒绝）。新增真实两浏览器 e2e `e2e/foldForDisconnected.spec.js`——一方真实断开 socket（`window.__vrSocket.disconnect()`，不是关标签页，跟已有的 S2 断线测试同一个手法）、确认双方都看不到行动栏、对方点断线者头像弹出面板、点"帮他弃牌"、确认结算弹窗真的出现（牌局真的推进了，不是按钮点了没反应）。稳定跑了 3 遍全部通过。`e2e/game.spec.js` 全量回归 27/28（唯一失败是前面几条修复已经记录过的、与本次改动无关的账本 fixture 旧断言）。服务端全量 451/451（一次性出现过 1 条无关的计时类 flake，重跑即过，不是本次改动引入）。客户端构建通过、`eslint src` 与基线持平（36/27/9）。
+
+## 根因排查：操作报"未找到房间"，退出后重新加入又报"已在房间内"，人卡死出不去（用户反馈，2026-09-16）
+
+**现象**：牌局进行中，一名玩家的操作突然报错"未找到房间"；点"退出游戏"看起来正常回到了首页；再从首页"当前牌局"列表点"加入"，又报"已在房间内"，进不去，也退不回原来那盘。
+
+**排查过程（不是一次读代码就下结论，中间推翻过一版猜测）**：
+
+1. `getRoomByPlayer(playerId)`（几乎每个 socket handler 判断"这个人在哪个房间"都靠它）读的是 `RoomManager.playerRoom` 这张 `playerId → 房间码` 的 Map，跟 `Room.players` 数组（谁在这个房间里、`connected`/`left` 状态）是两套独立维护的数据，理论上必须时刻同步，但没有任何机制强制校验它们没有跑偏。
+2. "未找到房间"说明这张 Map 里这个 playerId 的条目丢了。查了所有会 `playerRoom.delete()` 的地方（`leave()`、`sweepIdleRooms()`），发现它们都会同时把 `Room.players` 里对应那一行标记 `left:true`——如果真的走了这几条路径之一，`left` 应该是 `true`。
+3. 但紧接着的"已在房间内"报错（`RoomManager.addPlayer` 的 `!existing.left && existing.connected !== false`）恰恰要求 `left` 是 `false`、`connected` 不是 `false`——这跟第 2 步矛盾，说明**这张 Map 丢条目的这次，根本没有经过 `leave()` 这几条已知路径**，是第三种、之前没想到的情况。
+4. 追"点退出游戏其实没退出"这条线索：`RoomPage.jsx` 的 `leaveRoom()` 原来发送 `player:leave-room` 后**不等服务端确认**就直接导航离开——服务端那边如果因为 `playerRoom` 已经查不到而静默 no-op（原handler `if (!room) return;`，什么都不回），客户端完全不知道，只会显得"好像退出了"。这是"退出没生效"的直接原因，但仍然没解释 Map 条目最初为什么会丢。
+5. 回到首页真正复现"已在房间内"：翻到 2026-08-12 那次已经修过的同名报错——当时是"点邀请链接/手输房间码回到自己房间却报已在房间内"，修法是收到这个报错时自动重发 `room:sync` 重新接上（不用真人自己想办法）。**但那次自愈只挂在 `mode==='join'`（手输房间码/邀请链接那条表单路径）这一个条件上**。首页"当前牌局"列表那一行"加入"按钮（`handleRoomRowClick`）在**已经填过昵称**时会直接 `emit('room:join', ...)`，完全不碰 `mode`/`code` 这两个 state——同一个"已在房间内"报错，走这条路径时 `mode` 不是 `'join'`，自愈条件对不上，直接摆烂显示原始报错，人卡死。
+
+**真正的根因结论**：这不是一个新 bug，是 2026-08-12 那次修复本身**只堵了两条 join 入口里的一条**——`room:join` 什么情况下会拿到"已在房间内"这个报错，从来就不是"只有走表单才会"，首页房间列表这第二个入口一直有这个缺口，只是这次才被真实撞上。至于"`playerRoom` 这张 Map 最初为什么会跟房间真实状态脱节"（第 3 步那个矛盾），没能在现有代码里找到第三条明确的删除路径——最可能的解释是网络抖动/切后台导致的一次真实断线重连时序竞态（服务端在这一层确实没有任何断言/自检能在事后指认到底是哪一步），但这次排查更有把握的收获是第 5 步：**不管条目最初怎么丢的，只要丢了、又撞上"已在房间内"，两条 join 入口里必须都能自愈，不能只有一条**。
+
+**修复**（三处，同一条故障链路的三个环节，一起改）：
+
+1. **`client/src/pages/HomePage.jsx`**：把"收到'已在房间内'就自动 `room:sync` 重新接上"这段自愈逻辑，从"只认 `mode==='join'`"改成认一个两条 join 路径都会写的 `lastJoinAttemptRef`（`handleJoin` 和 `handleRoomRowClick` 各自在 `emit('room:join', ...)` 前写一次）——不再要求用户是从哪个具体入口点进来的，两条路径共用同一份自愈。
+2. **`server/index.js`**：`player:leave-room` 加一个 ack 回调，真退出了回 `{ok:true}`，查不到房间回 `{error}`，不再什么都不回。
+3. **`client/src/pages/RoomPage.jsx`**：`leaveRoom()` 改成等服务端 ack 回来再导航离开；失败就用 `showToast` 提示重试，而不是假装已经走了。
+
+**复现与验证（不是读代码猜的）**：新增 `e2e/roomListRejoin.spec.js`——两个真实浏览器 page 共享同一个 context（意味着共享同一份 `localStorage`，即同一个 `vr_playerId`/`vr_playerName`），page1 建房并保持连接不断开（服务端真实认为这个人 `connected:true`，不是伪造的状态），page2 清掉本地 `vr_roomCode`（模拟"退出"清了本地房间码）后从首页房间列表点"加入"同一间房——这条路径在修复前稳定复现"已在房间内"卡死，修复后稳定自愈直接进房。服务端新增 2 条集成测试断言 `player:leave-room` 的 ack 行为（真退出回 `{ok:true}`，查不到房间回 `{error}`）。服务端全量 452/452；客户端构建通过、`eslint src` 与基线持平（36/27/9）；`e2e/lobby.spec.js`（11 条，覆盖各种加入/冷启动恢复场景）与 `e2e/game.spec.js`（27/28，唯一失败是已经记录过的、与本次改动无关的账本 fixture 旧断言）全量回归干净。

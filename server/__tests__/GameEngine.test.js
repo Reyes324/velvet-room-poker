@@ -301,3 +301,46 @@ describe('GameEngine — 摊牌 bestCards / handNameShort（用于牌桌高亮�
     }
   });
 });
+
+describe('GameEngine — actionLog（打法点评用）', () => {
+  it('初始为空数组', () => {
+    const game = new GameEngine(makePlayers(3), 0, 200);
+    expect(game.actionLog).toEqual([]);
+  });
+
+  it('记录每个合法动作的 playerId/phase/type/amount，按顺序', () => {
+    const game = new GameEngine(makePlayers(3), 0, 200);
+    // 3 人局，行动从 dealer+3 开始（=p1，dealerIndex=0）
+    const first = game.players[game.actionIndex].id;
+    game.call(first);                       // 跟大盲 200
+    const second = game.players[game.actionIndex].id;
+    game.raise(second, 600);               // 加注到 600
+    const third = game.players[game.actionIndex].id;
+    game.fold(third);
+
+    expect(game.actionLog).toEqual([
+      { playerId: first, phase: 'preflop', type: 'call', amount: 200, aggressive: false },
+      { playerId: second, phase: 'preflop', type: 'raise', amount: 600, aggressive: true },
+      { playerId: third, phase: 'preflop', type: 'fold', amount: 0, aggressive: false },
+    ]);
+  });
+
+  it('纯全下跟注记 type:allin 但 aggressive:false；真正加注 aggressive:true', () => {
+    // 单挑：p1 是庄/小盲，只有 150 筹码，贴 100 小盲后剩 50，跟大盲即全下。
+    const game = new GameEngine([
+      { id: 'p1', name: 'P1', chips: 150 },
+      { id: 'p2', name: 'P2', chips: 1000 },
+    ], 0, 200);
+    game.call('p1'); // 全下跟注（凑不齐 200）
+    const callEntry = game.actionLog[0];
+    expect(callEntry.type).toBe('allin');
+    expect(callEntry.aggressive).toBe(false);
+  });
+
+  it('被拒绝的非法动作不进 actionLog', () => {
+    const game = new GameEngine(makePlayers(2), 0, 200);
+    const notTurn = game.players[(game.actionIndex + 1) % 2].id;
+    game.fold(notTurn); // '还没轮到你'
+    expect(game.actionLog).toEqual([]);
+  });
+});

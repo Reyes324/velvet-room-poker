@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useThinkSeconds, useTurnClock } from '../hooks/useThinkSeconds';
 import Card from './Card';
+import ChipIcon from './ChipIcon';
 import eggSplatImg from '../assets/egg-splat.png';
 
 const AV = ['av-green', 'av-purple', 'av-teal', 'av-rust', 'av-olive', 'av-blue', 'av-magenta', 'av-gold'];
@@ -64,7 +65,7 @@ function bubbleStyle(bubbleSide, anchorTop) {
   return bubbleSide ? sideStyle(bubbleSide, anchorTop) : undefined;
 }
 
-export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeKey = null, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, chatText = null, chatKey = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false }) {
+export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase, color = 0, bubble, cardsSide = null, bubbleSide = null, bubbleAnchorTop = false, onPoke, poked = false, pokeKey = null, pokeEmoji = null, pokeFromName = null, pokeThrowFrom = null, chatText = null, chatKey = null, revealedCards = null, bestCardRaws = null, turnEndsAt = null, turnStartedAt = null, isSpeaking = false, getVoiceVolume = null, paused = false, disconnected = false, onFoldFor = null }) {
   const isShowdown = gamePhase === 'showdown';
   const folded = player.status === 'folded';
   const allin = player.status === 'allin';
@@ -133,6 +134,12 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
   // 点的样子——诚实地表达"这里没有这个功能"，而不是给一个会静默失败的
   // 死交互。
   const canPoke = !isMe && !!onPoke;
+  // "帮他弃牌"：只在这个人真的断线中、且现在正轮到他行动时才出现——不是
+  // 任何时候都能帮别人弃牌，只是给"断线卡住轮到他的这一刻"一个不想等满
+  // 20 秒读秒/45 秒储备池才自动处理的手动出口（用户反馈，2026-09-11："有
+  // 时候等不及了"）。跟表情面板共用同一个入口（点头像弹出的面板），不单
+  // 独占一个新按钮位置。
+  const canFoldFor = !isMe && !!onFoldFor && disconnected && isAction;
   const avatarClickTimerRef = useRef(null);
   function handleAvatarClick() {
     if (!canPoke) return;
@@ -292,7 +299,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
               : <div className="think-overlay">{thinkSeconds}s</div>
           )}
         </div>
-        <div className="stack-chip-footer">¥{player.chips.toLocaleString()}</div>
+        <div className="stack-chip-footer"><ChipIcon />{player.chips.toLocaleString()}</div>
         {/* 表情特效（GitHub #26）——叠在目标座位头像上播一次的定点动画，
             跟 .poke-bubble 复用同一条 poked/pokeEmoji 触发信号。
             两版纯 CSS 手画的蛋壳裂开（径向碎片版、两半壳分开版）用户都
@@ -354,6 +361,15 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           {POKE_PICKER_EMOJI.map(e => (
             <button key={e} type="button" className="poke-picker-emoji" onClick={() => sendPoke(e)}>{e}</button>
           ))}
+          {canFoldFor && (
+            <button
+              type="button"
+              className="poke-picker-foldfor"
+              onClick={() => { setPokePickerOpen(false); onFoldFor?.(player.id); }}
+            >
+              帮他弃牌
+            </button>
+          )}
         </div>
       )}
 
@@ -363,7 +379,7 @@ export default function PlayerSeat({ player, isMe, isAction, isWinner, gamePhase
           className={`action-bubble${bubble.folded ? ' action-bubble--folded' : ''}${bubble.allIn ? ' action-bubble--allin' : ''}${bubble.raise ? ' action-bubble--raise' : ''}`}
           style={bubbleStyle(bubbleSide, bubbleAnchorTop)}
         >
-          {bubble.text}
+          {bubble.text ?? (<>{bubble.amountPrefix}<ChipIcon />{bubble.amount.toLocaleString()}</>)}
         </div>
       )}
       {/* 谁拍的要写出来——之前只显示"拍了拍"，同桌好几个人都在拍，看不出

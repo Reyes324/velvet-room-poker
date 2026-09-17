@@ -255,9 +255,20 @@ export default function VoiceChatDock({
         <div className="voice-dock__actions">
           <div
             className={`voice-dock__section voice-dock__section--talk${voiceTalking ? ' voice-dock__section--talking' : ''}`}
-            onPointerDown={e => { e.stopPropagation(); e.preventDefault(); onStartTalking?.(); }}
+            // setPointerCapture：按住说话后手指即使滑出按钮范围也继续算按住，
+            // 且松手的 pointerup 一定能收到。原来没有捕获、靠 onPointerLeave
+            // 兜底——手指微动几像素就触发 pointerleave 把说话掐断，用户以为
+            // 没生效再按，叠加并发 getUserMedia 就是"反复报麦克风错误"
+            // （用户反馈 2026-09-08）。有了捕获，pointerleave 不再需要。
+            onPointerDown={e => {
+              e.stopPropagation();
+              e.preventDefault();
+              // try/catch：非法/合成的 pointerId 会让 setPointerCapture 抛
+              // NotFoundError，绝不能因此挡住下面的 onStartTalking。
+              try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* 捕获不了就算了，不影响说话 */ }
+              onStartTalking?.();
+            }}
             onPointerUp={e => { e.stopPropagation(); onStopTalking?.(); }}
-            onPointerLeave={e => { e.stopPropagation(); onStopTalking?.(); }}
             onPointerCancel={e => { e.stopPropagation(); onStopTalking?.(); }}
             role="button"
             aria-label="按住说话"

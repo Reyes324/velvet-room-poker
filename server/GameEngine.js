@@ -171,6 +171,9 @@ class GameEngine {
     this.lastActionBy = null;
     this.lastActionLabel = null;
     this.lastActionPhase = null;
+    // 一手内的逐动作日志——打法点评（本场之最）的累加器要用。只在一手内存在，
+    // 每手结束喂给累加器后随 game 对象一起被丢弃，不长期保留。
+    this.actionLog = [];
     // Set in _endHand — getStateForPlayer needs this to tell a genuine
     // multi-way showdown apart from a fold-out, see that method's comment.
     this.lastHandFoldWin = false;
@@ -199,6 +202,16 @@ class GameEngine {
     this.lastActionBy = playerId;
     this.lastActionLabel = label;
     this.lastActionPhase = this.phase;
+    this.actionLog.push({
+      playerId,
+      phase: this.phase,
+      type: label.type,
+      amount: label.amount ?? 0,
+      // 意图由调用方显式带出：真正的下注/加注（含加注型全下）才是 true。
+      // 纯全下跟注、封顶后降级成的 call 都是 false——展示 label 可能仍是
+      // 'allin'，但打法点评的累加器只认这个布尔来判进攻。
+      aggressive: label.aggressive === true,
+    });
   }
 
   _seat(i) {
@@ -277,7 +290,7 @@ class GameEngine {
     if (idx !== this.actionIndex) return { error: '还没轮到你' };
     this.players[idx].status = 'folded';
     this.actedThisStreet.add(playerId);
-    this._recordAction(playerId, { type: 'fold' });
+    this._recordAction(playerId, { type: 'fold', aggressive: false });
     return this._advance();
   }
 
@@ -287,7 +300,7 @@ class GameEngine {
     const p = this.players[idx];
     if (p.bet < this.currentBet) return { error: '当前有注可以跟注，不能过牌' };
     this.actedThisStreet.add(playerId);
-    this._recordAction(playerId, { type: 'check' });
+    this._recordAction(playerId, { type: 'check', aggressive: false });
     return this._advance();
   }
 
@@ -298,7 +311,9 @@ class GameEngine {
     const toCall = this.currentBet - p.bet;
     this._placeBet(idx, toCall);
     this.actedThisStreet.add(playerId);
-    const label = p.status === 'allin' ? { type: 'allin', amount: p.bet } : { type: 'call', amount: toCall };
+    const label = p.status === 'allin'
+      ? { type: 'allin', amount: p.bet, aggressive: false }
+      : { type: 'call', amount: toCall, aggressive: false };
     this._recordAction(playerId, label);
     return this._advance();
   }
@@ -333,7 +348,9 @@ class GameEngine {
     this.currentBet = p.bet; // after bet placed
     this.lastAggressorIndex = idx;
     this.actedThisStreet = new Set([playerId]); // everyone else must act again
-    const label = p.status === 'allin' ? { type: 'allin', amount: totalAmount } : { type: 'raise', amount: totalAmount };
+    const label = p.status === 'allin'
+      ? { type: 'allin', amount: totalAmount, aggressive: true }
+      : { type: 'raise', amount: totalAmount, aggressive: true };
     this._recordAction(playerId, label);
     return this._advance();
   }
@@ -354,7 +371,7 @@ class GameEngine {
     }
     this._placeBet(idx, Math.min(p.chips, cappedTotal - p.bet));
     this.actedThisStreet.add(playerId);
-    this._recordAction(playerId, { type: 'allin', amount: p.bet });
+    this._recordAction(playerId, { type: 'allin', amount: p.bet, aggressive: false });
     return this._advance();
   }
 

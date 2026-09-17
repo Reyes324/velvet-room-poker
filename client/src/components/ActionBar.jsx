@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { playActionSfx, playCheckSfx } from '../utils/sfx';
+import ChipIcon from './ChipIcon';
 
 // Vertical drag slider for fine-tuning the raise amount — replaces the old
 // horizontal −/+ stepper (user feedback, 2026-07-31): that stepper's "+"
@@ -149,16 +150,23 @@ export default function ActionBar({ gameState, myId, onAction, disabled, timeBan
           <button className="btn b-fold b-h52" onClick={() => act('fold')}>弃牌</button>
           {canCheck
             ? <button className="btn b-check b-h52" onClick={() => act('check')}>过牌</button>
-            : <button className="btn b-call b-h52" onClick={() => act('call')}>跟注 ¥{toCall.toLocaleString()}</button>}
+            : <button className="btn b-call b-h52" onClick={() => act('call')}>跟注 <ChipIcon />{toCall.toLocaleString()}</button>}
           <button className="btn b-raise-trigger b-h52" onClick={openRaise}>加注 ▸</button>
-          {/* 「+15 秒」延时。储备池每手 30 秒、扣完为止——用户最初的方案是
-              无上限续杯，那会把"一个人拖住全桌"原样带回来（见 design.md）。
-              用完就不再显示，而不是留一个点了没反应的死按钮。 */}
-          {timeBankMs > 0 && (
-            <button className="btn b-extend b-h52" onClick={() => onExtendTurn?.()}>
-              +15s
-            </button>
-          )}
+          {/* 「+15 秒」延时。储备池每手 45 秒（3 次）、扣完为止——用户最初
+              的方案是无上限续杯，那会把"一个人拖住全桌"原样带回来（见
+              design.md）。用完之后按钮**留在原地置灰**，不是从 DOM 里整个
+              摘掉——原来是摘掉的，`.ab-main` 是 flex 布局，`b-fold`/
+              `b-call`/`b-check` 都是 flex:1/2 会撑开吃掉腾出来的空间，摘掉
+              这颗按钮会让左边几颗按钮跟着变宽/挪位置，用户反馈"布局跟着
+              动了"（2026-09-11）。保留占位，只切换可点性，布局不再随额度
+              状态变化。 */}
+          <button
+            className={`btn b-extend b-h52${timeBankMs > 0 ? '' : ' b-extend--depleted'}`}
+            disabled={timeBankMs <= 0}
+            onClick={() => onExtendTurn?.()}
+          >
+            +15s
+          </button>
         </div>
       ) : (
         <div className="ab-raise open">
@@ -177,7 +185,7 @@ export default function ActionBar({ gameState, myId, onAction, disabled, timeBan
               </div>
               <div className="raise-amount">
                 <div className="raise-amount-btn" onClick={() => setAmount(Math.max(minRaise, amt - step))}>−</div>
-                <div className="raise-amount-val">¥{amt.toLocaleString()}</div>
+                <div className="raise-amount-val"><ChipIcon />{amt.toLocaleString()}</div>
                 <div className="raise-amount-btn" onClick={() => setAmount(Math.min(maxRaise, amt + step))}>+</div>
               </div>
             </div>
@@ -186,7 +194,7 @@ export default function ActionBar({ gameState, myId, onAction, disabled, timeBan
           <div className="raise-bottom">
             <button className="btn b-cancel b-h46" onClick={() => setOpen(false)}>← 返回</button>
             <button className="btn b-allin b-h46" onClick={() => act('raise', maxRaise)}>全下 ALL IN</button>
-            <button className="btn b-confirm-raise b-h46" onClick={() => act('raise', amt)}>确认加注 ¥{amt.toLocaleString()}</button>
+            <button className="btn b-confirm-raise b-h46" onClick={() => act('raise', amt)}>确认加注 <ChipIcon />{amt.toLocaleString()}</button>
           </div>
         </div>
       )}

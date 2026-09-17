@@ -58,7 +58,27 @@ describe('集成测试 — 房间管理', () => {
     const res = await fetch(`${url}/status`);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.rooms).toEqual([{ code, players: ['Alice'] }]);
+    expect(body.rooms).toHaveLength(1);
+    expect(body.rooms[0]).toMatchObject({ code, players: ['Alice'], hostName: 'Alice', status: 'waiting' });
+    expect(typeof body.rooms[0].idleSec).toBe('number');
+  });
+
+  it('/debug/players 给房间玩家带上 IP 归属地区（本地回环→内网/本地，不打网络）', async () => {
+    const c1 = await connect();
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'p1', playerName: 'Alice' });
+    const { code } = await joined1;
+
+    const body = await (await fetch(`${url}/debug/players`)).json();
+    expect(body.ok).toBe(true);
+    expect(body.rooms).toHaveLength(1);
+    expect(body.rooms[0].code).toBe(code);
+    const alice = body.rooms[0].players.find(p => p.name === 'Alice');
+    expect(alice).toBeTruthy();
+    expect(alice.region).toBe('内网/本地'); // 回环 IP 直接短路，没有 _ip 泄漏
+    expect(alice).not.toHaveProperty('_ip');
+    expect(typeof alice.connectedSec).toBe('number');
+    expect(Array.isArray(body.pve)).toBe(true);
   });
 
   it('room:get-chat-history 拿到这个房间的完整聊天记录（issue #52）', async () => {
@@ -155,6 +175,31 @@ describe('集成测试 — 房间管理', () => {
     expect(joinedAck.playerId).toBe('p2');
     expect(state.players).toHaveLength(2); // still 2 rows, not 3
     expect(state.players.find(p => p.id === 'p2').left).toBe(false);
+  });
+
+  it('player:leave-room 带 ack：真退出了回 {ok:true}，查不到房间回 {error}（2026-09-16，用户反馈"点了退出其实没退出"）', async () => {
+    // 客户端原来发完这条事件就直接导航离开，完全不管服务端有没有处理成
+    // 功——服务端也确实什么都不回。真正在生产环境发生过：`rooms.leave`
+    // 内部按 playerId 查房间，这张关联万一先一步跟真实房间状态不一致，
+    // 会静默什么都不做，但客户端已经"看起来"退出了。现在两边都要能分清
+    // 楚"真退出了"还是"其实没有"。
+    const [c1, c2] = await Promise.all([connect(), connect()]);
+    const joined1 = waitFor(c1, 'room:joined');
+    c1.emit('room:create', { playerId: 'p1', playerName: 'Alice' });
+    const { code } = await joined1;
+
+    const state1FromJoin = waitFor(c1, 'room:state');
+    const state2 = waitFor(c2, 'room:state');
+    c2.emit('room:join', { code, playerId: 'p2', playerName: 'Bob' });
+    await Promise.all([state1FromJoin, state2]);
+
+    const ack = await new Promise((resolve) => c2.emit('player:leave-room', { playerId: 'p2' }, resolve));
+    expect(ack).toEqual({ ok: true });
+
+    // 已经不在任何房间的 playerId 再退一次——`rooms.leave` 内部查不到，
+    // 要如实回一个 error，不能假装成功。
+    const ackAgain = await new Promise((resolve) => c2.emit('player:leave-room', { playerId: 'p2' }, resolve));
+    expect(ackAgain.error).toBeDefined();
   });
 
   it('设备断线（未显式退出）后，另一个 playerId + 同昵称加入同房间号 → 按昵称继承原身份', async () => {
@@ -764,4 +809,60 @@ describe('集成测试 — 游戏流程', () => {
     expect(p1.connected).toBe(false); // still marked disconnected — just no longer excluded from the deal
     expect(room.game.players.map((p) => p.id).sort()).toEqual(['p1', 'p2']);
   });
+
+  it('room:get-style-recap 打若干手后返回奖项数组（结构正确）', async () => {
+    const { c1, c2 } = await setupRoom();
+    const gs1 = waitFor(c1, 'game:state');
+    c1.emit('room:start', { playerId: 'p1' });
+    await gs1;
+
+    // 打 ~20 手：轮到谁就 fold，showdown 后双方确认推进到下一手，
+    // 直到 game:ended 或够 20 手（兜底超时）。
+    const TARGET_HANDS = 20;
+    let hands = 0;
+    await new Promise((resolve) => {
+      let fallback;
+      const done = () => {
+        clearTimeout(fallback);
+        c1.off('game:state', onState);
+        c1.off('game:showdown', onShowdown);
+        c1.off('game:ended', done);
+        resolve();
+      };
+      const onState = (st) => {
+        const actor = st && st.actionPlayerId;
+        if (!actor) return;
+        const c = actor === 'p1' ? c1 : c2;
+        c.emit('game:action', { playerId: actor, action: 'fold' });
+      };
+      const onShowdown = () => {
+        hands += 1;
+        if (hands >= TARGET_HANDS) return done();
+        c1.emit('game:ready-next', { playerId: 'p1' });
+        c2.emit('game:ready-next', { playerId: 'p2' });
+      };
+      c1.on('game:state', onState);
+      c1.on('game:showdown', onShowdown);
+      c1.on('game:ended', done);
+      fallback = setTimeout(done, 12000); // 兜底
+      // 第一手的 game:state 已在 room:start 时发过、被上面的 await 消费掉了，
+      // 用一次 room:sync 把当前手的状态重新推出来，驱动循环启动。
+      c1.emit('room:sync', { playerId: 'p1' });
+    });
+
+    const recap = waitFor(c1, 'room:style-recap');
+    c1.emit('room:get-style-recap', { playerId: 'p1' });
+    const body = await recap;
+    expect(Array.isArray(body.awards)).toBe(true);
+    // 20 手 >= 15 手门槛，即使两人一路 fold、打法完全没有区分度导致 awards
+    // 为空，enoughHands 也必须是 true——客户端要靠它区分"手数不够"和"手数
+    // 够但没人突出"两种情况，不能都显示成同一句"手数还少"。
+    expect(body.enoughHands).toBe(true);
+    for (const a of body.awards) {
+      expect(typeof a.award).toBe('string');
+      expect(typeof a.playerId).toBe('string');
+      expect(typeof a.playerName).toBe('string');
+      expect(typeof a.reason).toBe('string');
+    }
+  }, 20000);
 });

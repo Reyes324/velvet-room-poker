@@ -6,6 +6,7 @@ const { RoomManager } = require('./RoomManager');
 const { parseCard } = require('./GameEngine');
 const { PveSession } = require('./PveSession');
 const { getServerIdentity } = require('./serverIdentity');
+const { computeAwards, hasEnoughHands } = require('./playstyleAwards');
 
 // 固定四档，非法/缺省一律回退单挑——不接受任意人数。Module scope (not
 // re-allocated per pve:start call) and coerced with Number() before the
@@ -60,13 +61,28 @@ function createServer({
   // 回合倒计时（用户反馈 #7 / #10）。同样可注入——否则每条"到点自动执行"的
   // 测试都得真等 20 秒。
   turnBaseMs = 20 * 1000,
-  timeBankPerHandMs = 30 * 1000,
+  // 每手 45 秒（3 次「+15 秒」），从原来的 30 秒（2 次）放宽——用户反馈
+  // 2 次太紧张，见 design.md「加时次数放宽」。仍然封顶，不是无上限（原始
+  // 设计就是为了防"一个人拖住全桌"，这条没变，只是把门槛松一档）。
+  timeBankPerHandMs = 45 * 1000,
   turnExtendStepMs = 15 * 1000,
+  // 连接对账的周期，见下方 reconcileInterval。可注入跟上面几个计时参数是
+  // 同一个理由——不希望一个 30 秒的后台定时器在某条集成测试跑到一半时触
+  // 发、往正在断言的 socket 上多推一条 room:state。默认在 Vitest 下直接关
+  // 掉（跑真实 server 的测试有近十个，逐个传参不如一处默认干净），需要时
+  // 单条测试仍可显式传一个正数打开。0 = 不启动这个定时器。
+  reconcileIntervalMs = process.env.VITEST ? 0 : 30 * 1000,
 } = {}) {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: { origin: '*' },
+    // 显式写死心跳参数（原来吃 socket.io 默认值）。这是死连接被发现、
+    // socket 从 io.sockets.sockets 里移除的节奏，reconcileConnections
+    // 的兜底对账依赖它——25s 一个 ping，20s 收不到 pong 就判死，最坏
+    // ~45s 内死连接会被清掉。
+    pingInterval: 25_000,
+    pingTimeout: 20_000,
     // socket.io defaults to 1MB, which is below our own feedback size limits —
     // without raising this, an over-limit feedback image payload is silently
     // dropped at the transport before our own size check ever runs, hanging
@@ -83,6 +99,63 @@ function createServer({
   });
 
   const rooms = new RoomManager();
+
+  // 语音诊断的内存环形缓冲（2026-09-08）：voice:diagnostic 事件原来只
+  // console.log 进 Render 日志——免费档只留 7 天、且要进后台才看得到，排查
+  // "听不到别人说话"时经常已经被冲掉。这里额外把最近 200 条留在内存里，配
+  // 下面的 GET /debug/voice-diag 直接 curl 拿。进程重启会清空（免费档 dyno
+  // 重启就没了），够用：要查的就是"最近有没有人遇到、当时什么网络/什么内核"。
+  const VOICE_DIAG_LOG_MAX = 200;
+  const voiceDiagLog = [];
+
+  // IP → 归属地区（/debug/players 用）。免费 ip-api.com，无需 key，45 次/分钟
+  // 够用（这个接口是手动点、不是高频）。缓存 1 小时，内网/回环直接短路（测试
+  // 走 localhost，不会打网络）。查不到就返回 null，原始 IP 照样给。
+  const geoCache = new Map();
+  async function ipRegion(ip) {
+    if (!ip) return null;
+    if (ip === '::1' || ip.startsWith('127.') || ip.startsWith('10.') ||
+        ip.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(ip) || ip.startsWith('::ffff:127.')) {
+      return '内网/本地';
+    }
+    const cached = geoCache.get(ip);
+    if (cached && Date.now() - cached.at < 3_600_000) return cached.region;
+    let region = null;
+    try {
+      const r = await fetch(
+        `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,regionName,city,isp&lang=zh-CN`,
+        { signal: AbortSignal.timeout(3000) },
+      );
+      const j = await r.json();
+      if (j.status === 'success') {
+        region = [j.country, j.regionName, j.city].filter(Boolean).join(' ');
+        if (j.isp) region += ` · ${j.isp}`;
+      }
+    } catch { /* 查不到就算了 */ }
+    geoCache.set(ip, { region, at: Date.now() });
+    return region;
+  }
+  // 粗略设备标签，从 UA 里挑最有辨识度的几个信号
+  function deviceLabel(ua) {
+    if (!ua) return null;
+    const bits = [];
+    if (/MicroMessenger/i.test(ua)) bits.push('微信');
+    if (/iPhone|iPad|iPod/i.test(ua)) bits.push('iOS');
+    else if (/Android/i.test(ua)) bits.push('Android');
+    else if (/Macintosh/i.test(ua)) bits.push('Mac');
+    else if (/Windows/i.test(ua)) bits.push('Windows');
+    if (!/MicroMessenger/i.test(ua)) {
+      if (/CriOS|Chrome/i.test(ua)) bits.push('Chrome');
+      else if (/Firefox/i.test(ua)) bits.push('Firefox');
+      else if (/Safari/i.test(ua)) bits.push('Safari');
+    }
+    return bits.join(' · ') || '未知';
+  }
+  function clientIp(sock) {
+    const xff = sock?.handshake?.headers?.['x-forwarded-for'];
+    return (xff ? String(xff).split(',')[0].trim() : null) || sock?.handshake?.address || null;
+  }
+
   // PVE (人机对战): deliberately NOT stored in `rooms` — see design.md
   // 「新增：单人人机对战（PVE）模式」. Reconnect support added 2026-07-28
   // (user feedback: closing the browser and coming back showed "对局不存
@@ -249,7 +322,11 @@ function createServer({
   // immediately on disconnect turned "share the link" into a room-deleting
   // action a large fraction of the time on mobile. See GRACE_PERIOD_MS.
   const pendingRemovals = new Map();
-  const GRACE_PERIOD_MS = 120000;
+  // 用户反馈（2026-09-14）：2 分钟太短——房主切到微信粘贴链接、朋友看到消息
+  // 再点开，这一套动作经常超过 2 分钟，房主自己的宽限期一到就被判定"没回
+  // 来"，而此时他是房间里唯一玩家，直接连累整个房间被删，朋友点链接看到
+  // "房间已失效"。调到 30 分钟，覆盖真实的"分享 - 对方点开"耗时。
+  const GRACE_PERIOD_MS = 30 * 60 * 1000;
   // 当前回合的倒计时定时器，按房间号存——一个房间同一时刻只可能有一个人在
   // 行动。见 maybeArmTurnClock。取代了原来的 pauseTimers/PAUSE_TIMEOUT_MS
   // （5 分钟，且只对断线玩家生效）。
@@ -297,12 +374,83 @@ function createServer({
   // 名字。不加鉴权——这个项目现在只有几个朋友玩，跟 /health 本身已经公开
   // 暴露房间数/人数是同一个信任级别，不是新增的风险面。
   app.get('/status', (_, res) => {
+    const now = Date.now();
     const roomsOut = [];
     for (const room of rooms.rooms.values()) {
       const players = room.players.filter(p => p.connected && !p.left).map(p => p.name);
-      if (players.length > 0) roomsOut.push({ code: room.code, players });
+      if (players.length > 0) {
+        const host = room.players.find(p => p.id === room.hostId);
+        roomsOut.push({
+          code: room.code,
+          players,
+          hostName: host?.name ?? players[0] ?? null, // 首页房间列表用它当每行的标识
+          status: room.status, // waiting（还在大厅）| playing（已开局）
+          // 距上次真实房间事件（touch()）多少秒。判断"活局还是弃局"用这个：
+          // 真在打的桌子 idleSec 是个位/两位数；弃局会一路涨到 1 小时的
+          // ROOM_IDLE_TTL 才被 sweep。比名单本身可靠——名单里可能全是还没被
+          // reconcileConnections 扫掉的幽灵。
+          idleSec: Math.round((now - room.lastActivityAt) / 1000),
+        });
+      }
     }
     res.json({ ok: true, rooms: roomsOut });
+  });
+  // 语音诊断回捞（见 voiceDiagLog 上方注释）——排查"听不到别人说话"用，不
+  // 用进 Render 后台翻日志、也不受 7 天保留限制。跟 /status 同一个信任级别：
+  // 不加鉴权，内容是 UA / ICE candidate 类型 / playerId / 房间号，比 /status
+  // 已经公开的真实昵称更不敏感。?limit=N 只要最近 N 条（默认全部，最多 200）。
+  app.get('/debug/voice-diag', (req, res) => {
+    const limit = Math.min(VOICE_DIAG_LOG_MAX, Math.max(1, parseInt(req.query.limit, 10) || VOICE_DIAG_LOG_MAX));
+    const entries = voiceDiagLog.slice(-limit);
+    res.json({ ok: true, count: voiceDiagLog.length, returned: entries.length, entries });
+  });
+  // 谁在线（详版，2026-09-08）——push 前想知道"这个正在打的人是谁、要不要
+  // 等"。/status 只给昵称，这里多给 连接时长 / 设备 / IP / IP 归属地区。
+  // 内容比 /status 敏感（有 IP），但项目所有接口本来都不加鉴权（房间靠 6 位
+  // 码），单给这个加一套不成比例；真要收紧再说。人机对战玩家昵称：客户端
+  // 现在会把本地存的昵称带进 pve:start（见 HomePage 的桌形按钮），没存过才
+  // 显示"玩家"。
+  app.get('/debug/players', async (_req, res) => {
+    const now = Date.now();
+    const roomsOut = [];
+    for (const room of rooms.rooms.values()) {
+      const players = room.players.filter(p => p.connected && !p.left).map(p => {
+        const sock = p.socketId ? io.sockets.sockets.get(p.socketId) : null;
+        const ip = clientIp(sock);
+        return {
+          name: p.name,
+          ip,
+          device: deviceLabel(sock?.handshake?.headers?.['user-agent']),
+          connectedSec: sock ? Math.round((now - sock.handshake.issued) / 1000) : null,
+          _ip: ip,
+        };
+      });
+      if (players.length > 0) roomsOut.push({ code: room.code, status: room.status, players });
+    }
+    const pve = [];
+    for (const [pveId, session] of pveSessions) {
+      const sock = io.sockets.sockets.get(pveActiveSocket.get(pveId));
+      const ip = clientIp(sock);
+      pve.push({
+        name: session.players?.[0]?.name ?? '玩家',
+        seatCount: session.seatCount,
+        hand: session.handNumber,
+        online: !!sock,
+        startedAt: session.createdAt ?? null,
+        ageSec: session.createdAt ? Math.round((now - session.createdAt) / 1000) : null,
+        idleSec: session.lastActivityAt ? Math.round((now - session.lastActivityAt) / 1000) : null,
+        ip,
+        device: deviceLabel(sock?.handshake?.headers?.['user-agent']),
+        connectedSec: sock ? Math.round((now - sock.handshake.issued) / 1000) : null,
+        _ip: ip,
+      });
+    }
+    // 地区查询：把用到的 IP 去重后并发查一遍，填回去
+    const ips = [...new Set([...roomsOut.flatMap(r => r.players.map(p => p._ip)), ...pve.map(p => p._ip)].filter(Boolean))];
+    const regions = Object.fromEntries(await Promise.all(ips.map(async ip => [ip, await ipRegion(ip)])));
+    for (const r of roomsOut) for (const p of r.players) { p.region = regions[p._ip] ?? null; delete p._ip; }
+    for (const p of pve) { p.region = regions[p._ip] ?? null; delete p._ip; }
+    res.json({ ok: true, rooms: roomsOut, pve });
   });
   // Pass root+relative (not a raw absolute path) so express/send's dotfile
   // check only inspects "index.html", not every ancestor directory in the
@@ -597,6 +745,21 @@ function createServer({
         reveals: result.showdownReveal, // public — sent to everyone as-is
         _privateHoleCards: result.allHoleCards, // never broadcast directly — see room:get-hand-history
       });
+
+      // 打法点评（本场之最）——每手结束把逐动作日志喂给计数器，随后 game
+      // 对象连同其 actionLog 一起在下一手/结束时被替换掉，不长期保留。
+      // 这是纯装饰性功能，累加器抛错（坏牌 / pokersolver 边界）不能冒进
+      // socket handler 打断摊牌广播。
+      try {
+        room.recordHandForPlaystyle({
+          actionLog: room.game.actionLog,
+          allHoleCards: result.allHoleCards,
+          communityCards: result.state.communityCards,
+          dealtInIds: result.allHoleCards.map(c => c.id),
+        });
+      } catch (e) {
+        console.error('[playstyle] accumulate failed', e);
+      }
     }
   }
 
@@ -703,6 +866,15 @@ function createServer({
       socket.join(code.toUpperCase());
       socket.emit('room:joined', { code: code.toUpperCase(), playerId: actualId });
       io.to(code.toUpperCase()).emit('room:state', result.room.getLobbyState());
+      // 从首页房间列表点进一局"打牌中"的房间：join 本身只广播 lobby 状态，
+      // 客户端要 status==='playing' 且拿到 game:state 才渲染牌桌，否则会先
+      // 看到"等待房主开始"的大厅界面直到下一次有人行动才刷新。这里补一发
+      // 当前牌局状态给刚进来的人，让他直接落到牌桌上（还没入座，下一手才
+      // 发牌——GameTable 已经能处理 amPlaying=false 的旁观态）。
+      if (result.room.game) {
+        const gs = result.room.getStateForPlayer(actualId);
+        if (gs) socket.emit('game:state', gs);
+      }
     });
 
     socket.on('room:start', ({ playerId, durationMinutes }) => {
@@ -719,6 +891,16 @@ function createServer({
       const room = rooms.getRoomByPlayer(playerId);
       if (!room) return socket.emit('game:error', '未找到房间');
       const result = room.playerAction(playerId, action, amount);
+      if (result.error) return socket.emit('game:error', result.error);
+      handleActionResult(room, result);
+    });
+
+    // 帮断线玩家弃牌（用户反馈，2026-09-11）——见 RoomManager.foldFor 的权
+    // 限判定注释。
+    socket.on('game:fold-for', ({ fromId, targetId } = {}) => {
+      const room = rooms.getRoomByPlayer(fromId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const result = room.foldFor(fromId, targetId);
       if (result.error) return socket.emit('game:error', result.error);
       handleActionResult(room, result);
     });
@@ -820,12 +1002,21 @@ function createServer({
     // than waiting out a grace period, and (via RoomManager.leave) marks
     // the player left instead of deleting their row, so their final
     // numbers stay on the ledger.
-    socket.on('player:leave-room', ({ playerId }) => {
+    socket.on('player:leave-room', ({ playerId } = {}, callback) => {
       const room = rooms.leave(playerId);
-      if (!room) return;
+      // 2026-09-16 补 ack：这里原来完全不回任何东西，客户端也从不等这条消
+      // 息的结果就直接带用户离开这个页面——`rooms.leave` 靠 playerId 在
+      // RoomManager 内部一张 Map 里查所在房间，这张 Map 万一因为别的路径
+      // （断线宽限期/连接对账等）先一步变得跟真实房间状态不一致，这里会
+      // 静默查不到房间、什么都不做，但玩家已经"看起来"离开了——服务端那
+      // 一行还留着、还标着在场，回来重新加入会被判"已在房间内"（用户反
+      // 馈：点了退出，其实没退出）。现在如实回一个结果，客户端能分辨"真
+      // 退出了"还是"其实没有"，不再假装成功。
+      if (!room) return callback?.({ error: '未找到房间' });
       room.touch();
       if (room.awaitingBustResolution) tryAdvanceIfClear(room);
       else io.to(room.code).emit('room:state', room.getLobbyState());
+      callback?.({ ok: true });
     });
 
     // Host-only equivalent of "player:leave-room", for a busted player who
@@ -957,6 +1148,20 @@ function createServer({
         return { ...pub, reveals };
       });
       socket.emit('room:hand-history', personalized);
+    });
+
+    // 打法点评（本场之最）——账本弹出时客户端请求一次，服务端现算。跟
+    // room:get-hand-history 同一个"请求-单播响应"模式。全员看到同一份（v1
+    // 不做剔除自己）。
+    socket.on('room:get-style-recap', ({ playerId } = {}) => {
+      const room = rooms.getRoomByPlayer(playerId);
+      if (!room) return socket.emit('game:error', '未找到房间');
+      const present = room.players.filter(p => !p.left).map(p => ({ id: p.id, name: p.name }));
+      const awards = computeAwards(room.playstyleStats, present);
+      // 空数组有两种截然不同的成因——手数不够 vs 手数够但没人打法突出——
+      // 客户端要能分清楚，不能都显示成"手数还少"（见 design.md「本场之最」）。
+      const enoughHands = hasEnoughHands(room.playstyleStats, present);
+      socket.emit('room:style-recap', { awards, enoughHands });
     });
 
     socket.on('room:sync', ({ playerId }) => {
@@ -1211,7 +1416,10 @@ function createServer({
       const fromPlayerId = socket.data.voicePlayerId;
       if (!fromPlayerId) return;
       const room = rooms.getRoomByPlayer(fromPlayerId);
-      console.log('[voice-diag]', JSON.stringify({ ...payload, roomCode: room?.code ?? null, fromPlayerId, fromSocketId: socket.id }));
+      const entry = { ...payload, roomCode: room?.code ?? null, fromPlayerId, fromSocketId: socket.id, at: payload.at ?? Date.now() };
+      console.log('[voice-diag]', JSON.stringify(entry));
+      voiceDiagLog.push(entry);
+      if (voiceDiagLog.length > VOICE_DIAG_LOG_MAX) voiceDiagLog.shift();
     });
 
     socket.on('voice:mesh-leave', () => {
@@ -1399,6 +1607,23 @@ function createServer({
   const ROOM_IDLE_TTL_MS = 60 * 60 * 1000; // 用户反馈（2026-08-17）：12 小时太久了，缩到 1 小时
   const sweepInterval = setInterval(() => rooms.sweepIdleRooms(ROOM_IDLE_TTL_MS), 15 * 60 * 1000);
   sweepInterval.unref();
+
+  // 连接对账（见 RoomManager.reconcileConnections）：每 30 秒拿 io 的活连接
+  // 表核对一遍，把 connected 卡在 true、但 socket 早已不存在的幽灵行翻回
+  // false——否则 /health 在线人数虚高、幽灵所在房间永远不被 sweepIdleRooms
+  // 回收。正常断线由 disconnect 事件即时处理，这里只兜底事件没送达 / 定时
+  // 器随 dyno 重启丢失的情况。30 秒跟上面 pingTimeout 发现死连接的量级一致。
+  if (reconcileIntervalMs > 0) {
+    const reconcileInterval = setInterval(() => {
+      const changedRooms = rooms.reconcileConnections(id => io.sockets.sockets.has(id));
+      for (const room of changedRooms) {
+        // 只 emit room:state，不走 broadcastRoom——后者会 touch() 刷新
+        // lastActivityAt，把刚被认定全员离线的房间的 sweep 往后推。
+        io.to(room.code).emit('room:state', room.getLobbyState());
+      }
+    }, reconcileIntervalMs);
+    reconcileInterval.unref();
+  }
 
   return { app, server, io, rooms };
 }

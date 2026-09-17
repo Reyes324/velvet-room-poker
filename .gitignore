@@ -8,3 +8,5 @@ client/dist/
 test-results/
 server/data/
 .superpowers/
+
+.impeccable/hook.cache.json

@@ -12,7 +12,9 @@
 // `left`, specifically so this final number doesn't disappear the moment
 // someone steps away — that used to happen when leaving deleted the row
 // outright).
-export default function LedgerModal({ players, startingChips, myId, onClose, eggCounts }) {
+import ChipIcon from './ChipIcon';
+
+export default function LedgerModal({ players, startingChips, myId, onClose, eggCounts, styleRecap }) {
   // 盈亏从高到低排序（用户反馈，2026-08-14）——原来是座位顺序，跟"账本"
   // 这个场景想第一眼看出"谁赢得最多/谁输得最多"的诉求不匹配。net 的计
   // 算方式跟下面渲染时用的是同一个公式，这里先算一遍纯是为了排序，不重
@@ -52,9 +54,11 @@ export default function LedgerModal({ players, startingChips, myId, onClose, egg
                 </div>
                 <div className="ledger-cell">1底</div>
                 <div className="ledger-cell ledger-cell--debt">{p.debt > 0 ? `${p.debt / startingChips}底` : '—'}</div>
-                <div className="ledger-cell">¥{p.chips.toLocaleString()}</div>
+                <div className="ledger-cell"><ChipIcon />{p.chips.toLocaleString()}</div>
                 <div className={`ledger-cell ledger-cell--net ${net === 0 ? 'net-neutral' : net > 0 ? 'net-win' : 'net-lose'}`}>
-                  {net === 0 ? '¥0' : (net > 0 ? '+¥' : '−¥') + Math.abs(net).toLocaleString()}
+                  {net === 0
+                    ? (<><ChipIcon />0</>)
+                    : (<>{net > 0 ? '+' : '−'}<ChipIcon />{Math.abs(net).toLocaleString()}</>)}
                 </div>
               </div>
             );
@@ -63,6 +67,24 @@ export default function LedgerModal({ players, startingChips, myId, onClose, egg
         <div className="ledger-note">"盈亏" = 当前 − 初始 − 已借，牌局进行中显示的是上一手结束时同步的筹码，不含本手实时下注变动</div>
         {topEggTargets.length > 0 && (
           <div className="ledger-egg-note">🥚 被扔鸡蛋最多：{topEggTargets.join('、')}（{maxEggCount}次）</div>
+        )}
+        {styleRecap && (
+          <div className="ledger-recap">
+            <div className="ledger-recap__title">本场之最</div>
+            {styleRecap.awards.length === 0 ? (
+              <div className="ledger-recap__empty">
+                {styleRecap.enoughHands ? '这场大家打得都挺接近，没人特别突出' : '这场手数还少，没看出谁特别怎样'}
+              </div>
+            ) : (
+              styleRecap.awards.map((a) => (
+                <div key={a.award + a.playerId} className="ledger-recap__row">
+                  <span className="ledger-recap__award">{a.award}</span>
+                  <span className="ledger-recap__who">{a.playerName}</span>
+                  <span className="ledger-recap__reason">{a.reason}</span>
+                </div>
+              ))
+            )}
+          </div>
         )}
         <div className="modal-btn" onClick={onClose}>关闭</div>
       </div>

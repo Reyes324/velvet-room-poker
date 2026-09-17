@@ -1,4 +1,5 @@
 const { GameEngine } = require('./GameEngine');
+const { accumulateHand } = require('./playstyleStats');
 
 const STARTING_CHIPS = 1000;
 const BIG_BLIND = 20;
@@ -56,6 +57,9 @@ class Room {
     // 封顶 CHAT_LOG_MAX 条，不是无限攒——避免极端情况下（比如挂机刷屏）
     // 内存无限增长，200 条对朋友局的聊天量级绰绰有余。
     this.chatLog = [];
+    // 打法点评（本场之最）的 per-player 计数器 —— 跟 handHistory/chatLog 同一个
+    // 生命周期：只在内存、随房间、restart() 清空、"结束游戏"不清、服务重启自然没。
+    this.playstyleStats = {};
     // Idle-expiry bookkeeping (see RoomManager.sweepIdleRooms) — updated by
     // touch() on essentially every successful room event. Deliberately NOT
     // touched by a disconnect itself (that's the absence of activity, not
@@ -253,6 +257,12 @@ class Room {
     return { ok: true, text: finalText };
   }
 
+  // 每手结束调用一次（server/index.js 的 handleActionResult showdown 分支）。
+  // hand: { actionLog, allHoleCards, communityCards, dealtInIds }
+  recordHandForPlaystyle(hand) {
+    accumulateHand(this.playstyleStats, hand);
+  }
+
   // Whole-session tally of egg pokes landed on each target — used by the
   // ledger's "谁被扔鸡蛋最多" line (用户反馈，2026-08-14). Only egg pokes
   // count here (index.js only calls this when the validated emoji is 🥚),
@@ -434,6 +444,7 @@ class Room {
     this.awaitingBustResolution = false;
     this.handHistory = [];
     this.chatLog = [];
+    this.playstyleStats = {};
     this.gameTimerEndsAt = null;
     this.awaitingTimerDecision = false;
     this.dealerId = this.players.find(p => !p.left)?.id ?? null;
@@ -619,6 +630,21 @@ class Room {
     }
   }
 
+  // 帮断线玩家弃牌（用户反馈，2026-09-11："有时候等不及了"）——任何还连着
+  // 的在场玩家都能触发，不是房主专属，跟 poke() 同一个开放程度。这里做
+  // 真正的权限判定：客户端只按"断线+轮到他"两个条件决定按钮出不出现，
+  // 那是 UX 层的提示，不能当成权限来源，服务端必须自己重新核实一遍，否
+  // 则任何人拿到 targetId 就能在不该弃牌的时候帮别人弃牌。
+  foldFor(fromId, targetId) {
+    if (fromId === targetId) return { error: '不能帮自己弃牌' };
+    const target = this.players.find(p => p.id === targetId);
+    if (!target || target.connected !== false) return { error: '这个人没有断线' };
+    if (!this.game || this.game.getPublicState().actionPlayerId !== targetId) {
+      return { error: '还没轮到他' };
+    }
+    return this.playerAction(targetId, 'fold');
+  }
+
   getStateForPlayer(playerId) {
     if (!this.game) return null;
     return this.game.getStateForPlayer(playerId);
@@ -712,6 +738,37 @@ class RoomManager {
         this.rooms.delete(code);
       }
     }
+  }
+
+  // 兜底对账：`connected` 只由收到的 `disconnect` 事件（markDisconnectedIfCurrent）
+  // 或大厅宽限期定时器翻成 false。这两条都可能整个丢掉——Render 免费档 dyno
+  // 重启会清掉所有 pending setTimeout（宽限期中的人从此既没有事件也没有定时
+  // 器）；免费档实例被限流/半休眠时，手机/微信最后一个 socket 的 disconnect
+  // 也可能根本不送到服务端。结果是 `connected` 卡在 true、socketId 指向一个
+  // 早已不存在的 socket：/health 在线人数虚高，幽灵所在房间因为
+  // sweepIdleRooms 要求"全员 connected===false || left"而永远不被回收，真人
+  // 还会在座位上看到这个幽灵。
+  //
+  // 这里拿 socket.io 自己的活连接表当唯一事实来源，把对不上的行翻回 false。
+  // isSocketAlive(socketId) -> boolean，由调用方用 io.sockets.sockets.has 提供。
+  // 返回被改动的房间数组，调用方据此广播。markDisconnectedIfCurrent 那套
+  // "socketId 缺失/不匹配就不动"的谨慎这里不需要——判据本身就是"这个 socket
+  // 确实不在活连接表里"，比字符串比较更硬。
+  reconcileConnections(isSocketAlive) {
+    const touched = [];
+    for (const room of this.rooms.values()) {
+      let changed = false;
+      for (const p of room.players) {
+        if (p.left || p.connected === false) continue;
+        if (!p.socketId || !isSocketAlive(p.socketId)) {
+          p.connected = false;
+          if (p.disconnectedAt == null) p.disconnectedAt = Date.now();
+          changed = true;
+        }
+      }
+      if (changed) touched.push(room);
+    }
+    return touched;
   }
 
   getRoomByPlayer(playerId) {

@@ -129,6 +129,19 @@
 .pot-label { font-family:var(--font-mono); font-size:7px; color:#AE986C; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
 .pot-amt { font-family:var(--font-amount); font-size:24px; font-weight:700; color:#E8C24A; letter-spacing:.2px; text-shadow:0 0 20px rgba(212,175,55,.45), 0 2px 8px rgba(0,0,0,.6); line-height:1.05; }
 
+/* ── CHIP ICON（ChipIcon.jsx，¥ 的替代物） ───────────────────────── */
+/* 见 ChipIcon.jsx 顶部注释：-0.02em 是拿 24px/700（.pot-amt）和 11px/400
+   （.stack-chip-footer）两个真实场景实测校准出来的，同一个值在 13px/700
+   的 .action-bubble 里量出来图标偏高了约 0.75px（用户反馈，2026-09-15，
+   真机截图看出来的，不是瞎猜）——粗体+小字号这个组合下数字墨迹的比例跟
+   大字号不成正比，不是这一个 em 数能同时精确覆盖所有场景，所以挪成 class
+   让个别场景能单独覆盖，不用给 ChipIcon 组件本身加 variant prop。
+   margin-right 是图标跟后面数字之间的间距，同一次反馈里一起提的。 */
+.chip-icon { display:inline-block; vertical-align:-0.02em; flex-shrink:0; margin-right:2px; }
+/* 实测 -0.08em 在这个场景下把偏差收到 +0.07px（真机 Playwright 量出来的，
+   不是套公式算的）。 */
+.action-bubble .chip-icon { vertical-align:-0.08em; }
+
 /* Winning hand-name (user feedback, 2026-07-24): reuses the "底池" label's
    own slot instead of a separate floating element above it — a standalone
    banner needed its own vertical clearance from GameTable's TOP_ZONE, which
@@ -802,6 +815,12 @@
 .poke-picker { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); display:grid; grid-template-columns:repeat(4, 32px); gap:6px; padding:5px 6px; background:rgba(6,14,8,.97); border:1px solid rgba(212,175,55,.75); border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,.6), 0 0 12px rgba(212,175,55,.2); z-index:26; animation:actionBubbleIn .25s cubic-bezier(.34,1.56,.64,1) both; }
 .poke-picker-emoji { display:flex; align-items:center; justify-content:center; width:32px; height:32px; background:none; border:none; padding:0; font-size:18px; line-height:1; cursor:pointer; border-radius:8px; transition:background .12s ease, transform .12s ease; }
 .poke-picker-emoji:hover, .poke-picker-emoji:active { background:rgba(212,175,55,.18); transform:scale(1.15); }
+/* "帮他弃牌"——只在对方断线中又正好轮到他时才会渲染出来（见
+   PlayerSeat.jsx 的 canFoldFor），独占一整行、跟表情格子的"危险程度"区分
+   开：复用 .modal-btn-danger 同一套红色渐变（这个 app 里"危险/重大"动作
+   的通用配色），不是随手挑的颜色。 */
+.poke-picker-foldfor { grid-column:1 / -1; height:30px; margin-top:2px; border:none; border-radius:10px; background:linear-gradient(135deg,#7A1E1E,#C0392B); color:#fff; font-family:var(--font-display); font-weight:700; font-size:12px; letter-spacing:.5px; cursor:pointer; }
+.poke-picker-foldfor:hover, .poke-picker-foldfor:active { filter:brightness(1.12); }
 
 @keyframes revealGlow {
   0%, 100% { box-shadow: 0 0 6px rgba(212, 175, 55, 0.25); }
@@ -856,11 +875,24 @@
    比其余按钮都大一圈，不协调（用户反馈，2026-08-14）。保留边框/底色（跟
    右边那组不同，用户只说"太大"，没说要去框——这个是打开整个菜单的唯一
    入口，留个框比右边那几个更轻量的功能按钮更该有存在感）。 */
-/* "反馈"挪到左边、跟菜单按钮放一起了（用户反馈，2026-08-14 三次调整），
-   包一层 flex 容器让两者贴着对齐，跟 .top-bar-right 是同一个模式。 */
+/* "账本"（原来是"反馈"）挪到左边、跟菜单按钮放一起了（用户反馈，2026-
+   08-14 三次调整；2026-09-15 账本/反馈互换位置，见下方 .menu-anchor 的
+   注释），包一层 flex 容器让两者贴着对齐，跟 .top-bar-right 是同一个
+   模式。 */
 .top-bar-left { display:flex; align-items:center; gap:6px; }
 .top-bar-left-spacer { width:22px; flex-shrink:0; }
 .menu-btn { width:36px; height:36px; background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.32); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:26px; color:#D4AF37; cursor:pointer; }
+/* 三个点菜单锚点（2026-09-15，取代之前的居中 modal-overlay）——relative
+   定位让 .menu-bubble 能贴着这个按钮绝对定位展开，不用另起一层全屏遮罩。
+   气泡左对齐、向右展开：按钮本身贴着屏幕最左侧，向左展开只会把气泡切
+   到屏幕外，向右才有空间。 */
+.menu-anchor { position:relative; }
+.menu-bubble {
+  position:absolute; top:calc(100% + 8px); left:0; z-index:30;
+  width:180px; padding:6px; display:flex; flex-direction:column; gap:2px;
+  background:#0E1F10; border:1px solid rgba(212,175,55,.22); border-radius:14px;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);
+}
 /* 牌桌顶部不再用这个（换成了下面的语音说话指示条），但 Lobby.jsx 的筹码
    显示仍在用同一个 class，样式留着。 */
 .bankroll { background:rgba(212,175,55,.16); border:1px solid rgba(212,175,55,.36); border-radius:18px; padding:4px 12px; font-family:var(--font-amount); font-size:12px; font-weight:700; color:#D4AF37; }
@@ -875,12 +907,12 @@
    08-14 二次修订，见 .top-bar-center 的同一条注释）。触摸目标仍然靠
    padding 撑住，不靠画一个可见的框——"精致"体现在图标本身，不是缩小点
    击区域。 */
-.top-feedback-link {
+.top-bar-text-link {
   display:flex; align-items:center; height:36px; padding:0 4px;
   font-family:var(--font-display); font-size:12px; font-weight:600; letter-spacing:.5px;
   color:var(--gold-200); cursor:pointer; transition:opacity .15s;
 }
-.top-feedback-link:active { opacity:.6; }
+.top-bar-text-link:active { opacity:.6; }
 /* MOCKUP-ONLY：布局对比原型，还没定案 */
 .top-chat-btn--mock {
   width:32px; height:36px; display:flex; align-items:center; justify-content:center;
@@ -1145,6 +1177,10 @@
 /* 延时按钮。刻意比三个动作按钮窄（flex:0 0 auto）也更低调——它不是一个牌桌
    动作，只是给自己多要一点时间，不该跟弃牌/跟注/加注抢视觉权重。 */
 .b-extend { flex:0 0 auto; padding:0 12px; background:rgba(120,140,190,.12); color:#8FA5CC; border:1px solid rgba(120,140,190,.26); font-size:13px; font-family:var(--font-mono); }
+/* 额度用完：置灰 + 不可点，但保留跟正常态相同的尺寸/占位——不从 flex 行
+   里摘掉，摘掉会让左边 flex:1/2 的按钮跟着撑开变宽（用户反馈，2026-09-11：
+   "加到最后一次时按钮消失，左边的按钮移过去了"）。 */
+.b-extend--depleted { opacity:.35; cursor:not-allowed; }
 /* flex:2 vs. b-cancel/b-allin's flex:1 each — widest of the three raise-bottom
    buttons, on request (2026-07-31): 返回/全下/确认加注 left-to-right,
    确认加注 gets the most visual weight since it's the commit action. */
@@ -1320,7 +1356,7 @@
 
 /* ── ≡ TOP-BAR MENU POPOVER (账本 / 退出) ─────────────────── */
 .menu-popover { width:220px; padding:10px; gap:2px; }
-.menu-row { width:100%; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:13px; color:var(--text-primary); cursor:pointer; }
+.menu-row { width:100%; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:15px; color:var(--text-primary); cursor:pointer; }
 .menu-row:active { background:rgba(212,175,55,.1); }
 .menu-row--danger { color:#E08080; }
 
@@ -1346,17 +1382,31 @@
    行和每个数据行的总宽度本来就相等，都是 .ledger-table 的 100%），跟
    "这一行自己塞了多长的内容"完全无关，所以永远不会因为内容宽度不同而
    跑偏，也不依赖 subgrid 这种可能有兼容性坑的特性——比 subgrid 那版更
-   彻底地把"结构上不可能错位"这件事做到了，不是猜哪个浏览器支持什么。 */
+   彻底地把"结构上不可能错位"这件事做到了，不是猜哪个浏览器支持什么。
+   2026-09-15 用户反馈"盈亏"列贴边/被裁切——真机 Playwright 量出来是这版
+   flex 方案自己新挖的坑：5 列 flex-basis 百分比总和刚好 100%，但又设了
+   gap:4px（4 条间隙=16px），flex-basis 百分比是按容器总宽度算的、不会
+   自动扣掉 gap，等于总宽度变成"100%内容 + 16px 间隙"，多出来的 16px 挤
+   开了最后一列。改用普通 grid（不是 subgrid，普通 grid-template-columns
+   兼容性早没有问题，不是重蹈上次 subgrid 的坑）——grid 分配百分比列宽时
+   会先把 column-gap 从可用空间里减掉，数学上不可能再溢出。 */
 .ledger-table { width:100%; display:flex; flex-direction:column; row-gap:6px; }
-.ledger-head-row, .ledger-row { display:flex; gap:4px; align-items:center; }
-.ledger-head-row > *:nth-child(1), .ledger-row > *:nth-child(1) { flex:0 0 23.81%; min-width:0; }
-.ledger-head-row > *:nth-child(2), .ledger-row > *:nth-child(2) { flex:0 0 13.10%; }
-.ledger-head-row > *:nth-child(3), .ledger-row > *:nth-child(3) { flex:0 0 13.10%; }
-.ledger-head-row > *:nth-child(4), .ledger-row > *:nth-child(4) { flex:0 0 23.81%; }
-.ledger-head-row > *:nth-child(5), .ledger-row > *:nth-child(5) { flex:0 0 26.19%; }
+.ledger-head-row, .ledger-row {
+  display:grid;
+  grid-template-columns: 23.81% 13.10% 13.10% 23.81% 26.19%;
+  column-gap:4px;
+  align-items:center;
+}
+.ledger-head-row > *:nth-child(1), .ledger-row > *:nth-child(1) { min-width:0; }
 .ledger-head-row { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); letter-spacing:1px; padding:0 8px; }
-.ledger-row { padding:8px; background:rgba(212,175,55,.04); border:1px solid rgba(212,175,55,.07); border-radius:9px; }
-.ledger-row.hero { background:rgba(212,175,55,.08); border-color:rgba(212,175,55,.16); }
+/* 胶囊底色+边框去掉了（用户反馈，2026-09-15：跟"盈亏"贴边问题一起提的，
+   嫌视觉上太重）。改成行与行之间一条极淡的分隔线，比每行单独一个圆角
+   胶囊更安静，也彻底不用再担心圆角把内容"框住"这件事——没有圆角容器
+   就不存在"内容溢出圆角"的风险了。hero（自己那一行）保留一点点极淡的
+   背景色区分"这是我"，但不再配边框/圆角，跟其他行一样是通栏的。 */
+.ledger-row { padding:8px; border-bottom:1px solid rgba(212,175,55,.08); }
+.ledger-row:last-child { border-bottom:none; }
+.ledger-row.hero { background:rgba(212,175,55,.05); }
 .ledger-name { font-family:var(--font-body); font-size:13px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ledger-left-tag { margin-left:6px; font-family:var(--font-mono); font-size:8px; color:#8A8A7A; background:rgba(255,255,255,.06); border-radius:5px; padding:1px 5px; }
 .ledger-cell { font-family:var(--font-amount); font-size:12px; color:#C8BC9E; text-align:right; white-space:nowrap; }
@@ -1367,6 +1417,13 @@
 .ledger-cell--net.net-neutral { color:#8A9C8C; }
 .ledger-note { font-family:var(--font-body); font-size:11px; color:var(--text-secondary); text-align:center; line-height:1.5; }
 .ledger-egg-note { font-family:var(--font-body); font-size:12px; font-weight:600; color:var(--gold-300); text-align:center; margin-top:6px; }
+.ledger-recap { margin-top:14px; padding-top:12px; border-top:1px solid rgba(212,175,55,.18); }
+.ledger-recap__title { font-family:var(--font-display); font-size:12px; font-weight:700; letter-spacing:1px; color:var(--gold-300); text-align:center; margin-bottom:8px; }
+.ledger-recap__empty { font-family:var(--font-body); font-size:12px; color:var(--text-secondary); text-align:center; }
+.ledger-recap__row { display:flex; align-items:baseline; gap:8px; padding:5px 0; font-family:var(--font-body); font-size:12px; }
+.ledger-recap__award { flex-shrink:0; font-weight:700; color:var(--gold-200); }
+.ledger-recap__who { flex-shrink:0; font-weight:600; color:var(--text-primary); }
+.ledger-recap__reason { color:var(--text-secondary); line-height:1.4; }
 
 /* ── HAND HISTORY PANEL（牌局记录 — 结果摘要，不是逐动作回放） ──
    Full-screen page that slides in from the right, not a centered modal —

@@ -233,6 +233,64 @@ describe('RoomManager — 闲置房间自动清理（sweepIdleRooms）', () => {
   });
 });
 
+describe('RoomManager — 连接对账（reconcileConnections）', () => {
+  it('socket 不在活连接表里 → connected 翻 false 且补 disconnectedAt', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    // p1 的 socket 还活着，p2 的已经没了（disconnect 事件丢失的模拟）
+    const alive = new Set(['socketHost']);
+    room.players.find(p => p.id === 'p1').socketId = 'socketHost';
+
+    const touched = rooms.reconcileConnections(id => alive.has(id));
+
+    expect(touched).toEqual([room]);
+    const p1 = room.players.find(p => p.id === 'p1');
+    const p2 = room.players.find(p => p.id === 'p2');
+    expect(p1.connected).toBe(true);
+    expect(p2.connected).toBe(false);
+    expect(p2.disconnectedAt).toBeGreaterThan(0);
+  });
+
+  it('已经断线的行不重置 disconnectedAt（保留最早的断线时刻）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    const p2 = room.players.find(p => p.id === 'p2');
+    p2.connected = false;
+    p2.disconnectedAt = 111;
+
+    rooms.reconcileConnections(() => false);
+
+    expect(p2.disconnectedAt).toBe(111);
+  });
+
+  it('left 的行不动，socket 仍在表里的行不动，没有改动时返回空数组', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.leave('p2'); // p2.left = true
+    room.players.find(p => p.id === 'p1').socketId = 'socketHost';
+
+    const touched = rooms.reconcileConnections(id => id === 'socketHost');
+
+    expect(touched).toEqual([]);
+    expect(room.players.find(p => p.id === 'p1').connected).toBe(true);
+  });
+
+  it('对账翻 false 后，原本卡住的房间能被 sweepIdleRooms 回收', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.lastActivityAt = Date.now() - 10_000;
+    // 两个 socket 都没了，但没有任何 disconnect 事件把 connected 翻掉
+    expect(room.players.every(p => p.connected)).toBe(true);
+    rooms.sweepIdleRooms(1000);
+    expect(rooms.rooms.has(room.code)).toBe(true); // 幽灵卡住，扫不掉
+
+    rooms.reconcileConnections(() => false);
+    rooms.sweepIdleRooms(1000);
+
+    expect(rooms.rooms.has(room.code)).toBe(false);
+  });
+});
+
 describe('RoomManager — 连接状态', () => {
   it('新创建/新加入的玩家默认 connected 为 true', () => {
     const room = rooms.create('p1', 'Alice');
@@ -1009,5 +1067,92 @@ describe('RoomManager — 断线跨手自动离座', () => {
     expect(room.players.find(p => p.id === 'p2').left).toBe(false);
     const dealtIds = room.game.players.map(p => p.id);
     expect(dealtIds).toContain('p2');
+  });
+});
+
+describe('Room — 打法点评计数器', () => {
+  it('新房间 playstyleStats 为空对象', () => {
+    const room = rooms.create('p1', 'Alice');
+    expect(room.playstyleStats).toEqual({});
+  });
+
+  it('recordHandForPlaystyle 累加进 playstyleStats', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.recordHandForPlaystyle({
+      dealtInIds: ['p1', 'p2'],
+      communityCards: [],
+      allHoleCards: [{ id: 'p1', holeCards: ['Ah', 'Kh'] }, { id: 'p2', holeCards: ['7c', '2d'] }],
+      actionLog: [
+        { playerId: 'p1', phase: 'preflop', type: 'raise', amount: 600, aggressive: true },
+        { playerId: 'p2', phase: 'preflop', type: 'fold', amount: 0, aggressive: false },
+      ],
+    });
+    expect(room.playstyleStats.p1.handsPFR).toBe(1);
+    expect(room.playstyleStats.p1.handsDealt).toBe(1);
+    expect(room.playstyleStats.p2.handsDealt).toBe(1);
+  });
+
+  it('restart() 清空 playstyleStats', () => {
+    const room = rooms.create('p1', 'Alice');
+    room.recordHandForPlaystyle({
+      dealtInIds: ['p1'], communityCards: [],
+      allHoleCards: [{ id: 'p1', holeCards: ['Ah', 'Kh'] }],
+      actionLog: [{ playerId: 'p1', phase: 'preflop', type: 'raise', amount: 600, aggressive: true }],
+    });
+    room.restart();
+    expect(room.playstyleStats).toEqual({});
+  });
+});
+
+describe('Room — foldFor（帮断线玩家弃牌，2026-09-11）', () => {
+  function makeThreePlayerGame() {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    rooms.join(room.code, 'p3', 'Carol', 'socket3');
+    room.startGame();
+    return room;
+  }
+
+  it('目标没有断线 → 拒绝，不改变游戏状态', () => {
+    const room = makeThreePlayerGame();
+    const actorId = room.game.getPublicState().actionPlayerId;
+    const result = room.foldFor('p1' === actorId ? 'p2' : 'p1', actorId);
+    expect(result.error).toBe('这个人没有断线');
+  });
+
+  it('目标断线了，但还没轮到他 → 拒绝', () => {
+    const room = makeThreePlayerGame();
+    const actorId = room.game.getPublicState().actionPlayerId;
+    const notActor = room.players.find(p => p.id !== actorId).id;
+    room.setConnected(notActor, false);
+    const result = room.foldFor(actorId, notActor);
+    expect(result.error).toBe('还没轮到他');
+  });
+
+  it('不能帮自己弃牌', () => {
+    const room = makeThreePlayerGame();
+    const actorId = room.game.getPublicState().actionPlayerId;
+    room.setConnected(actorId, false);
+    const result = room.foldFor(actorId, actorId);
+    expect(result.error).toBe('不能帮自己弃牌');
+  });
+
+  it('目标断线中且正好轮到他 → 真的帮他弃牌，回合推进给下一位', () => {
+    const room = makeThreePlayerGame();
+    const actorId = room.game.getPublicState().actionPlayerId;
+    const helper = room.players.find(p => p.id !== actorId).id;
+    room.setConnected(actorId, false);
+    const result = room.foldFor(helper, actorId);
+    expect(result.error).toBeUndefined();
+    expect(room.game.players.find(p => p.id === actorId).status).toBe('folded');
+    expect(room.game.getPublicState().actionPlayerId).not.toBe(actorId);
+  });
+
+  it('游戏还没开始时 → 拒绝（没有"轮到谁"这回事）', () => {
+    const room = rooms.create('p1', 'Alice');
+    rooms.join(room.code, 'p2', 'Bob', 'socket2');
+    room.setConnected('p2', false);
+    const result = room.foldFor('p1', 'p2');
+    expect(result.error).toBeDefined();
   });
 });

@@ -161,6 +161,9 @@ class PveSession {
     // For the idle-session reaper (server/index.js) — same touch()
     // convention Room already uses, not a bare property poked from outside.
     this.lastActivityAt = Date.now();
+    // 会话创建时刻（≈开局时间），不随 touch() 变——/debug/players 用它算
+    // "这局打了多久"，跟 lastActivityAt（最近一次行动）区分开。
+    this.createdAt = Date.now();
     // Mirrors Room.lastShowdown (RoomManager.js) — "stored for reconnection
     // during settlement wait". Without this, a human who closes/backgrounds
     // the tab mid-showdown (very easy to do: the settlement sheet only
