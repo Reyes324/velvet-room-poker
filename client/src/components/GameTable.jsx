@@ -224,7 +224,7 @@ function spectatorSeatPositions(n) {
   return twoColumnPositions(n);
 }
 
-export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenChatHistory, onOpenFeedback, onPoke, onFoldFor, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, onSendChat, chatBubble = null, disconnectedIds = null, actionBubbles = {}, setActionBubbles = () => {} }) {
+export default function GameTable({ gameState, myId, roomCode, showdown, onAction, actionDisabled, onExit, amPlaying = true, myChips = 0, onRebuy, onOpenLedger, onOpenHandHistory, onOpenChatHistory, onOpenFeedback, onOpenReview, onPoke, onFoldFor, pokedSeat, settlementOpen = false, revealedPlayers = {}, isHost = false, onEndGame, gameTimerEndsAt = null, turnClock = null, myTimeBankMs = 0, onExtendTurn, paused = false, onPause, onResume, isPve = false, voiceEnabled = false, voiceTalking = false, voiceMicError = null, speakingPlayerIds = null, getVoiceVolume = null, onStartTalking, onStopTalking, onSendChat, chatBubble = null, disconnectedIds = null, actionBubbles = {}, setActionBubbles = () => {} }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
   // 三个点菜单 2026-09-15 从居中 modal-overlay 换成贴着按钮弹出的气泡——
@@ -659,6 +659,11 @@ export default function GameTable({ gameState, myId, roomCode, showdown, onActio
               <div className="menu-bubble">
                 <div className="menu-row" onClick={() => { setShowMenu(false); onOpenFeedback?.(); }}>反馈</div>
                 <div className="menu-row" onClick={() => { setShowMenu(false); onOpenHandHistory?.(); }}>牌局记录</div>
+                {/* 复盘目前只有人机对战有（多人房间不传 onOpenReview，这一行
+                    就不出现）——靠回调在不在来决定，不再多加一个模式标志。 */}
+                {onOpenReview && (
+                  <div className="menu-row" onClick={() => { setShowMenu(false); onOpenReview(); }}>复盘</div>
+                )}
                 {isHost && (
                   <div className="menu-row menu-row--danger" onClick={() => { setShowMenu(false); setShowEndGameModal(true); }}>结束游戏</div>
                 )}

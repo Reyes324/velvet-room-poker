@@ -14,7 +14,19 @@ const pveStrategy = require('./pveStrategy');
 // socket，方便单测和离线跑批。
 // ═══════════════════════════════════════════════════════════════════════
 
-const DEFAULT_ITERATIONS = 4000;
+// 实测定的数，不是"离线没有延迟压力所以往大了调"（那个想法是错的：服务端是
+// 单线程的，这里每多算一秒，正在打牌的其他人就卡一秒）。同一局面各跑 12 次量
+// 抖动：
+//   iters=1000 → 标准差 0.9-1.9pp、极差 2.8-5.1pp，约 50ms/次
+//   iters=2000 → 标准差 0.75-1.0pp、极差 2.6-3.0pp，约 100ms/次
+//   iters=4000 → 耗时再翻倍，精度只再收窄约 0.2pp
+// 2000 是拐点。而且真正的不确定性来自 ASSUMED_RANGE_FACING_BET 这个简化假设，
+// 量级远大于 ±1pp 的采样噪声——把迭代数堆到 4000 是在给一个本来就有系统性
+// 假设的数字做无意义的精修。
+//
+// 河牌圈不受这个数影响：board 满 5 张且只剩一个对手时 computeEquity 走精确
+// 穷举而不是采样（实测同一河牌局面 8 次采样结果完全一致）。
+const DEFAULT_ITERATIONS = 2000;
 
 // 面对下注时假设的对手范围（前 X% 强的起手牌）。真实德扑里主动下注的人手牌
 // 强于随机，用"随机两张"算胜率会系统性高估自己。
@@ -86,7 +98,7 @@ function reviewHand(hand, {
     // 多人桌里玩家早早弃牌、又没进摊牌时，记录里可能没有他的底牌（reveals
     // 只保证摊牌方和弃牌获胜方）。没有底牌就没法算胜率，如实返回"无法复盘"，
     // 不猜、不拿随机牌顶上。
-    return { handNumber: hand.handNumber, reviewable: false, decisions: [] };
+    return { handNumber: hand.handNumber, playerId, reviewable: false, decisions: [] };
   }
 
   const decisions = [];
@@ -141,6 +153,7 @@ function reviewHand(hand, {
 
   return {
     handNumber: hand.handNumber,
+    playerId,
     reviewable: true,
     decisions,
     totalEvLoss: decisions.reduce((sum, d) => sum + d.evLoss, 0),

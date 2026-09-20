@@ -8,6 +8,7 @@ import SettlementModal from '../components/SettlementModal';
 import BustDecisionModal from '../components/BustDecisionModal';
 import LedgerModal from '../components/LedgerModal';
 import HandHistoryModal from '../components/HandHistoryModal';
+import HandReviewModal from '../components/HandReviewModal';
 import ChatHistoryModal from '../components/ChatHistoryModal';
 import FeedbackModal from '../components/FeedbackModal';
 
@@ -37,6 +38,11 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
   const [toast, setToast] = useState(null);
   const [showLedger, setShowLedger] = useState(false);
   const [showHandHistory, setShowHandHistory] = useState(false);
+  // 复盘：手号跟结果分开存——翻页时先把手号切过去、结果清空（面板显示"正在
+  // 算…"），服务端算完再回填，不会让上一手的结论停留在新的一手上。
+  const [showReview, setShowReview] = useState(false);
+  const [reviewHandNumber, setReviewHandNumber] = useState(null);
+  const [review, setReview] = useState(null);
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [handHistory, setHandHistory] = useState([]);
@@ -124,6 +130,9 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
     },
     'game:error': (msg) => { showToast(msg, 'danger'); unlockAction(); },
     'pve:hand-history': (hands) => setHandHistory(hands),
+    // 手号跟着结果一起回填——请求时可能传的是 null（"最近一手"），真正是哪
+    // 一手由服务端定，翻页按钮要靠这个数才知道自己在整局的什么位置。
+    'pve:hand-review': (r) => { setReview(r); setReviewHandNumber(r.handNumber); },
     // See RoomPage.jsx's matching handler for why this is a separate event
     // from game:state rather than piggybacking on it. getPveId() is the
     // same id PveSession stores as humanId === players[].id server-side
@@ -143,6 +152,18 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
       }
     },
   });
+
+  // 翻到某一手复盘。传 null = 最近一手，由服务端来定这个默认值（见
+  // server/index.js 的 pve:review-hand），所以这里不需要等牌局记录到货。
+  //
+  // 结果先清空再请求，面板期间显示"正在算…"——服务端每手要算几百毫秒，不清空
+  // 的话上一手的结论会停在新的一手上，看起来像算错了。
+  const openReview = useCallback((handNumber) => {
+    setShowReview(true);
+    setReview(null);
+    setReviewHandNumber(handNumber);
+    emit('pve:review-hand', handNumber);
+  }, [emit]);
 
   useEffect(() => {
     // Re-sync on every (re)connect, not just mount — mirrors RoomPage's own
@@ -211,6 +232,7 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
         onOpenHandHistory={() => { emit('pve:get-hand-history'); setShowHandHistory(true); }}
         onOpenChatHistory={() => setShowChatHistory(true)}
         onOpenFeedback={() => setShowFeedback(true)}
+        onOpenReview={() => { emit('pve:get-hand-history'); openReview(null); }}
         onPoke={(targetId, emoji) => poke(targetId, emoji, me?.id)}
         pokedSeat={pokedSeat}
         voiceEnabled
@@ -238,6 +260,22 @@ export default function PvePage({ playerName, seatCount, onLeave }) {
           onClose={() => setShowHandHistory(false)}
         />
       )}
+      {showReview && (() => {
+        const numbers = handHistory.map(h => h.handNumber).sort((a, b) => a - b);
+        const at = numbers.indexOf(reviewHandNumber);
+        return (
+          <HandReviewModal
+            hand={handHistory.find(h => h.handNumber === reviewHandNumber)}
+            review={review}
+            position={at >= 0 ? `第 ${reviewHandNumber} 手 / 共 ${numbers.length} 手` : ''}
+            canPrev={at > 0}
+            canNext={at >= 0 && at < numbers.length - 1}
+            onPrev={() => openReview(numbers[at - 1])}
+            onNext={() => openReview(numbers[at + 1])}
+            onClose={() => { setShowReview(false); setReviewHandNumber(null); setReview(null); }}
+          />
+        );
+      })()}
       {showChatHistory && (
         <ChatHistoryModal
           messages={chatHistoryLocal}

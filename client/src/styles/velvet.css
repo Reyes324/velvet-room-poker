@@ -1468,6 +1468,52 @@
 .hh-panel-count { min-width:34px; text-align:right; font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); flex-shrink:0; }
 .hh-empty { flex:1 1 auto; font-family:var(--font-body); font-size:14px; color:var(--text-secondary); text-align:center; padding:48px 0; }
 
+/* ── 复盘面板（扑克教练，2026-09-20）─────────────────────────
+   复用上面的 .hh-panel-* 外壳，只加内部样式——同一个产品里不该出现两种风格
+   的全屏面板。翻页而不是长列表是用户在方案对比里选定的形态。 */
+.rv-pager { display:flex; gap:8px; padding:10px 14px 0; flex-shrink:0; }
+.rv-pager-btn {
+  flex:1; height:34px; border-radius:10px; cursor:pointer;
+  border:1px solid rgba(212,175,55,.28); background:rgba(212,175,55,.08);
+  font-family:var(--font-body); font-size:13px; color:var(--text-primary);
+}
+.rv-pager-btn:active:not(:disabled) { background:rgba(212,175,55,.18); }
+.rv-pager-btn:disabled { opacity:.35; cursor:default; }
+
+.rv-body { flex:1 1 auto; overflow-y:auto; padding:12px 14px 20px; }
+.rv-context { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+.rv-context-row { display:flex; align-items:center; gap:10px; min-height:34px; }
+.rv-context-label { flex:0 0 42px; font-family:var(--font-body); font-size:12px; color:var(--text-secondary); }
+.rv-cards { display:flex; gap:4px; flex-wrap:wrap; }
+
+.rv-verdict {
+  padding:10px 12px; margin-bottom:10px; border-radius:10px;
+  background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2);
+  font-family:var(--font-body); font-size:13px; color:var(--text-primary);
+}
+
+.rv-steps { display:flex; flex-direction:column; gap:6px; }
+.rv-step { padding:8px 10px; border-radius:9px; background:rgba(255,255,255,.03); }
+/* 失误那几步用左边一条竖线标出来，而不是整块染红——一手牌里常有两三步被判
+   失误，整块染红会让面板看起来像报错页。 */
+.rv-step--mistake { background:rgba(192,57,43,.08); border-left:2px solid var(--state-danger); }
+.rv-step-main { display:flex; align-items:center; gap:10px; }
+.rv-step-street { flex:0 0 36px; font-family:var(--font-body); font-size:12px; color:var(--text-secondary); }
+.rv-step-action { flex:1; font-family:var(--font-body); font-size:13px; color:var(--text-primary); }
+.rv-step-mark { flex:0 0 auto; font-family:var(--font-mono); font-size:12px; }
+.rv-loss { color:var(--state-danger); font-weight:700; }
+.rv-ok { color:var(--state-safe); }
+
+.rv-step-why { margin-top:7px; padding-left:46px; display:flex; flex-direction:column; gap:6px; }
+.rv-why-board { display:flex; gap:3px; align-items:center; }
+.rv-why-preflop { font-family:var(--font-body); font-size:11px; color:var(--text-secondary); }
+.rv-why-text { font-family:var(--font-body); font-size:12px; line-height:1.55; color:var(--text-secondary); }
+
+.rv-footnote {
+  margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,.07);
+  font-family:var(--font-body); font-size:11px; line-height:1.6; color:var(--text-secondary);
+}
+
 /* Two independently scrollable panes (per user request, referencing a
    hand-replay tool they'd seen): a narrow number rail on the left for
    quick jump, main content on the right — each scrolls on its own, linked

@@ -5,6 +5,7 @@ const path = require('path');
 const { RoomManager } = require('./RoomManager');
 const { parseCard } = require('./GameEngine');
 const { PveSession } = require('./PveSession');
+const { reviewHand } = require('./handReview');
 const { getServerIdentity } = require('./serverIdentity');
 const { computeAwards, hasEnoughHands } = require('./playstyleAwards');
 
@@ -1511,6 +1512,33 @@ function createServer({
       const session = pveId && pveSessions.get(pveId);
       if (!session) return socket.emit('game:error', '对局不存在');
       socket.emit('pve:hand-history', session.handHistory);
+    });
+
+    // 复盘一手牌（扑克教练，2026-09-20）。一次只算一手，不是整局一起算：
+    // 服务端是单线程的，单手复盘实测约 300ms，整局二十几手一起算会把事件循环
+    // 堵住好几秒，正在打牌的其他人会直接卡住。
+    //
+    // 算过的缓存起来（按手号），来回翻页只在第一次付这 300ms。
+    socket.on('pve:review-hand', (handNumber) => {
+      const pveId = socketToPveId.get(socket.id);
+      const session = pveId && pveSessions.get(pveId);
+      if (!session) return socket.emit('game:error', '对局不存在');
+      // handNumber 为空 = "最近一手"。由服务端来定这个默认值，客户端就不用
+      // 等牌局记录到货之后再回头补一次请求——那条路要在 effect 里 setState，
+      // 是 React 里公认容易出问题的写法。
+      const hand = handNumber == null
+        ? session.handHistory[session.handHistory.length - 1]
+        : session.handHistory.find(h => h.handNumber === handNumber);
+      if (!hand) return socket.emit('game:error', '还没有打完的牌局');
+
+      session.reviewCache = session.reviewCache ?? new Map();
+      if (!session.reviewCache.has(hand.handNumber)) {
+        session.reviewCache.set(hand.handNumber, reviewHand(hand, {
+          playerId: session.humanId,
+          bigBlind: session.bigBlind,
+        }));
+      }
+      socket.emit('pve:hand-review', session.reviewCache.get(hand.handNumber));
     });
 
     socket.on('pve:ready-next', () => {
