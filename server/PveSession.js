@@ -3,6 +3,10 @@ const pveStrategy = require('./pveStrategy');
 const { STYLES } = pveStrategy;
 const { defaultStore, MAX_HAND_HISTORY } = require('./pveStore');
 
+// 保留动作明细的手数上限（见 persist()）。结果记录仍按 MAX_HAND_HISTORY
+// 保留 200 手，只有体积大得多的 actions 明细按这个更紧的上限裁剪。
+const MAX_ACTION_DETAIL_HANDS = 50;
+
 const AI_ID = '__ai__'; // legacy single-AI id — kept exact for seatCount=2 (heads-up, the default)
 const AI_NAME = '电脑';
 // 多电脑对战新增（2026-08-02）：坐位名字池，风格对玩家不可见，名字本身
@@ -196,6 +200,14 @@ class PveSession {
     if (this.handHistory.length > MAX_HAND_HISTORY) {
       this.handHistory = this.handHistory.slice(-MAX_HAND_HISTORY);
     }
+    // 动作明细比结果记录大一个量级，而 pveProfiles.json 是**所有玩家共用的
+    // 单个文件、每手结束都整体重写**——200 手全都带明细会让这个文件持续变大，
+    // 每手的写盘也跟着变慢。结果记录（战绩面板要的）仍保留 MAX_HAND_HISTORY
+    // 手不变，只把更老那部分的 actions 丢掉：复盘本来就是看最近打的，翻到
+    // 一百多手以前的动作明细没有实际用途。
+    for (let i = 0; i < this.handHistory.length - MAX_ACTION_DETAIL_HANDS; i++) {
+      if (this.handHistory[i].actions) delete this.handHistory[i].actions;
+    }
     this.store.saveProfile(this.humanId, { oppStats: this.oppStats, handHistory: this.handHistory });
   }
 
@@ -240,6 +252,7 @@ class PveSession {
     this.handNumber += 1;
     this.game = new GameEngine(this.players, this.dealerIndex, this.bigBlind, this.random);
     this.handAggressionCount = {};
+    this.handActions = []; // 这一手的动作序列，供复盘用（见 _dispatch）
   }
 
   get actionPlayerId() {
@@ -561,15 +574,49 @@ class PveSession {
     return { decision, result };
   }
 
+  // 教练复盘的原料（2026-09-20，见 design.md「方向决策：扑克教练」）。牌局
+  // 记录原本只存结果，没有动作序列——能知道"这手输了 ¥230"，无从知道"你在
+  // 转牌圈跟了 ¥80"，复盘也就无从评价哪一步打错了。
+  //
+  // 记在 _dispatch 而不是 humanAction/aiAction 两边：这里是双方所有动作的唯一
+  // 出口，一处就够。
+  //
+  // 刻意不存决策时的公共牌和底牌：前者可由 street + 记录里已有的最终
+  // communityCards 还原，后者已在 reveals 里，存了就是同一份数据存两遍。
+  //
+  // pot 读的是动作发生**前**的 this.game.pot，跟 aiAction() 传给 pickAction()
+  // 的 potSize 是同一口径（GameEngine 下注即入池）——口径不一致的话，复盘算出
+  // 来的底池赔率会跟 AI 当时自己用的那个数对不上。
   _dispatch(playerId, action, amount) {
+    const actor = this.game.players.find(p => p.id === playerId);
+    const context = actor ? {
+      street: this.game.phase,
+      id: playerId,
+      action,
+      toCall: this.game.currentBet - actor.bet,
+      pot: this.game.pot,
+      chips: actor.chips,
+    } : null;
+
+    let result;
     switch (action) {
-      case 'fold':  return this.game.fold(playerId);
-      case 'check': return this.game.check(playerId);
-      case 'call':  return this.game.call(playerId);
-      case 'raise': return this.game.raise(playerId, Number(amount));
-      case 'allin': return this.game.allIn(playerId);
-      default:      return { error: '未知操作' };
+      case 'fold':  result = this.game.fold(playerId); break;
+      case 'check': result = this.game.check(playerId); break;
+      case 'call':  result = this.game.call(playerId); break;
+      case 'raise': result = this.game.raise(playerId, Number(amount)); break;
+      case 'allin': result = this.game.allIn(playerId); break;
+      default:      result = { error: '未知操作' };
     }
+
+    // 只记真正被引擎接受的动作。被拒的操作（没轮到、金额不合法）不是牌局
+    // 事实，记下来会让复盘凭空多出没发生过的一步。
+    // call/allin 投入多少可以从 toCall/chips 推出来，只有 raise 的目标额是
+    // 外部传进来的、推不出来，单独记一个字段。
+    if (context && !result.error) {
+      if (action === 'raise') context.raiseTo = Number(amount);
+      this.handActions.push(context);
+    }
+    return result;
   }
 
   readyNext() {

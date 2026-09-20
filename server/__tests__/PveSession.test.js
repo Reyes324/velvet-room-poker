@@ -778,3 +778,79 @@ describe('PveSession — 牌局不推进的安全网（2026-08-04）', () => {
     }).not.toThrow();
   });
 });
+
+describe('PveSession — 牌局记录补上动作序列（扑克教练第 0 步，2026-09-20）', () => {
+  // 记在 _dispatch（人和 AI 所有动作的唯一出口）而不是 humanAction/aiAction
+  // 两边，所以这组测试直接驱动 _dispatch——它就是被测对象本身。
+  function currentToCall(s) {
+    const actor = s.game.players.find(p => p.id === s.actionPlayerId);
+    return s.game.currentBet - actor.bet;
+  }
+
+  it('被接受的动作按顺序记进 handActions，带上动作发生前的 street/toCall/pot/chips', () => {
+    const s = makeSession();
+    const actorId = s.actionPlayerId;
+    const actor = s.game.players.find(p => p.id === actorId);
+    const toCallBefore = s.game.currentBet - actor.bet;
+    const potBefore = s.game.pot;
+    const chipsBefore = actor.chips;
+
+    s._dispatch(actorId, toCallBefore > 0 ? 'call' : 'check');
+
+    expect(s.handActions).toHaveLength(1);
+    expect(s.handActions[0]).toMatchObject({
+      street: 'preflop',
+      id: actorId,
+      toCall: toCallBefore,
+      pot: potBefore,
+      chips: chipsBefore,
+    });
+  });
+
+  it('pot 记的是动作发生前的底池，跟 pickAction 拿到的 potSize 同一口径', () => {
+    const s = makeSession();
+    const actorId = s.actionPlayerId;
+    const potBefore = s.game.pot;
+    s._dispatch(actorId, currentToCall(s) > 0 ? 'call' : 'check');
+    // 跟注会把筹码推进池子，所以事后的 game.pot 必然比记录下来的大——
+    // 记录若读的是动作后的值，这个断言会失败。
+    expect(s.handActions[0].pot).toBe(potBefore);
+    expect(s.game.pot).toBeGreaterThanOrEqual(potBefore);
+  });
+
+  it('被引擎拒绝的动作不记录——复盘里不能出现没真正发生过的一步', () => {
+    const s = makeSession();
+    const result = s._dispatch(s.actionPlayerId, '乱来');
+    expect(result.error).toBeTruthy();
+    expect(s.handActions).toHaveLength(0);
+  });
+
+  it('raise 额外记 raiseTo（call/allin 的投入额能从 toCall/chips 推出来，raise 的目标额推不出来）', () => {
+    const s = makeSession();
+    const actorId = s.actionPlayerId;
+    const raiseTo = s.game.currentBet + s.game.lastRaiseAmount;
+    const result = s._dispatch(actorId, 'raise', raiseTo);
+    expect(result.error).toBeFalsy();
+    expect(s.handActions.at(-1)).toMatchObject({ action: 'raise', raiseTo });
+  });
+
+  it('_dealNewHand() 开新一手时清空 handActions，不会串到下一手', () => {
+    const s = makeSession();
+    s._dispatch(s.actionPlayerId, currentToCall(s) > 0 ? 'call' : 'check');
+    expect(s.handActions.length).toBeGreaterThan(0);
+    s._dealNewHand();
+    expect(s.handActions).toEqual([]);
+  });
+
+  it('persist() 只给最近 50 手保留 actions 明细，更老的结果记录本身仍然保留', () => {
+    const s = makeSession();
+    for (let i = 0; i < 60; i++) {
+      s.handHistory.push({ handNumber: i, actions: [{ action: 'call' }] });
+    }
+    s.persist();
+    expect(s.handHistory).toHaveLength(60); // 结果记录一条不少（战绩面板要用）
+    expect(s.handHistory.filter(h => h.actions).length).toBe(50);
+    expect(s.handHistory[0].actions).toBeUndefined();
+    expect(s.handHistory.at(-1).actions).toBeDefined();
+  });
+});

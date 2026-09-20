@@ -1556,3 +1556,13 @@
   - 结论：没有发现新的产品 bug——走查过程中出的几处失败都是测试脚本自己的问题（选择器错误、`replace_all` 漏改第二处），修好后 5 条全绿；顺带确认了旅程2 的正确设计是走"继续上局"卡片而不是普通房间列表，不是遗漏
   - 大厅阶段宽限期**过期后**的移除路径没有在本次走查里用真实 120 秒等待复测（不现实），沿用既有 `lobby.spec.js` 的踢人覆盖 + 代码层面已确认的行为
   - **验收**：`reconnectJourneys.spec.js`（5/5）+ `roomListRejoin.spec.js` + `lobby.spec.js` + `game.spec.js` 一起跑，42 passed / 1 个已记录过的无关旧断言失败
+
+- [x] **扑克教练 第 0 步：PVE 牌局记录补上动作序列（2026-09-20，方向见 design.md「方向决策：扑克教练（离线复盘）+ 人机对战双模式」）**
+  - **为什么这是第 0 步**：教练要回答的是"你哪一步打错了、亏了多少"，但现在 `session.handHistory` 的每条记录只有**结果**（最终公共牌、`foldWin`、`winners`、`settle`、`reveals`），**完全没有动作序列**——能知道"第 12 手输了 ¥230"，无从知道"你在转牌圈跟了 ¥80"。没有这份原料，后面的复盘分析一行都写不了。这不是优化，是阻塞项
+  - `server/PveSession.js` `_dispatch()`：这是人（`humanAction`）和 AI（`aiAction`）所有动作的**唯一出口**，记在这一处即可，不要在两边各记一遍（结构化原则）。记录动作发生**前**的决策上下文：`street`/`id`/`action`/`toCall`/`pot`/`chips`，`raise` 额外记 `raiseTo`
+  - **刻意不存**决策时的公共牌（可由 `street` + 记录里已有的最终 `communityCards` 还原）和底牌（已在 `reveals` 里）——存了就是同一份数据存两遍，白白撑大 `pveProfiles.json`
+  - `pot` 必须用 `this.game.pot`（动作发生前读），跟 `aiAction()` 传给 `pickAction()` 的 `potSize` 同一口径（GameEngine 下注即入池），否则复盘算出的底池赔率跟 AI 当时自己用的数对不上
+  - `_dealNewHand()` 每手重置 `handActions`；`server/index.js` 的 `session.handHistory.push({...})` 带上 `actions`
+  - **存储**：`pveProfiles.json` 是所有玩家共用的单个文件、且**每手结束都要整体重写**，动作明细会让它显著变大。新增 `MAX_ACTION_DETAIL_HANDS` 上限，只给最近若干手保留动作明细（战绩面板要的结果记录仍保留既有的 `MAX_HAND_HISTORY` 200 手不变）
+  - **验收**：`PveSession.test.js` 新增 6 条（按序记录并带上动作前的 street/toCall/pot/chips、`pot` 读的是动作**前**的值、被拒动作不记、`raise` 记 `raiseTo`、`_dealNewHand()` 清空、persist 只给最近 50 手留明细且结果记录一条不少）。服务端全量 458/458（改动前 452，净增 6，无回归）
+  - **真实跑量验证（不是只看单测绿）**：用真实 `pveStrategy` 驱动真实对局跑了 12 手，打印出的动作序列可直接还原每个决策点——例如某手河牌圈实录「电脑 raise→¥49 / 玩家 call，要跟¥49、底池¥89」，由记录里的 `toCall`/`pot` 直接算出**这次跟注需要 36% 胜率才划算**（49÷138）。教练只要再用 `computeEquity` 算出玩家当时的真实胜率就能出结论，原料这一层已经齐了

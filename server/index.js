@@ -251,6 +251,10 @@ function createServer({
         winners: result.winners.map(w => ({ id: w.id, name: w.name, won: w.won, handName: w.handName })),
         settle: result.settle,
         reveals,
+        // 这一手双方每一步的决策上下文，供教练复盘用（见 PveSession._dispatch）。
+        // 下一手开始时 _dealNewHand() 会换成一个新数组，这里握住的还是本手那
+        // 个，不会被后续动作改写。
+        actions: session.handActions,
       });
       session.persist(); // 跨会话保留对手画像/历史（design.md「PVE AI 剥削性强化」）
     }
