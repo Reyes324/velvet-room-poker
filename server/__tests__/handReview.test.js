@@ -68,6 +68,33 @@ describe('handReview — 判定', () => {
     expect(out.totalEvLoss).toBe(0);
   });
 
+  // 用户反馈 2026-09-20："为什么复盘只讲亏的呀？其他呢？"——该弃就弃是实打实
+  // 省下了钱，不能只给一个静默的对勾。
+  it('该弃就弃 → 判 ok，并给出省下多少（= 跟下去会亏的那个数）', () => {
+    const hand = makeHand([{ street: 'river', id: 'me', action: 'fold', toCall: 333, pot: 757, chips: 500 }]);
+    const out = review(hand, 0.19);
+    const d = out.decisions[0];
+    expect(d.verdict).toBe('ok');
+    // 跟下去是 0.19×1090 − 333 = −125.9，弃掉就省下这 125.9
+    expect(d.evSaved).toBeCloseTo(125.9, 1);
+    expect(out.totalEvLoss).toBe(0); // 省下的不能被算成亏损
+  });
+
+  it('跟注为正 EV、弃牌只是略亏（没到阈值）时不报"省下"——那是无中生有', () => {
+    const hand = makeHand([{ street: 'river', id: 'me', action: 'fold', toCall: 100, pot: 100, chips: 500 }]);
+    const out = review(hand, 0.52); // 0.52×200−100 = +4，弃牌略亏但在阈值内
+    expect(out.decisions[0].verdict).toBe('ok');
+    expect(out.decisions[0].evSaved).toBeUndefined();
+  });
+
+  it('带上这一手的真实输赢，好让面板能把"结果"和"决策对不对"分开讲', () => {
+    const hand = makeHand(
+      [{ street: 'river', id: 'me', action: 'call', toCall: 49, pot: 89, chips: 500 }],
+      { settle: [{ id: 'me', net: -230 }, { id: '__ai__', net: 230 }] },
+    );
+    expect(review(hand, 0.5).net).toBe(-230);
+  });
+
   it('该跟却弃了 → 同样判为失误（弃牌放弃的正 EV 就是亏损额）', () => {
     const hand = makeHand([{ street: 'river', id: 'me', action: 'fold', toCall: 49, pot: 89, chips: 500 }]);
     const out = review(hand, 0.6);

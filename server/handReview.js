@@ -145,6 +145,12 @@ function reviewHand(hand, {
         decision.evLoss = loss;
       } else {
         decision.verdict = 'ok';
+        // 该弃就弃是实打实省下了钱，不该只给一个静默的对勾（用户反馈
+        // 2026-09-20："为什么复盘只讲亏的"）。省下的额度就是"跟下去会亏
+        // 多少"，跟失误那一侧的 evLoss 是同一把尺子量出来的，不是另造一
+        // 个好听的指标。跟注为正 EV（弃牌其实略亏但没到阈值）时没有"省
+        // 下"可言，这里就是 0。
+        if (a.action === 'fold' && evCall < 0) decision.evSaved = -evCall;
       }
     }
 
@@ -157,6 +163,10 @@ function reviewHand(hand, {
     reviewable: true,
     decisions,
     totalEvLoss: decisions.reduce((sum, d) => sum + d.evLoss, 0),
+    // 这一手真实的输赢。放进来是为了让面板能把"结果"和"决策对不对"摆在一起
+    // 讲——德扑最要紧的一课就是这两件事不是一回事（打得对也会输，打得烂也
+    // 会赢）。只看判定不看结果，人会本能地拿输赢反推自己打得好不好。
+    net: hand.settle?.find(s => s.id === playerId)?.net ?? 0,
   };
 }
 

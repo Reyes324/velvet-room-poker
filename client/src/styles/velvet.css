@@ -1489,8 +1489,11 @@
 .rv-verdict {
   padding:10px 12px; margin-bottom:10px; border-radius:10px;
   background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.2);
-  font-family:var(--font-body); font-size:13px; color:var(--text-primary);
+  font-family:var(--font-body); font-size:13px; line-height:1.6; color:var(--text-primary);
 }
+/* 一手没打错的时候给个绿边——"输了但打得对"这种局面，光靠文字容易被一眼扫
+   过去，而那恰恰是最该让人看见的一条。 */
+.rv-verdict--clean { background:rgba(39,174,96,.08); border-color:rgba(39,174,96,.28); }
 
 .rv-steps { display:flex; flex-direction:column; gap:6px; }
 .rv-step { padding:8px 10px; border-radius:9px; background:rgba(255,255,255,.03); }
@@ -1502,7 +1505,11 @@
 .rv-step-action { flex:1; font-family:var(--font-body); font-size:13px; color:var(--text-primary); }
 .rv-step-mark { flex:0 0 auto; font-family:var(--font-mono); font-size:12px; }
 .rv-loss { color:var(--state-danger); font-weight:700; }
-.rv-ok { color:var(--state-safe); }
+.rv-good { color:var(--state-safe); }
+/* 未评价要看得见但不抢戏——留空会被读成"这步没问题"，染色又会跟真正的
+   好/坏判定混在一起。 */
+.rv-unjudged { color:var(--text-secondary); opacity:.7; }
+.rv-step-margin { margin-top:4px; padding-left:46px; font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); }
 
 .rv-step-why { margin-top:7px; padding-left:46px; display:flex; flex-direction:column; gap:6px; }
 .rv-why-board { display:flex; gap:3px; align-items:center; }

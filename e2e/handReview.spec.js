@@ -56,8 +56,22 @@ test('PVE：打几手之后能从菜单打开复盘，看到逐手的判定，�
   // 至少要有一步决策被渲染出来，并且总结行在
   await expect(page.locator('.rv-step').first()).toBeVisible();
   await expect(page.locator('.rv-verdict')).toBeVisible();
+  // 总结必须同时讲"结果"和"决策对不对"——这两件事在德扑里不是一回事，把它们
+  // 摆在一起正是这个面板要教的（用户反馈 2026-09-20）。
   const verdictText = await page.locator('.rv-verdict').textContent();
-  expect(verdictText).toMatch(/没有明显失误|步亏了/);
+  expect(verdictText).toMatch(/这手你(赢了|输了|没输没赢)/);
+  expect(verdictText).toMatch(/决策|亏|没有需要判断/);
+
+  // 每一步都要有话说：判定过的给出对勾/省下/亏了，没判定的必须显式写"未评价"
+  // ——留空会被读成"这步没问题"。
+  const marks = await page.locator('.rv-step-mark').allTextContents();
+  expect(marks.length).toBeGreaterThan(0);
+  expect(marks.every(t => t.trim().length > 0), `有步骤没有任何标注：${JSON.stringify(marks)}`).toBe(true);
+  // 判定过的步骤都要带上"需要 X% 胜率，你有 Y%"这行量化依据，不只失误才有
+  const judged = page.locator('.rv-step-margin');
+  if (await judged.count()) {
+    expect(await judged.first().textContent()).toMatch(/需要 \d+% 胜率，你有 \d+%/);
+  }
 
   // 头部显示的是"第 N 手 / 共 M 手"
   await expect(page.locator('.hh-panel-count')).toContainText('手');
